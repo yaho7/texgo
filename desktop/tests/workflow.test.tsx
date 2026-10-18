@@ -10,6 +10,9 @@ const imageData = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC
 const secondImageData = "data:image/png;base64,c2Vjb25k";
 const reference = { file: "/paper/main.tex", line: 8, original: "figures/alpha.png", start: 40, end: 57 };
 const project: Project = {
+  mode: "tex",
+  recursive: true,
+  convertedImages: [],
   mainFile: "/paper/main.tex",
   root: "/paper",
   texFiles: ["/paper/main.tex", "/paper/chapter.tex"],
@@ -42,11 +45,14 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   calls = [];
   backendProject = structuredClone(project);
   handlers = {
     "plugin:dialog|open": () => "/paper/main.tex",
     open_project: () => structuredClone(backendProject),
+    refresh_workspace: () => structuredClone(backendProject),
+    conversion_history: () => [],
     asset_preview: () => ({ data: imageData, kind: "image" }),
     convert_images: () => success,
     cancel_conversion: () => undefined,
@@ -66,7 +72,7 @@ beforeEach(() => {
 async function openProject() {
   const user = userEvent.setup();
   render(<App />);
-  await user.click(screen.getByRole("button", { name: "打开主文件" }));
+  await user.click(screen.getByRole("button", { name: "打开 .tex 主文件" }));
   await screen.findByRole("button", { name: "预览 figures/alpha.png" });
   return user;
 }
@@ -78,15 +84,44 @@ async function convertFirst(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("LaTeX 图片工作流", () => {
+  it("opens an image directory without a TeX file and can reopen it from recents", async () => {
+    handlers["plugin:dialog|open"] = () => "/images";
+    handlers.open_directory = () => ({ ...project, mode: "directory", mainFile: "", root: "/images", texFiles: [], warnings: [], images: [{ ...project.images[0], references: [] }] });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "转换图片目录" }));
+    await screen.findByRole("button", { name: "预览 figures/alpha.png" });
+    expect(calls).toContainEqual({ command: "open_directory", args: { directory: "/images", recursive: true } });
+    expect(screen.queryByRole("button", { name: "预览替换" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "返回首页" }));
+    await user.click(screen.getByRole("button", { name: "打开最近目录 /images" }));
+    await screen.findByRole("button", { name: "预览 figures/alpha.png" });
+    expect(calls.filter(({ command }) => command === "open_directory")).toHaveLength(2);
+  });
+
+  it("shows persistent conversion history and requires confirmation before undo", async () => {
+    handlers.conversion_history = () => [{ id: "batch-1", createdAt: 1700000000000, outputDir: "ready-pdf", dpi: 300, jpegQuality: 90, undone: false, canUndo: true, files: [{ source: "figures/alpha.png", output: "ready-pdf/figures/alpha.pdf", cached: false, error: null }] }];
+    handlers.undo_conversion = () => structuredClone(backendProject);
+    const user = await openProject();
+    await user.click(screen.getByRole("tab", { name: /转换记录/ }));
+    await user.click(screen.getByText("文件记录 (1)"));
+    await screen.findByText("ready-pdf/figures/alpha.pdf");
+    await user.click(screen.getByRole("button", { name: "撤销此次转换" }));
+    const dialog = await screen.findByRole("dialog", { name: "撤销此次转换？" });
+    expect(calls.some(({ command }) => command === "undo_conversion")).toBe(false);
+    await user.click(within(dialog).getByRole("button", { name: "确认撤销" }));
+    await waitFor(() => expect(calls).toContainEqual({ command: "undo_conversion", args: { entryId: "batch-1" } }));
+  });
+
   it("starts empty and leaves the workspace unchanged when the file dialog is cancelled", async () => {
     handlers["plugin:dialog|open"] = () => null;
     const user = userEvent.setup();
     render(<App />);
-    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "打开主文件" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "打开主文件" })).toBeEnabled());
+    expect(screen.queryByRole("checkbox", { name: "选择当前列表" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "打开 .tex 主文件" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "打开 .tex 主文件" })).toBeEnabled());
     expect(calls.some(({ command }) => command === "open_project")).toBe(false);
-    expect(screen.getByText("尚未打开项目")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "打开 .tex 主文件" })).toBeInTheDocument();
     expect(calls[0]).toMatchObject({ command: "plugin:dialog|open", args: { options: { multiple: false, filters: [{ name: "LaTeX", extensions: ["tex"] }] } } });
   });
 
@@ -116,7 +151,8 @@ describe("LaTeX 图片工作流", () => {
     await user.click(screen.getByRole("tab", { name: /引用位置/ }));
     expect(screen.getByRole("region", { name: "图片引用位置" })).toHaveTextContent("第 8 行");
     await user.click(screen.getByRole("tab", { name: "转换设置" }));
-    expect(screen.getByRole("radio", { name: "原始" })).toHaveAttribute("data-state", "on");
+    expect(screen.getByRole("spinbutton", { name: "分辨率 (DPI)" })).toHaveValue(300);
+    expect(screen.queryByText(/参考宽度/)).not.toBeInTheDocument();
   });
 
   it("waits for conversion completion even after the final progress event and sends custom settings", async () => {
@@ -124,21 +160,18 @@ describe("LaTeX 图片工作流", () => {
     handlers.convert_images = () => pending.promise;
     const user = await openProject();
     await user.click(screen.getByRole("checkbox", { name: "选择 figures/alpha.png" }));
-    await user.click(screen.getByRole("radio", { name: "自定义" }));
     await user.clear(screen.getByRole("spinbutton", { name: "分辨率 (DPI)" }));
     await user.type(screen.getByRole("spinbutton", { name: "分辨率 (DPI)" }), "240");
-    await user.clear(screen.getByRole("spinbutton", { name: "参考宽度 (mm)" }));
-    await user.type(screen.getByRole("spinbutton", { name: "参考宽度 (mm)" }), "120");
-    await user.clear(screen.getByRole("spinbutton", { name: "JPEG 质量 (%)" }));
-    await user.type(screen.getByRole("spinbutton", { name: "JPEG 质量 (%)" }), "85");
+    await user.clear(screen.getByRole("spinbutton", { name: "质量 (%)" }));
+    await user.type(screen.getByRole("spinbutton", { name: "质量 (%)" }), "85");
     await user.click(screen.getByRole("button", { name: "转换所选图片" }));
     await waitFor(() => expect(calls.some(({ command }) => command === "convert_images")).toBe(true));
     await act(async () => { await emit("conversion-progress", { current: 1, total: 1, name: "alpha.png", status: "完成" }); });
     expect(screen.getByRole("button", { name: "预览替换" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "重新扫描" })).toBeDisabled();
     expect(screen.getByRole("checkbox", { name: "选择 figures/alpha.png" })).toBeDisabled();
-    expect(screen.getByRole("radio", { name: "原始" })).toBeDisabled();
-    expect(calls).toContainEqual({ command: "convert_images", args: { options: { imageIds: ["a"], quality: "custom", dpi: 240, maxWidthMm: 120, jpegQuality: 85 } } });
+    expect(screen.getByRole("spinbutton", { name: "分辨率 (DPI)" })).toBeDisabled();
+    expect(calls).toContainEqual({ command: "convert_images", args: { options: { imageIds: ["a"], quality: "custom", dpi: 240, jpegQuality: 85, outputDir: "texgo-pdf" } } });
     await act(async () => { pending.resolve(success); });
     await waitFor(() => expect(screen.getByRole("button", { name: "预览替换" })).toBeEnabled());
     expect(screen.getByText("转换完成：1 成功，0 失败")).toBeInTheDocument();
@@ -149,11 +182,25 @@ describe("LaTeX 图片工作流", () => {
   it("validates custom settings before any conversion command", async () => {
     const user = await openProject();
     await user.click(screen.getByRole("checkbox", { name: "选择 figures/alpha.png" }));
-    await user.click(screen.getByRole("radio", { name: "自定义" }));
     await user.clear(screen.getByRole("spinbutton", { name: "分辨率 (DPI)" }));
-    expect(screen.getByRole("button", { name: "转换所选图片" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "转换所选图片" }));
+    expect(screen.getByRole("spinbutton", { name: "分辨率 (DPI)" })).toHaveFocus();
     expect(screen.getByText("DPI 需为 72–1200 的整数")).toBeInTheDocument();
     expect(calls.some(({ command }) => command === "convert_images")).toBe(false);
+  });
+
+  it("converts from the reference tab and focuses invalid settings on return", async () => {
+    const user = await openProject();
+    await user.click(screen.getByRole("checkbox", { name: "选择 figures/alpha.png" }));
+    await user.clear(screen.getByRole("spinbutton", { name: "分辨率 (DPI)" }));
+    await user.click(screen.getByRole("tab", { name: /引用位置/ }));
+    await user.click(screen.getByRole("button", { name: "转换所选图片" }));
+    await waitFor(() => expect(screen.getByRole("spinbutton", { name: "分辨率 (DPI)" })).toHaveFocus());
+    expect(calls.some(({ command }) => command === "convert_images")).toBe(false);
+    await user.type(screen.getByRole("spinbutton", { name: "分辨率 (DPI)" }), "300");
+    await user.click(screen.getByRole("tab", { name: /引用位置/ }));
+    await user.click(screen.getByRole("button", { name: "转换所选图片" }));
+    await waitFor(() => expect(calls.some(({ command }) => command === "convert_images")).toBe(true));
   });
 
   it("keeps conversion locked until cancellation finishes and preserves completed image results", async () => {
@@ -165,9 +212,9 @@ describe("LaTeX 图片工作流", () => {
     await waitFor(() => expect(calls.some(({ command }) => command === "convert_images")).toBe(true));
     await user.click(screen.getByRole("button", { name: "取消转换" }));
     expect(calls.some(({ command }) => command === "cancel_conversion")).toBe(true);
-    expect(screen.getByRole("button", { name: "打开文件" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "打开 .tex 主文件" })).toBeDisabled();
     await act(async () => { pending.resolve({ ...success, cancelled: true }); });
-    await waitFor(() => expect(screen.getByRole("button", { name: "打开文件" })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "打开 .tex 主文件" })).toBeEnabled());
     expect(screen.getByText("已取消：1 张已完成")).toBeInTheDocument();
     const row = screen.getByRole("button", { name: "预览 figures/beta.jpg" }).closest("tr")!;
     expect(within(row).getByText("已取消")).toBeInTheDocument();
@@ -196,13 +243,13 @@ describe("LaTeX 图片工作流", () => {
     expect(screen.getByText("已替换 1 个文件中的 1 处引用")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "选择 figures/alpha.png" })).not.toBeChecked();
     expect(screen.getByRole("button", { name: "预览替换" })).toBeDisabled();
-    expect(calls.filter(({ command }) => command === "open_project")).toHaveLength(2);
+    expect(calls.filter(({ command }) => command === "refresh_workspace")).toHaveLength(1);
     await waitFor(() => expect(screen.getByRole("button", { name: "撤销替换" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "撤销替换" }));
     await screen.findByText("已恢复 1 个文件中的 1 处引用");
     expect(calls.some(({ command }) => command === "undo_replacements")).toBe(true);
     expect(screen.getByRole("button", { name: "撤销替换" })).toBeDisabled();
-    expect(calls.filter(({ command }) => command === "open_project")).toHaveLength(3);
+    expect(calls.filter(({ command }) => command === "refresh_workspace")).toHaveLength(2);
   });
 
   it("dismisses the review with Escape without mutating files", async () => {
@@ -230,12 +277,12 @@ describe("LaTeX 图片工作流", () => {
   it("rescans the current main file and clears stale selection and conversion state", async () => {
     const user = await openProject();
     await convertFirst(user);
-    handlers.open_project = () => ({ ...structuredClone(project), images: [project.images[1]], warnings: [] });
+    handlers.refresh_workspace = () => ({ ...structuredClone(project), images: [project.images[1]], warnings: [] });
     await user.click(screen.getByRole("button", { name: "重新扫描" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "预览 figures/alpha.png" })).not.toBeInTheDocument());
     expect(screen.getByRole("checkbox", { name: "选择 figures/beta.jpg" })).not.toBeChecked();
     expect(screen.getByRole("button", { name: "预览替换" })).toBeDisabled();
-    expect(calls.filter(({ command }) => command === "open_project")).toHaveLength(2);
+    expect(calls.filter(({ command }) => command === "refresh_workspace")).toHaveLength(1);
     expect(calls.filter(({ command }) => command === "plugin:dialog|open")).toHaveLength(1);
   });
 

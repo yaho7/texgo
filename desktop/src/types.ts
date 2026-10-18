@@ -22,6 +22,9 @@ export interface ImageAsset {
 }
 
 export interface Project {
+  mode: "tex" | "directory";
+  recursive: boolean;
+  convertedImages: ConvertedImage[];
   mainFile: string;
   root: string;
   texFiles: string[];
@@ -30,14 +33,25 @@ export interface Project {
   undoAvailable: boolean;
 }
 
-export type Quality = "original" | "high" | "compact" | "custom";
-
 export interface ConversionOptions {
   imageIds: string[];
-  quality: Quality;
+  quality: "custom";
   dpi: number;
-  maxWidthMm: number;
   jpegQuality: number;
+  outputDir: string;
+}
+
+export interface ConversionHistoryEntry {
+  id: string;
+  createdAt: number;
+  outputDir: string;
+  dpi: number;
+  jpegQuality: number;
+  files: { source: string; output: string; cached: boolean; error: string | null }[];
+  undone: boolean;
+  canUndo: boolean;
+  cancelled?: boolean;
+  undoReason?: string | null;
 }
 
 export interface ConvertedImage {

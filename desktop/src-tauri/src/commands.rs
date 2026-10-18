@@ -13,7 +13,8 @@ struct AppState {
 
 async fn work<T: Send + 'static>(state: AppState, action: impl FnOnce(&mut Option<Workspace>) -> Result<T, String> + Send + 'static) -> Result<T, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let mut workspace = state.workspace.try_lock().map_err(|_| "正在处理项目，请稍后重试".to_string())?;
+        // Preview and history reads can overlap; serialize them on a worker thread.
+        let mut workspace = state.workspace.lock().map_err(|_| "工作区状态不可用，请重新启动应用".to_string())?;
         action(&mut workspace)
     }).await.map_err(|e| format!("后台任务失败：{e}"))?
 }

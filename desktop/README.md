@@ -1,8 +1,13 @@
 # Texgo Desktop
 
 Tauri 2 + Rust + React + shadcn/ui. The workbench scans images referenced by a
-TeX main file, converts selected images to PDF, previews results and applies
-reversible reference replacements. Source images remain intact.
+TeX main file or opens an image directory without TeX references. Recent
+workspaces and settings are remembered. PDFs retain the source stem and relative
+subdirectories in a custom output folder; source images remain intact.
+
+Conversion settings are DPI and quality percentage only (100 is lossless).
+Persistent conversion history supports guarded batch undo, separately from
+reference replacement undo. Existing unrelated PDFs are never overwritten.
 
 Every installer includes the independent `texgo-engine` CLI/JSON-RPC API.
 Install once for both GUI and automation; no second engine download is needed.

@@ -7,6 +7,7 @@ const logo = await readFile(new URL("../../cmd/texgo/template-assets/logo.png", 
 const imageData = `data:image/png;base64,${logo.toString("base64")}`;
 const reference = { file: "/论文/main.tex", line: 42, original: "figures/result.png", start: 10, end: 28 };
 const project = {
+  mode: "tex", recursive: true, convertedImages: [],
   mainFile: "/论文/main.tex", root: "/论文", texFiles: ["/论文/main.tex", "/论文/chapters/results.tex"],
   undoAvailable: false, warnings: ["未找到 figures/missing.png"],
   images: [
@@ -51,7 +52,8 @@ try {
         if (command === "plugin:event|listen") return ++sequence;
         if (command === "plugin:event|unlisten") return;
         if (command === "plugin:dialog|open") return project.mainFile;
-        if (command === "open_project") return { ...project, undoAvailable: applied };
+        if (command === "open_project" || command === "refresh_workspace") return { ...project, undoAvailable: applied };
+        if (command === "conversion_history") return [];
         if (command === "asset_preview") return args.converted ? { data: pdf, kind: "pdf" } : { data: imageData, kind: "image" };
         if (command === "convert_images") return { images: args.options.imageIds.map((id) => ({ id, pdfPath: `/论文/figures/texgo-pdf/${id}.pdf`, bytes: 5000, cached: false, error: null })), cancelled: false };
         if (command === "preview_changes") return { files: [{ path: project.mainFile, changes: [{ line: 42, before: "figures/result.png", after: "figures/texgo-pdf/plot.pdf" }] }], referenceCount: 1 };
@@ -63,7 +65,8 @@ try {
     window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
   }, { project, imageData, pdf: pdfFixture() });
   await page.goto(baseURL);
-  await page.getByRole("button", { name: "打开主文件", exact: true }).click();
+  await page.screenshot({ path: "screenshots/fixture-home.png", fullPage: true });
+  await page.getByRole("button", { name: "打开 .tex 主文件", exact: true }).click();
   await page.getByRole("button", { name: "预览 figures/result.png", exact: true }).waitFor();
   await page.getByRole("img", { name: "原始：figures/result.png", exact: true }).waitFor();
   await page.screenshot({ path: "screenshots/fixture-workbench-desktop.png", fullPage: true });
