@@ -1,146 +1,46 @@
-# texgo
+# Texgo
 
-[English](./README.md)
+[English](README.md)
 
-## 桌面应用
+面向 Windows、macOS 和 Linux 的本地 LaTeX 图片工作台，使用 Tauri 2、Rust、React 和 shadcn/ui。安装一个应用即可同时获得图形界面和独立的 `texgo-engine` CLI/JSON-RPC 引擎；项目文件不会上传到服务器。
 
-Texgo 桌面版使用 Tauri 2，面向 Windows、macOS 和 Linux。选择 TeX 主文件后，可扫描图片引用、选择质量转换 PDF，并预览、应用和撤销引用替换。
+## 下载
 
-参见[桌面版使用说明](desktop/README.zh.md)、[发布说明](docs/desktop-release.md)和[桌面版下载](https://github.com/yaho7/texgo/releases?q=desktop-v)。本地执行静态检查；每次 push 都在 GitHub Actions 直接打包，`desktop-v*` 标签额外发布到 Release。
+从 [GitHub Releases](https://github.com/yaho7/texgo/releases/latest) 下载对应平台的安装包。
 
-## 原有命令行工具
+macOS 最低要求为 13.3。Windows 安装包未签名，macOS 为临时签名且未公证；详细说明见[平台要求和签名](docs/desktop-release.md)。
 
-`texgo` 是一个用于 LaTeX 项目的 Go 命令行工具。它通过缓存已转换的图片 PDF，减少 LaTeX 在重复编译中的图片处理开销，同时自动识别主 `.tex` 文件并调用 `latexmk` 完成编译。
+## 使用流程
 
-## 功能
+1. 打开 `.tex` 主文件，自动识别子文件和图片引用；也可独立选择图片目录进行预转换。
+2. 选择图片，设置 DPI、质量百分比和自定义输出目录。
+3. 转换为同名 PDF，保留原图片和相对目录结构。
+4. 预览 PDF，检查引用替换差异后再确认应用。
+5. 通过最近打开记录恢复工作区，或在转换记录中安全撤销批次。
 
-- 使用单个 `texgo` 命令构建 LaTeX 项目。
-- 将支持的图片转换一次并复用 PDF 缓存，显著缩短后续重复编译时间。
-- 自动识别 `main.tex`、`paper.tex`、`manuscript.tex`、`thesis.tex` 等常见主文件。
-- 解析本地 `\includegraphics{...}` 引用并发现图片目录。
-- 通过 GraphicsMagick 并发地将支持的图片转换为缓存 PDF。
-- 使用 `.texgo.conf` 保存项目配置。
-- 使用 Go 构建单文件二进制，便于分发。
+图片转换不需要 GraphicsMagick 或 TeX。质量 100 使用无损图像编码，DPI 不会放大原图。需要编译文档时，本机还需安装 TeX 发行版和 `latexmk`。
 
-## 环境要求
+## 开发者接入
 
-运行时依赖：
+内置引擎可在桌面应用未运行时独立调用，支持版本化 JSON 配置和标准输入输出上的 JSON-RPC。可以接入 VS Code、LaTeX Workshop 或其他编辑器，完成扫描、转换、编译及自动监听，无需再安装第二套工具。
 
-- `latexmk`
-- `latexmk` 支持的 LaTeX 引擎：`xelatex`、`pdflatex` 或 `lualatex`
-- GraphicsMagick 提供的 `gm`，必需依赖，用于项目的图片转换加速流程
+- [CLI 与 API 文档](docs/api.md)
+- [JSON 配置定义](docs/project.schema.json)
+- [VS Code 接入示例](examples/vscode/)
+- [引擎安装路径](docs/desktop-release.md#one-install-gui-and-cli)
+- [详细使用说明](desktop/README.zh.md)
 
-源码构建依赖：
+## 开发与发布
 
-- Go，仅在从源码构建时需要
+应用源码位于 `desktop/`。安装开发依赖后，在本地执行无输出静态检查：
 
-## 安装
-
-安装最新发布版：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Yaho7/texgo/main/install.sh | bash -s -- --yes
+```sh
+cd desktop
+npm run check
 ```
 
-## 快速开始
+编译、打包与发布交给 GitHub Actions，不在本地执行。见[开发说明](desktop/README.md)和[发布流程](docs/desktop-release.md)。
 
-首次配置项目：
+## 许可证
 
-```bash
-texgo setup
-```
-
-构建项目：
-
-```bash
-texgo
-```
-
-在 LaTeX 项目目录中，`texgo` 等价于 `texgo build`。
-
-## 命令
-
-```bash
-texgo                    # 构建当前项目
-texgo setup              # 交互式创建或更新 .texgo.conf
-texgo build              # 构建当前项目
-texgo build main.tex     # 构建指定 TeX 文件
-texgo images             # 只转换并缓存图片
-texgo images --workers 8 # 最多使用八个并发任务转换图片
-texgo clean              # 删除构建目录
-texgo clean --figures    # 删除构建产物和图片 PDF 缓存
-texgo doctor             # 检查外部依赖命令
-texgo init my-paper      # 创建独立文章模板项目
-```
-
-`texgo init` 会生成 `template/manuscript.tex`、`template/bibliography/references.bib`，并写入内置的源图片 `template/figures/logo.png`。模板页脚包含项目网址，联系信息行预填 `i@yaho7.cn` 与 `yaho7.cn` 供用户替换；运行 `texgo build` 时，内置 logo 会先通过 GraphicsMagick 转换后再参与文稿编译。
-
-常用参数：
-
-```text
---project-dir DIR
---figures-dir DIR
---pdf-dir DIR
---build-dir DIR
---tex-file FILE
---engine xelatex|pdflatex|lualatex
---no-images
---workers N
-```
-
-## 配置
-
-`texgo setup` 会在项目根目录写入 `.texgo.conf`。
-
-示例：
-
-```conf
-tex_file=paper.tex
-engine=xelatex
-build_dir=build
-figures_dir=
-convert_images=1
-```
-
-优先级：
-
-```text
-命令行参数 > .texgo.conf > 自动检测默认值
-```
-
-## 图片转换
-
-启用图片转换时，`texgo` 会将图片目录中的支持格式转换为 PDF，并保存到该图片目录下的 `pdf/` 子目录。默认最多并发运行四个 `gm convert` 任务；可向 `texgo build` 或 `texgo images` 传入 `--workers N` 调整上限。后续构建会直接复用这些缓存，避免 LaTeX 反复处理大量图片资源；对于图片较多的论文、报告和毕业设计，这通常可以大幅缩短编译时间。
-
-支持的源文件格式：
-
-```text
-png, jpg, jpeg, gif, tif, tiff, bmp, svg
-```
-
-当源图片比缓存 PDF 更新时，缓存会自动刷新。源图片不存在时，对应的过期 PDF 缓存会被删除。
-
-## 开发
-
-运行测试：
-
-```bash
-go test ./...
-bash tests/install_release_test.sh
-```
-
-构建本地二进制：
-
-```bash
-./scripts/build-binary.sh --output /tmp/texgo
-```
-
-项目结构：
-
-```text
-cmd/texgo/              Go CLI 源码和测试
-cmd/texgo/template-assets/ texgo init 写出的内置资源
-.github/workflows/      多平台发布构建
-scripts/                构建辅助脚本
-install.sh              发布版安装和源码构建辅助脚本
-```
+[MIT](LICENSE)。

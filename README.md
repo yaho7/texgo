@@ -1,146 +1,53 @@
-# texgo
+# Texgo
 
-[简体中文](./README.zh.md)
+[中文](README.zh.md)
 
-## Desktop App
+A local LaTeX image workbench for Windows, macOS and Linux, built with
+Tauri 2, Rust, React and shadcn/ui. Every installer includes both the desktop
+application and the independent `texgo-engine` CLI/JSON-RPC API.
 
-Texgo Desktop is a Tauri 2 application for Windows, macOS and Linux. Select a main TeX file, inspect referenced images, convert them to PDF with quality presets, and review reversible reference replacements.
+## Download
 
-See the [desktop guide](desktop/README.md), [Chinese user guide](desktop/README.zh.md), and [desktop releases](https://github.com/yaho7/texgo/releases?q=desktop-v). Static checks run locally. Every push directly builds installers on GitHub Actions; `desktop-v*` tags also publish a Release.
+Get the installer for your platform from [GitHub Releases](https://github.com/yaho7/texgo/releases/latest).
+macOS requires 13.3+. Windows packages are unsigned; macOS packages are
+ad-hoc signed and not notarized. See [platform requirements and signing](docs/desktop-release.md).
 
-## Legacy CLI
+## Workflow
 
-`texgo` is a small Go CLI for building LaTeX projects from the terminal. It reduces repeated LaTeX compilation overhead by caching converted figure PDFs, detects the main `.tex` file, and delegates compilation to `latexmk`.
+1. Open a `.tex` main file, or choose an image directory without TeX references.
+2. Select images and set DPI, quality percentage and the output directory.
+3. Convert to same-stem PDFs while preserving source images and subdirectories.
+4. Preview PDFs and review TeX reference replacements before applying them.
+5. Reopen recent workspaces or inspect conversion history to undo a batch safely.
 
-## Features
+Conversion does not require GraphicsMagick or TeX. Document compilation through
+the engine requires an installed TeX distribution and `latexmk`. Quality 100
+uses lossless image encoding; lower DPI never upscales the source image.
 
-- Builds a LaTeX project with a single `texgo` command.
-- Shortens repeated compilation by converting supported figures once and reusing cached PDFs.
-- Detects common main files such as `main.tex`, `paper.tex`, `manuscript.tex`, and `thesis.tex`.
-- Parses local `\includegraphics{...}` references to discover figure directories.
-- Converts supported images to cached PDFs through GraphicsMagick, running conversions concurrently.
-- Stores project preferences in `.texgo.conf`.
-- Produces a single Go binary for distribution.
+## Automation
 
-## Requirements
+The bundled engine works independently of the GUI. Use a versioned JSON
+configuration or JSON-RPC to scan, convert, compile and watch projects from
+VS Code or another editor. No second engine installation is needed.
 
-Runtime dependencies:
-
-- `latexmk`
-- A LaTeX engine supported by `latexmk`: `xelatex`, `pdflatex`, or `lualatex`
-- `gm` from GraphicsMagick, a required dependency for the accelerated image conversion workflow
-
-Source build dependency:
-
-- Go, required only when building from source
-
-## Installation
-
-Install the latest release:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Yaho7/texgo/main/install.sh | bash -s -- --yes
-```
-
-## Quick Start
-
-Configure a project once:
-
-```bash
-texgo setup
-```
-
-Build the project:
-
-```bash
-texgo
-```
-
-`texgo` without arguments is equivalent to `texgo build` when run inside a LaTeX project.
-
-## Commands
-
-```bash
-texgo                    # Build the current project
-texgo setup              # Create or update .texgo.conf interactively
-texgo build              # Build the current project
-texgo build main.tex     # Build a specific TeX file
-texgo images             # Convert and cache image files only
-texgo images --workers 8 # Convert images with up to eight concurrent jobs
-texgo clean              # Remove the build directory
-texgo clean --figures    # Remove build output and cached figure PDFs
-texgo doctor             # Check required external commands
-texgo init my-paper      # Create a standalone article starter project
-```
-
-`texgo init` creates `template/manuscript.tex`, `template/bibliography/references.bib`, and an embedded `template/figures/logo.png` source image. The template includes the project URL in its footer and replaceable contact lines for `i@yaho7.cn` and `yaho7.cn`; running `texgo build` converts the bundled logo through GraphicsMagick before compiling the manuscript.
-
-Common options:
-
-```text
---project-dir DIR
---figures-dir DIR
---pdf-dir DIR
---build-dir DIR
---tex-file FILE
---engine xelatex|pdflatex|lualatex
---no-images
---workers N
-```
-
-## Configuration
-
-`texgo setup` writes `.texgo.conf` in the project root.
-
-Example:
-
-```conf
-tex_file=paper.tex
-engine=xelatex
-build_dir=build
-figures_dir=
-convert_images=1
-```
-
-Precedence:
-
-```text
-command-line options > .texgo.conf > auto-detected defaults
-```
-
-## Image Conversion
-
-When image conversion is enabled, `texgo` converts supported files in figure directories to PDFs and stores them under a `pdf/` subdirectory. It runs up to four `gm convert` jobs concurrently by default; pass `--workers N` to `texgo build` or `texgo images` to tune that limit. This avoids forcing LaTeX to repeatedly process large raster/vector assets during later builds, which can substantially reduce compilation time for figure-heavy papers, theses, and reports.
-
-Supported source extensions:
-
-```text
-png, jpg, jpeg, gif, tif, tiff, bmp, svg
-```
-
-Cached PDFs are refreshed when the source image is newer. Stale cached PDFs are removed when their source image no longer exists.
+- [CLI and API](docs/api.md)
+- [Project configuration schema](docs/project.schema.json)
+- [VS Code and LaTeX Workshop example](examples/vscode/)
+- [Installed engine paths](docs/desktop-release.md#one-install-gui-and-cli)
 
 ## Development
 
-Run tests:
+Application source is in `desktop/`. With development dependencies installed,
+run the local no-output static check:
 
-```bash
-go test ./...
-bash tests/install_release_test.sh
+```sh
+cd desktop
+npm run check
 ```
 
-Build a local binary:
+Compilation, packaging and publication are handled by GitHub Actions.
+See [desktop development](desktop/README.md) and [release workflow](docs/desktop-release.md).
 
-```bash
-./scripts/build-binary.sh --output /tmp/texgo
-```
+## License
 
-Project layout:
-
-```text
-cmd/texgo/              Go CLI source and tests
-cmd/texgo/template-assets/ Embedded assets copied by texgo init
-.github/workflows/      Multi-platform release builds
-scripts/                Build helper scripts
-install.sh              Release installer and source build helper
-```
+[MIT](LICENSE).

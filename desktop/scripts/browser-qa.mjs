@@ -3,7 +3,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import { chromium } from "@playwright/test";
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:4173";
-const logo = await readFile(new URL("../../cmd/texgo/template-assets/logo.png", import.meta.url));
+const logo = await readFile(new URL("../tests/fixtures/preview.png", import.meta.url));
 const imageData = `data:image/png;base64,${logo.toString("base64")}`;
 const reference = { file: "/论文/main.tex", line: 42, original: "figures/result.png", start: 10, end: 28 };
 const project = {

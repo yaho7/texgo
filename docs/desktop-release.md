@@ -65,9 +65,8 @@ a release; the simplified workflow starts with `desktop-v0.2.1`.
 
 The release job merges the four installer artifacts, generates `SHA256SUMS`,
 uploads everything into a draft and then makes it public. It does not replace
-existing releases or assets. Desktop releases use `--latest=false` to preserve
-the legacy Go CLI's latest-release selection. Legacy `release.yml` runs only
-for CLI `v*` tags or manual dispatch, not ordinary branch pushes.
+existing releases or assets. The obsolete Go CLI release workflow has been
+removed; `.github/workflows/desktop.yml` is the only packaging workflow.
 
 ## One Install, GUI and CLI
 

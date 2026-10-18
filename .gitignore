@@ -1,8 +1,6 @@
 # Build outputs
 build/
 dist/
-.gocache/
-.gomodcache/
 
 # macOS
 .DS_Store
