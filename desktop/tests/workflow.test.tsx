@@ -2,9 +2,14 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
-import { beforeEach, describe, expect, it } from "vitest";
+import * as events from "@tauri-apps/api/event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App";
 import type { ConversionResult, Project } from "../src/types";
+
+vi.mock("@tauri-apps/api/event", async (importOriginal) => ({
+  ...await importOriginal<typeof events>(), listen: vi.fn(),
+}));
 
 const imageData = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=";
 const secondImageData = "data:image/png;base64,c2Vjb25k";
@@ -44,7 +49,9 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  const original = await vi.importActual<typeof events>("@tauri-apps/api/event");
+  vi.mocked(events.listen).mockImplementation(original.listen);
   localStorage.clear();
   calls = [];
   backendProject = structuredClone(project);
@@ -218,6 +225,20 @@ describe("LaTeX 图片工作流", () => {
     expect(screen.getByText("已取消：1 张已完成")).toBeInTheDocument();
     const row = screen.getByRole("button", { name: "预览 figures/beta.jpg" }).closest("tr")!;
     expect(within(row).getByText("已取消")).toBeInTheDocument();
+  });
+
+  it("honors cancellation while the progress listener is still starting", async () => {
+    const pending = deferred<() => void>();
+    const unlisten = vi.fn();
+    vi.mocked(events.listen).mockReturnValueOnce(pending.promise);
+    const user = await openProject();
+    await user.click(screen.getByRole("checkbox", { name: "选择 figures/alpha.png" }));
+    await user.click(screen.getByRole("button", { name: "转换所选图片" }));
+    await user.click(screen.getByRole("button", { name: "取消转换" }));
+    await act(async () => { pending.resolve(unlisten); });
+    await waitFor(() => expect(screen.getByRole("button", { name: "转换所选图片" })).toBeEnabled());
+    expect(calls.some(({ command }) => command === "convert_images")).toBe(false);
+    expect(unlisten).toHaveBeenCalledTimes(1);
   });
 
   it("shows individual failures and excludes failed conversions from replacement eligibility", async () => {

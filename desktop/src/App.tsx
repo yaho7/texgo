@@ -180,8 +180,10 @@ export default function App() {
       setCancelRequested(false);
       setResults((previous) => Object.fromEntries(Object.entries(previous).filter(([id]) => !imageIds.includes(id))));
       let acceptingEvents = true;
-      const unlisten = await listen<ConversionProgress>("conversion-progress", ({ payload }) => { if (acceptingEvents) setProgress(payload); });
+      let unlisten: (() => void) | undefined;
       try {
+        unlisten = await listen<ConversionProgress>("conversion-progress", ({ payload }) => { if (acceptingEvents) setProgress(payload); });
+        if (cancelRef.current) { setNotice("已取消：0 张已完成"); return; }
         const result = await invoke<ConversionResult>("convert_images", { options: conversionOptions(settings, imageIds) });
         const next: Record<string, ImageResult> = {};
         for (const image of result.images) next[image.id] = { ...image, error: image.error || (!image.pdfPath ? "未生成 PDF" : null) };
@@ -195,7 +197,7 @@ export default function App() {
         setRevision((value) => value + 1);
       } finally {
         acceptingEvents = false;
-        unlisten();
+        unlisten?.();
         cancelRef.current = false;
         setCancelRequested(false);
         await loadHistory();
