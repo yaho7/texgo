@@ -36,7 +36,8 @@ GitHub Release. Main releases become Latest; other branches publish prereleases.
 There are no cloud test, screenshot, integration or lockfile-transfer stages.
 The engine is built before Tauri so it can be bundled into the same installer.
 
-macOS requires 13.3+. Windows requires WebView2; Linux requires current WebKitGTK
+macOS requires 13.3+; PDF previews require an updated Safari 18+ WebKit runtime.
+Windows requires current WebView2; Linux requires current WebKitGTK
 4.1. Windows builds are unsigned; macOS builds are ad-hoc signed and not
 notarized. See [packaging and installed paths](../docs/desktop-release.md),
 [Chinese guide](README.zh.md), [API](../docs/api.md),

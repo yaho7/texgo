@@ -67,6 +67,6 @@ VS Code 示例包含普通构建和后台监听任务；其他编辑器或插件
 
 首批目标为 Windows x64、Linux x64、macOS Apple Silicon 和 Intel。未配置开发者证书时，Windows 包未签名，macOS 包只有临时签名，系统可能显示安装警告；当前发布不代表已完成各平台真实安装验证。
 
-macOS 桌面版最低要求为 13.3，以适配新界面依赖的 WebKit 能力。Windows 需要更新的 WebView2，Linux 需要更新的 WebKitGTK 4.1。
+macOS 桌面版最低要求为 13.3；PDF 预览还需要更新到 Safari 18+ 对应的 WebKit。Windows 需要更新的 WebView2，Linux 需要更新的 WebKitGTK 4.1。旧浏览器内核可能无法预览 PDF，但不影响独立引擎转换。
 
 详细发布说明见 [desktop-release.md](../docs/desktop-release.md)，CI 说明见 [README.md](README.md)。

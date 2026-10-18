@@ -8,7 +8,7 @@
 
 从 [GitHub Releases](https://github.com/yaho7/texgo/releases/latest) 下载对应平台的安装包。
 
-macOS 最低要求为 13.3。Windows 安装包未签名，macOS 为临时签名且未公证；详细说明见[平台要求和签名](docs/desktop-release.md)。
+macOS 最低要求为 13.3，PDF 预览还需要 Safari 18+ 对应的 WebKit。Windows 安装包未签名，macOS 为临时签名且未公证；详细说明见[平台要求和签名](docs/desktop-release.md)。
 
 ## 使用流程
 

@@ -28,7 +28,12 @@ No separate engine archives are produced: every desktop installer includes it.
 | macOS Intel | `x86_64-apple-darwin` | `.dmg` |
 
 Linux bundles use Ubuntu 22.04 as the build baseline. macOS requires 13.3+ for
-the modern WebKit used by the shadcn/Tailwind UI. Windows requires WebView2;
+the modern WebKit used by the shadcn/Tailwind UI. PDF previews additionally
+require Safari 18+ WebKit on macOS and a current WebView runtime elsewhere,
+following [PDF.js browser support](https://github.com/mozilla/pdf.js/wiki/Frequently-Asked-Questions#which-browsersenvironments-are-supported).
+The legacy PDF.js bundle supplies polyfills but does not support every older
+WebView. The independent conversion engine does not depend on WebView.
+Windows requires WebView2;
 Linux requires an up-to-date WebKitGTK 4.1. Bundling is not a claim that every
 native GUI workflow has been tested on every operating system.
 

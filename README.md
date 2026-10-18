@@ -9,7 +9,8 @@ application and the independent `texgo-engine` CLI/JSON-RPC API.
 ## Download
 
 Get the installer for your platform from [GitHub Releases](https://github.com/yaho7/texgo/releases/latest).
-macOS requires 13.3+. Windows packages are unsigned; macOS packages are
+macOS requires 13.3+ and an updated Safari 18+ WebKit for PDF previews.
+Windows packages are unsigned; macOS packages are
 ad-hoc signed and not notarized. See [platform requirements and signing](docs/desktop-release.md).
 
 ## Workflow
