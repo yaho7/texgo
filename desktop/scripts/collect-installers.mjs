@@ -11,8 +11,12 @@ const formats = {
 if (!target || !formats || !["x64", "arm64"].includes(arch)) throw new Error("Expected target, platform and architecture");
 const desktop = fileURLToPath(new URL("../", import.meta.url));
 const { version } = JSON.parse(await readFile(path.join(desktop, "package.json"), "utf8"));
-if (process.env.GITHUB_REF?.startsWith("refs/tags/desktop-v") && process.env.GITHUB_REF !== `refs/tags/desktop-v${version}`) {
-  throw new Error(`Release tag must match desktop-v${version}`);
+if (process.env.GITHUB_REF?.startsWith("refs/tags/desktop-v")) {
+  const tag = process.env.GITHUB_REF.slice("refs/tags/".length);
+  const prefix = `desktop-v${version}-build.`;
+  if (tag !== `desktop-v${version}` && !(tag.startsWith(prefix) && /^\d+\.\d+$/.test(tag.slice(prefix.length)))) {
+    throw new Error(`Release tag must match desktop-v${version} or its automatic build tag`);
+  }
 }
 const destination = path.resolve(desktop, "../desktop-installers");
 await mkdir(destination, { recursive: true });

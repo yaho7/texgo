@@ -10,8 +10,9 @@ start a second duplicate run.
 There are only two jobs:
 
 1. **Package**: four independent targets build immediately in parallel.
-2. **Publish Release**: only `desktop-v*` tag pushes publish, after all four
-   package targets succeed. Branch/manual runs keep installers as artifacts.
+2. **Publish Release**: every successful push or manual run publishes after all
+   four package targets succeed. Failed/cancelled builds and branch/tag deletion
+   events do not publish incomplete releases.
 
 Actions installs locked dependencies, builds `texgo-engine`, stages it as a
 Tauri sidecar, generates icons, and invokes the official Tauri build action.
@@ -53,20 +54,29 @@ local setup step and must respect the user's environment permissions.
 
 Keep the versions in `desktop/package.json`, its lockfile, Cargo manifest and
 lockfile, and `tauri.conf.json` aligned. After local static checks, push commits
-normally to obtain installers. Push a new matching tag to publish:
+normally: all four installers are packaged and a Release is published automatically.
+
+Branch/manual runs use `desktop-v<version>-build.<run-number>.<attempt>` tags,
+so each build has an immutable identity even when the application version has
+not changed. The tag targets the exact packaged commit, not the newest main
+commit at the time publication happens. Main builds become public Releases
+marked Latest; other branches and prerelease application versions publish as
+prereleases without replacing Latest. Reruns receive a new attempt suffix.
+
+An explicit matching version tag still publishes a named version:
 
 ```sh
 git tag desktop-v0.2.1
 git push origin desktop-v0.2.1
 ```
 
-Do not move existing tags. The cancelled `desktop-v0.2.0` run did not publish
-a release; the simplified workflow starts with `desktop-v0.2.1`.
+Do not move existing tags or reuse an already published version tag.
 
 The release job merges the four installer artifacts, generates `SHA256SUMS`,
 uploads everything into a draft and then makes it public. It does not replace
 existing releases or assets. The obsolete Go CLI release workflow has been
-removed; `.github/workflows/desktop.yml` is the only packaging workflow.
+removed; `.github/workflows/desktop.yml` is the only packaging workflow. No
+separate manual tag push is required for normal main releases.
 
 ## One Install, GUI and CLI
 

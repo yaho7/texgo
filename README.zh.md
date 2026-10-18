@@ -39,7 +39,7 @@ cd desktop
 npm run check
 ```
 
-编译、打包与发布交给 GitHub Actions，不在本地执行。见[开发说明](desktop/README.md)和[发布流程](docs/desktop-release.md)。
+每次 push 的四个平台全部打包成功后，自动发布到 GitHub Release，main 发布会标记为 Latest，无需手动创建标签。编译、打包与发布交给 GitHub Actions，不在本地执行。见[开发说明](desktop/README.md)和[发布流程](docs/desktop-release.md)。
 
 ## 许可证
 

@@ -29,9 +29,9 @@ tests and browser fixtures remain available for explicitly requested testing.
 ## Packaging
 
 **Every push triggers the desktop build.** Four targets package immediately in
-parallel: Windows x64, Linux x64, macOS Apple Silicon and Intel. Ordinary pushes
-produce Actions artifacts. `desktop-v*` tag pushes also publish a GitHub Release
-after all packages complete, including `SHA256SUMS`.
+parallel: Windows x64, Linux x64, macOS Apple Silicon and Intel. Every successful
+push automatically publishes installers and `SHA256SUMS` to a uniquely tagged
+GitHub Release. Main releases become Latest; other branches publish prereleases.
 
 There are no cloud test, screenshot, integration or lockfile-transfer stages.
 The engine is built before Tauri so it can be bundled into the same installer.

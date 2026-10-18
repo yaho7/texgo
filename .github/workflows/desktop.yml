@@ -14,6 +14,7 @@ concurrency:
 jobs:
   package:
     name: Package ${{ matrix.platform }}-${{ matrix.arch }}
+    if: github.event_name != 'push' || !github.event.deleted
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -99,11 +100,13 @@ jobs:
   release:
     name: Publish Release
     needs: package
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/desktop-v')
     runs-on: ubuntu-22.04
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           pattern: desktop-installers-*
@@ -113,12 +116,28 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          BUILD_ATTEMPT: ${{ github.run_attempt }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           (cd release && sha256sum * > SHA256SUMS)
-          flags=()
-          if [[ "${TAG#desktop-v}" == *-* ]]; then flags+=(--prerelease); fi
-          gh release create "$TAG" release/* --verify-tag --draft --latest=false \
-            --title "Texgo Desktop ${TAG#desktop-v}" \
-            --notes 'Desktop installers include both the shadcn/ui workbench and the independent texgo-engine CLI/JSON-RPC API. No separate engine installation is needed. macOS requires 13.3+. Windows is unsigned; macOS is ad-hoc signed and not notarized. SHA256SUMS covers every installer.' "${flags[@]}"
-          gh release edit "$TAG" --draft=false --latest=false
+          VERSION=$(node -p "require('./desktop/package.json').version")
+          TAG="desktop-v${VERSION}-build.${BUILD_NUMBER}.${BUILD_ATTEMPT}"
+          TITLE="Texgo ${VERSION} (build ${BUILD_NUMBER}.${BUILD_ATTEMPT})"
+          LATEST=false
+          if [[ "$REF_TYPE" == branch && "$REF_NAME" == main ]]; then LATEST=true; fi
+          if [[ "$REF_TYPE" == tag && "$REF_NAME" == "desktop-v${VERSION}" ]]; then
+            TAG="$REF_NAME"
+            TITLE="Texgo ${VERSION}"
+            LATEST=true
+          fi
+          if [[ "$VERSION" == *-* ]]; then LATEST=false; fi
+          flags=(--prerelease)
+          if [[ "$LATEST" == true ]]; then flags=(); fi
+          printf -v NOTES 'Commit: `%s`\n\nBuild: %s\n\nInstallers include both Texgo and the independent texgo-engine CLI/JSON-RPC API. macOS requires 13.3+. Windows is unsigned; macOS is ad-hoc signed and not notarized. SHA256SUMS covers every installer.' "$SHA" "$RUN_URL"
+          gh release create "$TAG" release/* --target "$SHA" --draft --latest=false \
+            --title "$TITLE" --notes "$NOTES" "${flags[@]}"
+          gh release edit "$TAG" --draft=false --latest="$LATEST"

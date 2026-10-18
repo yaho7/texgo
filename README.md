@@ -45,7 +45,9 @@ cd desktop
 npm run check
 ```
 
-Compilation, packaging and publication are handled by GitHub Actions.
+Every successful push packages all four platforms and automatically publishes
+a uniquely tagged GitHub Release. Main releases become Latest. Compilation,
+packaging and publication are handled by GitHub Actions.
 See [desktop development](desktop/README.md) and [release workflow](docs/desktop-release.md).
 
 ## License
