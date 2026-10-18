@@ -135,6 +135,9 @@ impl Workspace {
         if selected.iter().any(|id| !self.scan.project.images.iter().any(|asset| asset.id == *id && asset.status == "ready")) {
             return Err("所选图片不存在或无法转换，请重新扫描".into());
         }
+        // Any failure below must not leave an older output eligible for replacement.
+        self.converted.retain(|id, _| !selected.contains(id.as_str()));
+        self.scan.project.converted_images.retain(|image| !selected.contains(image.id.as_str()));
         let root = PathBuf::from(&self.scan.project.root);
         let _lock = transaction::lock_project(&root)?;
         let mut journal = Journal::load(&root)?;
@@ -213,9 +216,13 @@ impl Workspace {
     }
 
     pub fn apply(&mut self) -> Result<MutationResult, String> {
-        Journal::load(Path::new(&self.scan.project.root))?.ensure_settled()?;
-        let prepared = transaction::prepare(&self.scan.project, &self.scan.sources, &self.converted)?;
-        let result = transaction::apply(&self.scan.project, prepared);
+        let result = (|| {
+            let root = Path::new(&self.scan.project.root);
+            let _lock = transaction::lock_project(root)?;
+            Journal::load(root)?.ensure_settled()?;
+            let prepared = transaction::prepare(&self.scan.project, &self.scan.sources, &self.converted)?;
+            transaction::apply(&self.scan.project, prepared)
+        })();
         self.scan.project.undo_available = transaction::undo_available(Path::new(&self.scan.project.root));
         if result.is_ok() {
             self.refresh()?;

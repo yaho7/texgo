@@ -334,3 +334,49 @@ fn failed_selected_images_do_not_silently_reuse_older_outputs_in_a_plan() {
     assert_eq!(plan.reference_count, 1);
     assert_eq!(plan.files[0].changes[0].after, "next/b.pdf");
 }
+
+#[test]
+fn failed_batch_start_invalidates_selected_outputs_in_the_session() {
+    let dir = tempfile::tempdir().unwrap();
+    png(dir.path(), "a.png", 1);
+    fs::write(dir.path().join("main.tex"), "\\includegraphics{a.png}").unwrap();
+    let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    let opts = options(&ws);
+    ws.convert(&opts, &AtomicBool::new(false), |_| {}).unwrap();
+    let lock = fs::OpenOptions::new().read(true).write(true).open(dir.path().join(".texgo/write.lock")).unwrap();
+    fs2::FileExt::lock_exclusive(&lock).unwrap();
+    assert!(ws.convert(&opts, &AtomicBool::new(false), |_| {}).is_err());
+    drop(lock);
+    assert!(ws.project().converted_images.is_empty());
+    assert_eq!(ws.plan().unwrap().reference_count, 0);
+}
+
+#[test]
+fn unrelated_changed_images_do_not_block_reference_replacement() {
+    let dir = tempfile::tempdir().unwrap();
+    png(dir.path(), "a.png", 1);
+    png(dir.path(), "unused.png", 2);
+    fs::write(dir.path().join("main.tex"), "\\includegraphics{a.png}").unwrap();
+    let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    ws.add_image_directory(dir.path(), true).unwrap();
+    ws.convert(&options(&ws), &AtomicBool::new(false), |_| {}).unwrap();
+    png(dir.path(), "unused.png", 3);
+    assert_eq!(ws.plan().unwrap().reference_count, 1);
+    assert_eq!(ws.apply().unwrap().references_changed, 1);
+}
+
+#[test]
+fn undo_recreated_output_restores_absence_instead_of_stale_ownership() {
+    let dir = tempfile::tempdir().unwrap();
+    png(dir.path(), "a.png", 1);
+    let mut ws = Workspace::open_directory(dir.path(), false).unwrap();
+    let opts = options(&ws);
+    ws.convert(&opts, &AtomicBool::new(false), |_| {}).unwrap();
+    fs::remove_file(dir.path().join("output/a.pdf")).unwrap();
+    ws.convert(&opts, &AtomicBool::new(false), |_| {}).unwrap();
+    let id = ws.conversion_history().unwrap()[0].id.clone();
+    ws.undo_conversion(&id).unwrap();
+    let journal: serde_json::Value = serde_json::from_slice(&fs::read(dir.path().join(".texgo/conversions.json")).unwrap()).unwrap();
+    assert!(journal["outputs"].as_object().unwrap().is_empty());
+    assert!(!dir.path().join("output/a.pdf").exists());
+}

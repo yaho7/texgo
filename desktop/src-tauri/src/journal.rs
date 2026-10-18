@@ -196,7 +196,7 @@ impl Journal {
     // The caller holds the one project lock. This function never acquires another lock.
     pub fn write(&mut self, root: &Path, batch: usize, output: &str, after: Managed, pdf: &[u8]) -> Result<(), String> {
         let previous = self.verify_managed(root, output, &after.source)?;
-        let before = self.outputs.get(output).cloned();
+        let before = previous.as_ref().and_then(|_| self.outputs.get(output).cloned());
         let backup = if let Some(bytes) = &previous {
             let backup = format!(".texgo/backups/{}-{}.pdf", self.batches[batch].entry.id, self.batches[batch].changes.len());
             let path = root.join(&backup);

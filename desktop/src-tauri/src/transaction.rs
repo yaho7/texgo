@@ -31,6 +31,7 @@ pub(crate) fn prepare(project: &Project, sources: &BTreeMap<PathBuf, Vec<u8>>, c
     let root = Path::new(&project.root);
     let mut edits: BTreeMap<PathBuf, Vec<(usize, usize, usize, String, String)>> = BTreeMap::new();
     for asset in &project.images {
+        if asset.references.is_empty() { continue; }
         let Some(output) = converted.get(&asset.id) else { continue; };
         let original = asset.path.as_ref().ok_or("找不到原图片")?;
         if digest(&fs::read(original).map_err(|e| e.to_string())?) != output.source_hash {
@@ -78,7 +79,7 @@ pub(crate) fn prepare(project: &Project, sources: &BTreeMap<PathBuf, Vec<u8>>, c
 pub(crate) fn apply(project: &Project, prepared: Prepared) -> Result<MutationResult, String> {
     if prepared.files.is_empty() { return Err("没有可替换的引用，请先转换图片".into()); }
     let root = Path::new(&project.root);
-    let _lock = lock_project(root)?;
+    // Workspace holds the project lock from validation through the final write.
     if undo_available(root) { return Err("已有引用替换恢复记录，请先撤销该替换".into()); }
     let record = Undo {
         version: 1,

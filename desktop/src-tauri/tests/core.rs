@@ -44,6 +44,23 @@ fn recursively_resolves_graphicspath_and_unicode_references() {
 }
 
 #[test]
+fn mapped_pdfs_do_not_bypass_unsafe_graphics_context() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "main.tex", "\\includegraphics{a.png}");
+    png(dir.path(), "a.png");
+    let main = dir.path().join("main.tex");
+    let mut ws = Workspace::open(&main).unwrap();
+    ws.convert(&options(&ws), &AtomicBool::new(false), |_| {}).unwrap();
+    ws.apply().unwrap();
+    let text = fs::read_to_string(&main).unwrap();
+    fs::write(&main, format!("{{\\graphicspath{{{{./}}}}\n{text}}}")).unwrap();
+    let ws = Workspace::open(&main).unwrap();
+    assert!(!ws.project().warnings.is_empty());
+    assert!(ws.project().images.iter().all(|image| image.status != "ready"));
+    assert_eq!(ws.plan().unwrap().reference_count, 0);
+}
+
+#[test]
 fn skips_comments_verbatim_and_cycles_and_reports_missing_files() {
     let dir = tempfile::tempdir().unwrap();
     write(dir.path(), "main.tex", "% \\includegraphics{comment.png}\n\\begin{verbatim}\n\\includegraphics{code.png}\n\\end{verbatim}\n\\verb|\\includegraphics{inline.png}|\n\\input{main}\n\\includegraphics{missing.png}");

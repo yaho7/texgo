@@ -50,7 +50,7 @@ pub(crate) fn scan(main: &Path) -> Result<Scan, String> {
     if scanner.unsafe_context {
         scanner.project.warnings.push("检测到局部图片搜索路径或不同搜索路径下的重复子文件引用；请改用明确的图片路径后重新扫描".into());
         for asset in &mut scanner.project.images {
-            if asset.status == "ready" {
+            if matches!(asset.status.as_str(), "ready" | "pdf") {
                 asset.status = "unsupported".into();
                 asset.message = Some("图片搜索路径依赖 TeX 上下文，无法安全自动替换".into());
             }
