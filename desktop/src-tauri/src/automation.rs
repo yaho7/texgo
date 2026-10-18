@@ -88,7 +88,7 @@ pub fn load_config(path: &Path) -> Result<ResolvedConfig, String> {
     fs::File::open(&config_path).map_err(|e| e.to_string())?
         .take((MAX_REQUEST_BYTES + 1) as u64).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
     if bytes.len() > MAX_REQUEST_BYTES { return Err("Config exceeds 1 MiB".into()); }
-    let config: ProjectConfig = serde_json::from_slice(&bytes).map_err(|e| format!("Invalid project config: {e}"))?;
+    let mut config: ProjectConfig = serde_json::from_slice(&bytes).map_err(|e| format!("Invalid project config: {e}"))?;
     if config.version != 1 { return Err("Only project config version 1 is supported".into()); }
     if config.main_file.as_os_str().is_empty() { return Err("mainFile must not be empty".into()); }
     validate_options(&config.images.options(Vec::new()))?;
@@ -104,7 +104,8 @@ pub fn load_config(path: &Path) -> Result<ResolvedConfig, String> {
         return Err("mainFile basename must not start with '-'".into());
     }
     let root = main_file.parent().ok_or("mainFile has no parent")?.to_path_buf();
-    crate::journal::output_directory(&root, &config.images.output_dir)?;
+    let image_output = crate::journal::output_directory(&root, &config.images.output_dir)?;
+    config.images.output_dir = image_output.strip_prefix(&root).map_err(|e| e.to_string())?.to_string_lossy().replace('\\', "/");
     let output = &config.build.output_dir;
     if output.as_os_str().is_empty() { return Err("build.outputDir must not be empty".into()); }
     let output_dir = if output.is_absolute() { output.clone() } else { root.join(output) };
@@ -134,9 +135,9 @@ pub fn load_config(path: &Path) -> Result<ResolvedConfig, String> {
 }
 
 fn protect_sources(config: &ResolvedConfig) -> Result<(), String> {
-    let workspace = Workspace::open(&config.main_file)?;
-    for path in workspace.project().tex_files.iter().map(PathBuf::from)
-        .chain(workspace.project().images.iter().filter_map(|image| image.path.as_ref().map(PathBuf::from))) {
+    let scan = crate::scanner::scan(&config.main_file)?;
+    for path in scan.project.tex_files.iter().map(PathBuf::from)
+        .chain(scan.project.images.iter().filter_map(|image| image.path.as_ref().map(PathBuf::from))) {
         if path.starts_with(&config.output_dir) {
             return Err(format!("build.outputDir contains a project source: {}", path.display()));
         }
@@ -249,10 +250,20 @@ fn build_document_with_refresh(config: &ResolvedConfig, refresh: bool) -> Result
     let stem = config.main_file.file_stem().ok_or("mainFile has no stem")?.to_string_lossy();
     let log_path = config.output_dir.join(format!("{stem}.texgo-output.log"));
     let pdf_path = config.output_dir.join(format!("{stem}.pdf"));
+    let bibliography = bibliography_snapshot(&config)?;
+    let state_key = crate::workspace::digest(format!("{}\n{}", config.main_file.display(), config.output_dir.display()).as_bytes());
+    let bibliography_path = config.root.join(".texgo").join(format!("bibliography-{state_key}.json"));
+    crate::journal::safe_path(&config.root, &bibliography_path)?;
+    let previous: Option<BTreeMap<String, String>> = match fs::read(&bibliography_path) {
+        Ok(bytes) => serde_json::from_slice(&bytes).ok(),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Some(BTreeMap::new()),
+        Err(error) => return Err(format!("Cannot read bibliography state: {error}")),
+    };
+    let bibliography_changed = previous.as_ref() != Some(&bibliography);
     let mut command = Command::new("latexmk");
     // Fixed-length cache paths can change within one filesystem timestamp tick.
     // Force rule evaluation after image mutations without deleting aux files.
-    if refresh { command.arg("-g"); }
+    if refresh || bibliography_changed { command.arg("-g"); }
     let output = command.arg(match config.config.build.engine.as_str() { "xelatex" => "-xelatex", "lualatex" => "-lualatex", _ => "-pdf" })
         .arg(if config.config.build.synctex { "-synctex=1" } else { "-synctex=0" })
         .args(["-file-line-error", "-interaction=nonstopmode", "-halt-on-error"])
@@ -273,6 +284,10 @@ fn build_document_with_refresh(config: &ResolvedConfig, refresh: bool) -> Result
     let text = String::from_utf8_lossy(&captured);
     let mut diagnostics = parse_diagnostics(&text, &config.main_file);
     let success = exited_ok && pdf_path.is_file();
+    if success {
+        // Save the pre-build snapshot so edits made during compilation remain dirty.
+        crate::workspace::save_atomic(&bibliography_path, &serde_json::to_vec(&bibliography).map_err(|e| e.to_string())?)?;
+    }
     if !success && !diagnostics.iter().any(|item| item.severity == "error") {
         let message = if exited_ok { "latexmk exited successfully but did not produce a PDF" }
             else { text.lines().rev().find(|line| !line.trim().is_empty()).unwrap_or("latexmk failed without output") };
@@ -294,6 +309,11 @@ pub struct PipelineResult {
 
 pub fn run_pipeline(config: &ResolvedConfig) -> Result<PipelineResult, String> {
     let config = load_config(&config.config_path)?;
+    if !config.config.images.enabled {
+        let mut project = crate::scanner::scan(&config.main_file)?.project;
+        project.undo_available = crate::transaction::undo_available(&config.root);
+        return Ok(PipelineResult { project, conversion: None, replacement: None, build: build_document(&config)? });
+    }
     let mut workspace = Workspace::open(&config.main_file)?;
     // Static-analysis uncertainty must never silently mutate an automated project.
     if !workspace.project().warnings.is_empty() {
@@ -498,12 +518,15 @@ impl RpcSession {
                 let config = load_config(&input.config_path).map_err(RpcError::params)?;
                 if method == "document.build" { serialize(build_document(&config).map_err(RpcError::runtime)?) }
                 else {
-                    let result = run_pipeline(&config).map_err(RpcError::runtime)?;
-                    // Pipeline may change sources; do not retain stale conversion plans.
-                    if self.workspace.as_ref().is_some_and(|ws| Path::new(&ws.project().main_file) == config.main_file) {
-                        self.workspace = Some(Workspace::open(&config.main_file).map_err(RpcError::runtime)?);
+                    let result = run_pipeline(&config);
+                    // Even a failed pipeline can have written files shared by another main file.
+                    if self.workspace.as_ref().is_some_and(|ws| Path::new(&ws.project().root) == config.root) {
+                        if let Err(error) = self.workspace.as_mut().unwrap().refresh() {
+                            self.workspace = None;
+                            return Err(RpcError::runtime(format!("{}; reopen the workspace: {error}", result.err().unwrap_or_else(|| "Pipeline finished but workspace refresh failed".into()))));
+                        }
                     }
-                    serialize(result)
+                    serialize(result.map_err(RpcError::runtime)?)
                 }
             }
             _ => Err(RpcError { code: -32601, message: format!("Method not found: {method}") }),
@@ -559,6 +582,15 @@ fn source_extension(path: &Path, include_pdf: bool) -> bool {
 }
 
 type Snapshot = BTreeMap<PathBuf, (u64, Option<SystemTime>)>;
+
+fn bibliography_snapshot(config: &ResolvedConfig) -> Result<BTreeMap<String, String>, String> {
+    watch_snapshot(config)?.into_keys()
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| ext.eq_ignore_ascii_case("bib")))
+        .map(|path| {
+            let bytes = fs::read(&path).map_err(|e| format!("Cannot read bibliography {}: {e}", path.display()))?;
+            Ok((path.strip_prefix(&config.root).map_err(|e| e.to_string())?.to_string_lossy().replace('\\', "/"), crate::workspace::digest(&bytes)))
+        }).collect()
+}
 
 fn watch_snapshot(config: &ResolvedConfig) -> Result<Snapshot, String> {
     let mut snapshot = BTreeMap::new();

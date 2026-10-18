@@ -124,10 +124,11 @@ images already usable by TeX are not rasterized or reconverted.
 
 `run`, `watch`, and RPC `pipeline.run` share the same pipeline:
 
-1. Open the project and reject scan warnings and missing, ambiguous,
-   unsupported, or otherwise unresolved references. These checks also apply
-   when image conversion is disabled. Use `build` for intentional compile-only
-   behavior on a project that cannot be statically resolved.
+1. When image conversion is enabled, open the project and reject scan warnings
+   and missing, ambiguous, unsupported, or otherwise unresolved references.
+   With `images.enabled:false`, skip image processing and reference mutations;
+   let the compiler resolve dynamic TeX references. Image journal corruption
+   does not block this compile-only mode or `build`.
 2. If enabled, convert **all** ready images. Any conversion error or cancellation
    stops the pipeline before any reference edits or compilation.
 3. Only if `images.replace` is explicitly `true`, preview the replacement plan
@@ -136,8 +137,8 @@ images already usable by TeX are not rasterized or reconverted.
    cache, but compilation still uses the unchanged original TeX references.
 4. Invoke latexmk. A compiler failure does not automatically undo a successful
    reference replacement; its persisted undo record remains available.
-   When a generated image or reference changes, pass `-g` so same-second,
-   same-size path edits cannot leave a stale document PDF. Unchanged cache-hit
+   When a generated image, reference, or bibliography changes, pass `-g` so
+   same-second, same-size path edits cannot leave a stale document PDF. Unchanged cache-hit
    runs retain latexmk's normal incremental behavior; auxiliary files are not
    deleted.
 
@@ -379,6 +380,12 @@ Directory/file symlinks are not traversed. Traversal is bounded to 50,000
 entries and 64 directory levels. Initial invalid configuration and fatal watch
 filesystem errors exit nonzero; compiler/pipeline failures stay alive. A later
 invalid/deleted config is reported and retried when it changes again.
+
+Every build compares content hashes of workspace `.bib` files with the last
+successful build. Additions, edits, and deletions force rule evaluation with
+`-g`. Failed builds retain the previous state so the next attempt retries it.
+The pre-build snapshot is saved under `.texgo`, separately for each main file
+and build directory, so edits during compilation remain pending.
 
 Snapshots are taken **before** builds. Edits during compilation trigger the
 next debounced build. Reference edits from the pipeline can cause one extra

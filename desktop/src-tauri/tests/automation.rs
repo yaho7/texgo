@@ -149,6 +149,29 @@ fn rpc_conversion_preview_confirm_apply_and_persistent_undo() {
 }
 
 #[test]
+fn rpc_refreshes_shared_workspace_after_a_partial_pipeline_failure() {
+    let dir = fixture();
+    write(dir.path(), "main.tex", "\\includegraphics{a.png}\n\\includegraphics{broken.png}");
+    image::RgbImage::new(4, 2).save(dir.path().join("a.png")).unwrap();
+    write(dir.path(), "broken.png", "invalid image");
+    let mut session = RpcSession::default();
+    request(&mut session, "project.open", json!({"mainFile":dir.path().join("main.tex")}));
+    let result = request(&mut session, "pipeline.run", json!({"configPath":dir.path().join(".texgo/project.json")}));
+    assert!(result.get("error").is_some());
+    assert_eq!(request(&mut session, "references.preview", json!({}))["result"]["referenceCount"], 1);
+}
+
+#[test]
+fn image_output_paths_are_normalized_before_watching() {
+    let dir = fixture();
+    write(dir.path(), ".texgo/project.json", &json!({
+        "version":1,"mainFile":"../main.tex","images":{"outputDir":"generated\\pdf"}
+    }).to_string());
+    let config = load_config(&dir.path().join(".texgo/project.json")).unwrap();
+    assert_eq!(config.config.images.output_dir, "generated/pdf");
+}
+
+#[test]
 fn rpc_transport_bounds_requests_recovers_and_flushes_notifications() {
     let mut input = vec![b'x'; MAX_REQUEST_BYTES + 10];
     input.extend_from_slice(b"\n{bad\n{\"jsonrpc\":\"2.0\",\"method\":\"tools.info\"}\n{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools.info\"}\n");
@@ -362,6 +385,47 @@ exit 0
             assert!(!dir.path().join("compiler-args.txt").exists());
             assert_eq!(fs::read(dir.path().join("main.tex")).unwrap(), before);
         }
+    }
+
+    #[test]
+    fn disabled_images_allow_the_compiler_to_resolve_dynamic_references() {
+        let dir = fixture();
+        write(dir.path(), "main.tex", "\\input{\\chapterfile}\n\\includegraphics{\\figurefile}");
+        write(dir.path(), ".texgo/project.json", &json!({
+            "version":1,"mainFile":"../main.tex","images":{"enabled":false}
+        }).to_string());
+        // Build-only use must also survive an unrelated broken image journal.
+        write(dir.path(), ".texgo/conversions.json", "invalid journal");
+        let output = invoke(dir.path(), "run");
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
+        let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert!(result["conversion"].is_null());
+        assert!(result["replacement"].is_null());
+        assert_eq!(result["build"]["success"], true);
+    }
+
+    #[test]
+    fn bibliography_changes_force_rebuild_and_failed_builds_do_not_acknowledge_them() {
+        let dir = fixture();
+        write(dir.path(), "refs.bib", "@book{a,title={A}}");
+        assert!(invoke(dir.path(), "build").status.success());
+        let args = dir.path().join("compiler-args.txt");
+        fs::remove_file(&args).unwrap();
+        assert!(invoke(dir.path(), "build").status.success());
+        assert!(!fs::read_to_string(&args).unwrap().lines().any(|arg| arg == "-g"));
+        write(dir.path(), "refs.bib", "@book{a,title={B}}");
+        write(dir.path(), "fail-build", "");
+        fs::remove_file(&args).unwrap();
+        assert!(!invoke(dir.path(), "build").status.success());
+        assert!(fs::read_to_string(&args).unwrap().lines().any(|arg| arg == "-g"));
+        fs::remove_file(dir.path().join("fail-build")).unwrap();
+        fs::remove_file(&args).unwrap();
+        assert!(invoke(dir.path(), "build").status.success());
+        assert!(fs::read_to_string(&args).unwrap().lines().any(|arg| arg == "-g"));
+        fs::remove_file(dir.path().join("refs.bib")).unwrap();
+        fs::remove_file(&args).unwrap();
+        assert!(invoke(dir.path(), "build").status.success());
+        assert!(fs::read_to_string(&args).unwrap().lines().any(|arg| arg == "-g"));
     }
 
     #[test]
