@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, LoaderCircle, Maximize, Minus, Plus } from "lucide-react";
-import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
-import type { RenderTask } from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
+import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist/legacy/build/pdf.mjs";
+import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import { errorMessage } from "./utils";
 import IconButton from "./IconButton";
 import { Separator } from "@/components/ui/separator";
@@ -18,6 +18,7 @@ export default function PdfPreview({ data, label }: { data: string; label: strin
   const [zoom, setZoom] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [document, setDocument] = useState<{ data: string; pdf: PDFDocumentProxy } | null>(null);
 
   useEffect(() => {
     const element = frame.current;
@@ -37,26 +38,46 @@ export default function PdfPreview({ data, label }: { data: string; label: strin
   }, []);
 
   useEffect(() => {
+    let disposed = false;
+    let task: ReturnType<typeof getDocument> | undefined;
+    setDocument(null);
+    setPages(0);
+    setPage(1);
+    setZoom(1);
+    setLoading(true);
+    setError(null);
+    async function load() {
+      try {
+        const bytes = Uint8Array.from(atob(data), (character) => character.charCodeAt(0));
+        task = getDocument({ data: bytes });
+        const pdf = await task.promise;
+        if (!disposed) { setPages(pdf.numPages); setDocument({ data, pdf }); }
+      } catch (reason) {
+        if (!disposed) { setError(errorMessage(reason, "PDF 载入失败")); setLoading(false); }
+      }
+    }
+    void load();
+    return () => {
+      disposed = true;
+      if (task) void task.destroy().catch(() => undefined);
+    };
+  }, [data]);
+
+  useEffect(() => {
     const element = host.current;
-    if (!element) return;
+    if (!element || !document || document.data !== data) return;
     let disposed = false;
     let renderTask: RenderTask | undefined;
-    let loadingTask: ReturnType<typeof getDocument> | undefined;
     setLoading(true);
     setError(null);
     // Each render owns its canvas, so cancellation cannot paint onto the next page.
-    const canvas = document.createElement("canvas");
+    const canvas = window.document.createElement("canvas");
     canvas.setAttribute("role", "img");
     canvas.setAttribute("aria-label", `${label}，第 ${page} 页`);
     element.replaceChildren(canvas);
     async function renderPage() {
       try {
-        const binary = atob(data);
-        const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-        loadingTask = getDocument({ data: bytes });
-        const pdf = await loadingTask.promise;
-        if (disposed) return;
-        setPages(pdf.numPages);
+        const pdf = document!.pdf;
         if (page > pdf.numPages) { setPage(1); return; }
         const pdfPage = await pdf.getPage(page);
         if (disposed) return;
@@ -81,10 +102,9 @@ export default function PdfPreview({ data, label }: { data: string; label: strin
     return () => {
       disposed = true;
       renderTask?.cancel();
-      if (loadingTask) void loadingTask.destroy().catch(() => undefined);
       canvas.remove();
     };
-  }, [data, label, page, size, zoom]);
+  }, [document, data, label, page, size, zoom]);
 
   return <div className="pdf-preview">
     <div className="pdf-toolbar" role="group" aria-label="PDF 预览工具">
