@@ -38,6 +38,7 @@ pub(crate) fn scan(main: &Path) -> Result<Scan, String> {
     let root = main.parent().ok_or("主文件没有父目录")?.to_path_buf();
     let mut scanner = Scanner {
         project: Project {
+            mode: "tex".into(), recursive: false, converted_images: Vec::new(),
             main_file: main.to_string_lossy().into(),
             root: root.to_string_lossy().into(),
             tex_files: Vec::new(), images: Vec::new(), warnings: Vec::new(), undo_available: false,
@@ -56,6 +57,73 @@ pub(crate) fn scan(main: &Path) -> Result<Scan, String> {
         }
     }
     Ok(Scan { project: scanner.project, sources: scanner.sources })
+}
+
+pub(crate) fn scan_directory(directory: &Path, recursive: bool, excluded: &[PathBuf]) -> Result<Scan, String> {
+    let root = directory.canonicalize().map_err(|e| e.to_string())?;
+    if !root.is_dir() { return Err("Workspace root must be a directory".into()); }
+    let mut scan = Scan {
+        project: Project { mode: "directory".into(), recursive, converted_images: Vec::new(),
+            main_file: String::new(), root: root.to_string_lossy().into(), tex_files: Vec::new(),
+            images: Vec::new(), warnings: Vec::new(), undo_available: false },
+        sources: BTreeMap::new(),
+    };
+    add_directory(&mut scan, &root, recursive, excluded)?;
+    Ok(scan)
+}
+
+pub(crate) fn supported_source(path: &Path) -> bool {
+    matches!(path.extension().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase().as_str(),
+        "png" | "jpg" | "jpeg" | "svg" | "webp" | "tif" | "tiff" | "bmp" | "gif")
+}
+
+// Do not follow links, even links whose targets are still within the workspace.
+pub(crate) fn directory_images(directory: &Path, recursive: bool, excluded: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
+    let mut pending = vec![(directory.to_path_buf(), 0usize)];
+    let mut files = Vec::new();
+    let mut visited = 0;
+    while let Some((dir, depth)) = pending.pop() {
+        if depth > 64 { return Err("Directory nesting exceeds 64 levels".into()); }
+        if excluded.iter().any(|p| dir.starts_with(p)) { continue; }
+        for entry in fs::read_dir(&dir).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            visited += 1;
+            if visited > 50_000 { return Err("Workspace exceeds 50000 entries".into()); }
+            let path = entry.path();
+            if excluded.iter().any(|p| path.starts_with(p)) { continue; }
+            let kind = entry.file_type().map_err(|e| e.to_string())?;
+            if kind.is_symlink() { continue; }
+            if kind.is_dir() {
+                if recursive && !matches!(entry.file_name().to_str(), Some("texgo-pdf" | ".texgo" | ".git" | "node_modules")) {
+                    pending.push((path, depth + 1));
+                }
+            } else if kind.is_file() && supported_source(&path) { files.push(path); }
+        }
+    }
+    files.sort();
+    Ok(files)
+}
+
+pub(crate) fn add_directory(scan: &mut Scan, directory: &Path, recursive: bool, excluded: &[PathBuf]) -> Result<(), String> {
+    let root = Path::new(&scan.project.root);
+    crate::journal::safe_path(root, directory)?;
+    if !directory.is_dir() { return Err("Image directory does not exist".into()); }
+    if directory.strip_prefix(root).map_err(|e| e.to_string())?.components().any(|part| {
+        matches!(part.as_os_str().to_str(), Some("texgo-pdf" | ".texgo" | ".git" | "node_modules"))
+    }) { return Err("Cannot scan a reserved output or state directory".into()); }
+    for path in directory_images(directory, recursive, excluded)? {
+        let name = path.to_string_lossy().into_owned();
+        let id = digest(name.as_bytes());
+        if scan.project.images.iter().any(|asset| asset.id == id) { continue; }
+        let dimensions = image::image_dimensions(&path).ok();
+        scan.project.images.push(ImageAsset {
+            id, path: Some(name), relative_path: path.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/"),
+            format: path.extension().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase(),
+            width: dimensions.map(|d| d.0), height: dimensions.map(|d| d.1),
+            bytes: fs::metadata(&path).ok().map(|m| m.len()), status: "ready".into(), message: None, references: Vec::new(),
+        });
+    }
+    Ok(())
 }
 
 impl Scanner {

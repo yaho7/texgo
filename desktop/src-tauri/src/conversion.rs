@@ -1,5 +1,5 @@
 use crate::models::ConversionOptions;
-use crate::workspace::{digest, save_atomic};
+use crate::workspace::digest;
 use image::{codecs::jpeg::JpegEncoder, imageops::FilterType, DynamicImage, GenericImageView};
 use lopdf::content::{Content, Operation};
 use lopdf::{dictionary, Document, Object, Stream};
@@ -11,14 +11,20 @@ pub(crate) fn validate(options: &ConversionOptions) -> Result<(), String> {
     if !matches!(options.quality.as_str(), "original" | "high" | "compact" | "custom") {
         return Err("不支持的质量选项".into());
     }
-    if !(72..=1200).contains(&options.dpi) || !options.max_width_mm.is_finite()
-        || !(10.0..=1000.0).contains(&options.max_width_mm) || !(1..=100).contains(&options.jpeg_quality) {
-        return Err("参数超出范围：PPI 72–1200，宽度 10–1000 mm，JPEG 质量 1–100".into());
+    if !(72..=1200).contains(&options.dpi) || !(1..=100).contains(&options.jpeg_quality) {
+        return Err("参数超出范围：PPI 72–1200，JPEG 质量 1–100".into());
     }
     Ok(())
 }
 
-pub(crate) fn convert(source: &Path, root: &Path, options: &ConversionOptions) -> Result<(PathBuf, bool, Vec<(PathBuf, String)>), String> {
+pub(crate) struct Rendered {
+    pub pdf: Vec<u8>,
+    pub source_hash: String,
+    pub key: String,
+    pub dependencies: Vec<(PathBuf, String)>,
+}
+
+pub(crate) fn render(source: &Path, root: &Path, options: &ConversionOptions) -> Result<Rendered, String> {
     let bytes = fs::read(source).map_err(|e| e.to_string())?;
     if bytes.len() > 256 * 1024 * 1024 { return Err("单张图片超过 256 MB，请先缩小文件".into()); }
     let is_svg = source.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| ext.eq_ignore_ascii_case("svg"));
@@ -30,32 +36,18 @@ pub(crate) fn convert(source: &Path, root: &Path, options: &ConversionOptions) -
     let dependency_keys: Vec<_> = dependencies.iter().map(|(path, hash)| {
         (path.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/"), hash)
     }).collect();
-    let effective = if is_svg { ("vector", 0, 0.0, 0) } else {
+    let effective = if is_svg { ("vector", 0, 0) } else {
         match options.quality.as_str() {
-            "original" => ("original", 0, 0.0, 0),
-            "high" => ("high", 300, options.max_width_mm, 92),
-            "compact" => ("compact", 150, options.max_width_mm, 75),
-            _ => ("custom", options.dpi, options.max_width_mm, options.jpeg_quality),
+            "original" => ("original", 0, 100),
+            "high" => ("high", 300, 92),
+            "compact" => ("compact", 150, 75),
+            _ => ("custom", options.dpi, options.jpeg_quality),
         }
     };
     // Ordered fields make GUI and headless cache identities independent of JSON map features.
-    let identity = ("texgo-pdf-v3", env!("CARGO_PKG_VERSION"), source_identity, digest(&bytes),
+    let identity = ("texgo-pdf-v4", env!("CARGO_PKG_VERSION"), source_identity, digest(&bytes),
         effective, dependency_keys, vector_pdf.as_ref().map(|pdf| digest(pdf)));
-    let hash = digest(&serde_json::to_vec(&identity).map_err(|e| e.to_string())?);
-    let stem = source.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
-    let stem: String = stem.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).take(60).collect();
-    let output_dir = source.parent().ok_or("图片目录不存在")?.join("texgo-pdf");
-    fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
-    if output_dir.canonicalize().map_err(|e| e.to_string())? != output_dir {
-        return Err("输出目录不能是符号链接，请移除 texgo-pdf 链接后重试".into());
-    }
-    let output = output_dir.join(format!("{stem}-{}.pdf", &hash[..20]));
-    if fs::symlink_metadata(&output).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
-        return Err("缓存文件不能是符号链接".into());
-    }
-    if output.is_file() && Document::load(&output).is_ok_and(|doc| !doc.get_pages().is_empty()) {
-        return Ok((output, true, dependencies));
-    }
+    let key = digest(&serde_json::to_vec(&identity).map_err(|e| e.to_string())?);
     let pdf = if let Some(pdf) = vector_pdf {
         pdf
     } else {
@@ -70,18 +62,19 @@ pub(crate) fn convert(source: &Path, root: &Path, options: &ConversionOptions) -
         let physical = (image.width() as f32 / dpi_x * 72.0, image.height() as f32 / dpi_y * 72.0);
         if options.quality != "original" {
             let dpi = match options.quality.as_str() { "high" => 300, "compact" => 150, _ => options.dpi };
-            let max_width = (options.max_width_mm / 25.4 * f64::from(dpi)).round().max(1.0) as u32;
-            if image.width() > max_width {
-                let height = (f64::from(image.height()) * f64::from(max_width) / f64::from(image.width())).round().max(1.0) as u32;
-                image = image.resize_exact(max_width, height, FilterType::Lanczos3);
+            let scale_x = (dpi as f32 / dpi_x).min(1.0);
+            let scale_y = (dpi as f32 / dpi_y).min(1.0);
+            let width = (image.width() as f32 * scale_x).round().max(1.0) as u32;
+            let height = (image.height() as f32 * scale_y).round().max(1.0) as u32;
+            if width < image.width() || height < image.height() {
+                image = image.resize_exact(width, height, FilterType::Lanczos3);
             }
         }
         raster_pdf(&image, options, physical)?
     };
     let document = Document::load_mem(&pdf).map_err(|e| format!("生成的 PDF 无法读取：{e}"))?;
     if document.get_pages().len() != 1 { return Err("转换结果不是单页图片 PDF".into()); }
-    save_atomic(&output, &pdf)?;
-    Ok((output, false, dependencies))
+    Ok(Rendered { pdf, source_hash: digest(&bytes), key, dependencies })
 }
 
 fn svg_pdf(bytes: &[u8], source: &Path, root: &Path) -> Result<(Vec<u8>, Vec<(PathBuf, String)>), String> {
@@ -182,8 +175,8 @@ fn raster_pdf(image: &DynamicImage, options: &ConversionOptions, physical: (f32,
         dictionary.set("SMask", mask_id);
     }
     let rgb = image.to_rgb8();
-    let content = if options.quality != "original" && !transparent {
-        let quality = match options.quality.as_str() { "high" => 92, "compact" => 75, _ => options.jpeg_quality };
+    let quality = match options.quality.as_str() { "original" => 100, "high" => 92, "compact" => 75, _ => options.jpeg_quality };
+    let content = if quality < 100 && !transparent {
         let mut jpeg = Vec::new();
         JpegEncoder::new_with_quality(&mut jpeg, quality).encode_image(&DynamicImage::ImageRgb8(rgb)).map_err(|e| e.to_string())?;
         dictionary.set("Filter", "DCTDecode");

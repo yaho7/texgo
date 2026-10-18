@@ -14,10 +14,11 @@
       "additionalProperties": false,
       "properties": {
         "enabled": { "type": "boolean", "default": true },
-        "quality": { "enum": ["original", "high", "compact", "custom"], "default": "original" },
+        "quality": { "enum": ["original", "high", "compact", "custom"], "default": "custom" },
         "dpi": { "type": "integer", "minimum": 72, "maximum": 1200, "default": 300 },
-        "maxWidthMm": { "type": "number", "minimum": 10, "maximum": 1000, "default": 160 },
+        "maxWidthMm": { "type": "number", "deprecated": true, "description": "Accepted for version 1 compatibility and ignored. Sampling uses intrinsic image density, not reference width." },
         "jpegQuality": { "type": "integer", "minimum": 1, "maximum": 100, "default": 90 },
+        "outputDir": { "type": "string", "minLength": 1, "default": "texgo-pdf", "description": "Workspace-relative image output subdirectory. Source-relative subdirectories and original stems are preserved." },
         "replace": { "type": "boolean", "default": false, "description": "Explicitly authorize source reference replacement during the pipeline." }
       }
     },

@@ -1,6 +1,7 @@
 mod conversion;
 mod models;
 mod manifest;
+mod journal;
 mod scanner;
 mod transaction;
 mod workspace;

@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
+    pub mode: String,
+    pub recursive: bool,
+    pub converted_images: Vec<ConvertedImage>,
     pub main_file: String,
     pub root: String,
     pub tex_files: Vec<String>,
@@ -40,10 +43,41 @@ pub struct Reference {
 #[serde(rename_all = "camelCase")]
 pub struct ConversionOptions {
     pub image_ids: Vec<String>,
+    #[serde(default = "default_quality")]
     pub quality: String,
     pub dpi: u32,
-    pub max_width_mm: f64,
     pub jpeg_quality: u8,
+    #[serde(default = "default_output_dir")]
+    pub output_dir: String,
+}
+
+pub(crate) fn default_quality() -> String { "custom".into() }
+pub(crate) fn default_output_dir() -> String { "texgo-pdf".into() }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversionHistoryEntry {
+    pub id: String,
+    pub created_at: u64,
+    pub output_dir: String,
+    pub dpi: u32,
+    pub jpeg_quality: u8,
+    pub files: Vec<ConversionHistoryFile>,
+    pub undone: bool,
+    pub can_undo: bool,
+    #[serde(default)]
+    pub cancelled: bool,
+    #[serde(default)]
+    pub undo_reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversionHistoryFile {
+    pub source: String,
+    pub output: String,
+    pub cached: bool,
+    pub error: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]

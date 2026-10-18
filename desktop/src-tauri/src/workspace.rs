@@ -1,6 +1,7 @@
 use crate::conversion;
 use crate::models::*;
 use crate::{scanner, transaction};
+use crate::journal::{self, Journal, Managed};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashSet};
@@ -12,6 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub struct Workspace {
     scan: scanner::Scan,
     converted: BTreeMap<String, StoredConversion>,
+    extra_directories: Vec<(PathBuf, bool)>,
 }
 
 pub(crate) struct StoredConversion {
@@ -23,10 +25,105 @@ pub(crate) struct StoredConversion {
 
 impl Workspace {
     pub fn open(main: &Path) -> Result<Self, String> {
-        let mut scan = scanner::scan(main)?;
+        let scan = scanner::scan(main)?;
+        let root = Path::new(&scan.project.root);
+        let directories = Journal::load(root)?.directories(root);
+        Self::from_scan(scan, directories)
+    }
+
+    pub fn open_directory(directory: &Path, recursive: bool) -> Result<Self, String> {
+        let root = directory.canonicalize().map_err(|e| e.to_string())?;
+        let journal = Journal::load(&root)?;
+        Self::from_scan(scanner::scan_directory(&root, recursive, &journal.excluded(&root))?, journal.directories(&root))
+    }
+
+    fn from_scan(mut scan: scanner::Scan, extra_directories: Vec<(PathBuf, bool)>) -> Result<Self, String> {
         crate::manifest::restore_sources(&mut scan.project);
-        scan.project.undo_available = transaction::undo_available(Path::new(&scan.project.root));
-        Ok(Self { scan, converted: BTreeMap::new() })
+        let root = Path::new(&scan.project.root);
+        let journal = Journal::load(root)?;
+        let excluded = journal.excluded(root);
+        for (directory, recursive) in &extra_directories {
+            if let Err(error) = scanner::add_directory(&mut scan, directory, *recursive, &excluded) {
+                scan.project.warnings.push(format!("附加图片目录暂不可用：{}：{error}", directory.display()));
+            }
+        }
+        let mut workspace = Self { scan, converted: BTreeMap::new(), extra_directories };
+        workspace.rehydrate(&journal);
+        Ok(workspace)
+    }
+
+    fn rehydrate(&mut self, journal: &Journal) {
+        let root = Path::new(&self.scan.project.root);
+        self.converted.clear();
+        self.scan.project.converted_images.clear();
+        self.scan.project.undo_available = transaction::undo_available(root);
+        for asset in &self.scan.project.images {
+            for output in journal.preferred_outputs(&asset.relative_path) {
+                let Some(managed) = journal.outputs.get(&output) else { continue; };
+                if managed.source != asset.relative_path || !journal.valid(root, &output, managed) { continue; }
+                let path = root.join(&output);
+                self.scan.project.converted_images.push(ConvertedImage { id: asset.id.clone(), pdf_path: Some(path.to_string_lossy().into()),
+                    bytes: fs::metadata(&path).ok().map(|m| m.len()), cached: true, error: None });
+                self.converted.insert(asset.id.clone(), StoredConversion { path, source_hash: managed.source_hash.clone(),
+                    pdf_hash: managed.pdf_hash.clone(), dependencies: managed.dependencies.iter().map(|(p, h)| (root.join(p), h.clone())).collect() });
+                break;
+            }
+        }
+    }
+
+    pub fn add_image_directory(&mut self, directory: &Path, recursive: bool) -> Result<Project, String> {
+        let root = Path::new(&self.scan.project.root);
+        let directory = if directory.is_absolute() { directory.to_path_buf() } else { root.join(directory) };
+        if directory.starts_with(root) { journal::safe_path(root, &directory)?; }
+        if fs::symlink_metadata(&directory).is_ok_and(|metadata| metadata.file_type().is_symlink()) { return Err("图片目录不能是符号链接".into()); }
+        let directory = directory.canonicalize().map_err(|e| e.to_string())?;
+        journal::safe_path(root, &directory)?;
+        if !directory.is_dir() { return Err("Image directory does not exist".into()); }
+        let excluded = Journal::load(root)?.excluded(root);
+        scanner::add_directory(&mut scanner::Scan { project: self.scan.project.clone(), sources: BTreeMap::new() }, &directory, recursive, &excluded)?;
+        let mut directories = self.extra_directories.clone();
+        directories.retain(|(path, _)| path != &directory);
+        directories.push((directory, recursive));
+        let refreshed = self.scan_again(directories.clone())?;
+        {
+            let _lock = transaction::lock_project(root)?;
+            let mut journal = Journal::load(root)?;
+            journal.directories = directories.iter().map(|(path, recursive)| Ok((journal::relative(root, path)?, *recursive))).collect::<Result<_, String>>()?;
+            journal.save(root)?;
+        }
+        *self = refreshed;
+        Ok(self.project().clone())
+    }
+
+    fn scan_again(&self, directories: Vec<(PathBuf, bool)>) -> Result<Self, String> {
+        let root = Path::new(&self.scan.project.root);
+        let scan = if self.scan.project.mode == "directory" {
+            let journal = Journal::load(root)?;
+            scanner::scan_directory(root, self.scan.project.recursive, &journal.excluded(root))?
+        } else { scanner::scan(Path::new(&self.scan.project.main_file))? };
+        Self::from_scan(scan, directories)
+    }
+
+    pub fn refresh(&mut self) -> Result<Project, String> {
+        *self = self.scan_again(self.extra_directories.clone())?;
+        Ok(self.project().clone())
+    }
+
+    pub fn refresh_workspace(&mut self) -> Result<Project, String> { self.refresh() }
+
+    pub fn conversion_history(&self) -> Result<Vec<ConversionHistoryEntry>, String> {
+        let root = Path::new(&self.scan.project.root);
+        Ok(Journal::load(root)?.history(root))
+    }
+
+    pub fn undo_conversion(&mut self, entry_id: &str) -> Result<Project, String> {
+        let root = Path::new(&self.scan.project.root);
+        {
+            let _lock = transaction::lock_project(root)?;
+            let mut journal = Journal::load(root)?;
+            journal.undo(root, entry_id)?;
+        }
+        self.refresh()
     }
 
     pub fn project(&self) -> &Project { &self.scan.project }
@@ -38,53 +135,93 @@ impl Workspace {
         if selected.iter().any(|id| !self.scan.project.images.iter().any(|asset| asset.id == *id && asset.status == "ready")) {
             return Err("所选图片不存在或无法转换，请重新扫描".into());
         }
+        let root = PathBuf::from(&self.scan.project.root);
+        let _lock = transaction::lock_project(&root)?;
+        let mut journal = Journal::load(&root)?;
+        let batch = journal.begin(&root, options)?;
+        // Check the entire source tree, including images not referenced by TeX or selected in the UI.
+        let preflight = (|| {
+            let output_dir = journal::output_directory(&root, &options.output_dir)?;
+            if output_dir.is_dir() && !scanner::directory_images(&output_dir, true, &[])?.is_empty() {
+                return Err("输出目录包含原图片，请使用独立的新目录".to_string());
+            }
+            let mut excluded = journal.excluded(&root);
+            excluded.push(output_dir.clone());
+            let mut sources = scanner::directory_images(&root, true, &excluded)?;
+            sources.extend(self.scan.project.images.iter().filter_map(|asset| asset.path.as_ref().map(PathBuf::from)).filter(|path| scanner::supported_source(path)));
+            sources.sort(); sources.dedup();
+            let mut destinations = BTreeMap::new();
+            let targets: HashSet<_> = self.scan.project.images.iter().filter(|asset| selected.contains(asset.id.as_str()))
+                .map(|asset| output_dir.join(&asset.relative_path).with_extension("pdf").to_string_lossy().to_lowercase()).collect();
+            for source in sources {
+                journal::safe_path(&root, &source)?;
+                if source.starts_with(&output_dir) { return Err("Output directory contains workspace image sources".to_string()); }
+                let output = output_dir.join(source.strip_prefix(&root).map_err(|e| e.to_string())?).with_extension("pdf");
+                // Conservative case folding also protects case-insensitive filesystems.
+                let key = output.to_string_lossy().to_lowercase();
+                if !targets.contains(&key) { continue; }
+                if let Some(previous) = destinations.insert(key, source.clone()) {
+                    return Err(format!("同名 PDF 冲突：{} 与 {}，请调整源文件名后重新扫描", previous.display(), source.display()));
+                }
+            }
+            Ok(output_dir)
+        })();
         let mut images = Vec::new();
         let mut cancelled = false;
         for asset in self.scan.project.images.iter().filter(|asset| selected.contains(asset.id.as_str())) {
             if cancel.load(Ordering::Relaxed) { cancelled = true; break; }
+            let output = preflight.as_ref().map(|dir| dir.join(&asset.relative_path).with_extension("pdf"));
+            journal.record(&root, batch, ConversionHistoryFile { source: asset.relative_path.clone(),
+                output: output.as_ref().ok().and_then(|path| path.strip_prefix(&root).ok()).map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default(),
+                cached: false, error: Some("Conversion interrupted before completion".into()) })?;
             progress(Progress { current: images.len(), total: selected.len(), name: asset.relative_path.clone(), status: "converting".into() });
-            let path = Path::new(asset.path.as_deref().ok_or("图片路径不存在")?);
             let result = (|| {
-                let real = path.canonicalize().map_err(|e| e.to_string())?;
-                if !real.starts_with(&self.scan.project.root) { return Err("图片路径已移出项目".to_string()); }
-                let source_hash = digest(&fs::read(&real).map_err(|e| e.to_string())?);
-                let (output, cached, dependencies) = conversion::convert(&real, Path::new(&self.scan.project.root), options)?;
-                if digest(&fs::read(&real).map_err(|e| e.to_string())?) != source_hash { return Err("转换过程中图片发生变化，请重试".into()); }
-                let bytes = fs::read(&output).map_err(|e| e.to_string())?;
-                crate::manifest::remember(Path::new(&self.scan.project.root), &real, &output)?;
-                let converted = ConvertedImage { id: asset.id.clone(), pdf_path: Some(output.to_string_lossy().into()), bytes: Some(bytes.len() as u64), cached, error: None };
-                self.converted.insert(asset.id.clone(), StoredConversion { path: output, source_hash, pdf_hash: digest(&bytes), dependencies });
-                Ok(converted)
+                let output = output.map_err(Clone::clone)?;
+                let path = Path::new(asset.path.as_deref().ok_or("图片路径不存在")?);
+                journal::safe_path(&root, path)?;
+                let output_relative = journal::relative(&root, &output)?;
+                journal.verify_managed(&root, &output_relative, &asset.relative_path)?;
+                let rendered = conversion::render(path, &root, options)?;
+                let managed = Managed { source: asset.relative_path.clone(), source_hash: rendered.source_hash,
+                    pdf_hash: digest(&rendered.pdf), key: rendered.key,
+                    dependencies: rendered.dependencies.iter().map(|(p, h)| Ok((journal::relative(&root, p)?, h.clone()))).collect::<Result<_, String>>()? };
+                journal.valid_sources(&root, &managed)?;
+                let cached = journal.outputs.get(&output_relative).is_some_and(|old| old.key == managed.key && journal.valid(&root, &output_relative, old));
+                if !cached { journal.write(&root, batch, &output_relative, managed, &rendered.pdf)?; }
+                Ok(ConvertedImage { id: asset.id.clone(), pdf_path: Some(output.to_string_lossy().into()),
+                    bytes: fs::metadata(output).ok().map(|m| m.len()), cached, error: None })
             })();
-            let converted = result.unwrap_or_else(|error| {
-                self.converted.remove(&asset.id);
-                ConvertedImage { id: asset.id.clone(), pdf_path: None, bytes: None, cached: false, error: Some(error) }
-            });
+            let converted = result.unwrap_or_else(|error| ConvertedImage { id: asset.id.clone(), pdf_path: None, bytes: None, cached: false, error: Some(error) });
+            journal.finish_file(&root, batch, converted.cached, converted.error.clone())?;
             let status = if converted.error.is_some() { "error" } else { "done" };
             images.push(converted);
             progress(Progress { current: images.len(), total: selected.len(), name: asset.relative_path.clone(), status: status.into() });
         }
+        cancelled |= cancel.load(Ordering::Relaxed);
+        journal.finish_batch(&root, batch, cancelled)?;
+        self.rehydrate(&journal);
         Ok(ConversionResult { images, cancelled })
     }
 
     pub fn plan(&self) -> Result<ReplacementPlan, String> {
+        Journal::load(Path::new(&self.scan.project.root))?.ensure_settled()?;
         Ok(transaction::prepare(&self.scan.project, &self.scan.sources, &self.converted)?.plan)
     }
 
     pub fn apply(&mut self) -> Result<MutationResult, String> {
+        Journal::load(Path::new(&self.scan.project.root))?.ensure_settled()?;
         let prepared = transaction::prepare(&self.scan.project, &self.scan.sources, &self.converted)?;
         let result = transaction::apply(&self.scan.project, prepared);
         self.scan.project.undo_available = transaction::undo_available(Path::new(&self.scan.project.root));
         if result.is_ok() {
-            let refreshed = Self::open(Path::new(&self.scan.project.main_file))?;
-            *self = refreshed;
+            self.refresh()?;
         }
         result
     }
 
     pub fn undo(&mut self) -> Result<MutationResult, String> {
         let result = transaction::undo(&self.scan.project)?;
-        *self = Self::open(Path::new(&self.scan.project.main_file))?;
+        self.refresh()?;
         Ok(result)
     }
 

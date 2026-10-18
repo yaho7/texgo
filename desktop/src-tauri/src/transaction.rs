@@ -79,6 +79,7 @@ pub(crate) fn apply(project: &Project, prepared: Prepared) -> Result<MutationRes
     if prepared.files.is_empty() { return Err("没有可替换的引用，请先转换图片".into()); }
     let root = Path::new(&project.root);
     let _lock = lock_project(root)?;
+    if undo_available(root) { return Err("已有引用替换恢复记录，请先撤销该替换".into()); }
     let record = Undo {
         version: 1,
         main_file: project.main_file.clone(),
@@ -126,13 +127,14 @@ pub(crate) fn undo(project: &Project) -> Result<MutationResult, String> {
 }
 
 pub(crate) fn undo_available(root: &Path) -> bool {
-    root.join(".texgo/undo.json").is_file()
+    fs::symlink_metadata(root.join(".texgo/undo.json")).is_ok()
 }
 
 fn undo_path(root: &Path) -> Result<PathBuf, String> {
     let dir = root.join(".texgo");
+    crate::journal::safe_path(root, &dir.join("undo.json"))?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    if !dir.canonicalize().map_err(|e| e.to_string())?.starts_with(root) { return Err("项目状态目录不能链接到项目之外".into()); }
+    crate::journal::safe_path(root, &dir.join("undo.json"))?;
     crate::workspace::sync_directory(root)?;
     Ok(dir.join("undo.json"))
 }

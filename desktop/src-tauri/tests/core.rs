@@ -22,7 +22,7 @@ fn options(workspace: &Workspace) -> ConversionOptions {
         image_ids: workspace.project().images.iter().map(|i| i.id.clone()).collect(),
         quality: "original".into(),
         dpi: 300,
-        max_width_mm: 160.0,
+        output_dir: "texgo-pdf".into(),
         jpeg_quality: 90,
     }
 }
@@ -94,14 +94,14 @@ fn creates_readable_pdf_and_content_cache_with_transparency() {
     let mut irrelevant = opts.clone();
     irrelevant.jpeg_quality = 1;
     irrelevant.dpi = 72;
-    irrelevant.max_width_mm = 10.0;
     let shared_cache = ws.convert(&irrelevant, &cancelled, |_| {}).unwrap();
     assert!(shared_cache.images[0].cached);
     assert_eq!(shared_cache.images[0].pdf_path.as_ref().unwrap(), pdf);
     let mut changed = opts;
     changed.quality = "compact".into();
     let third = ws.convert(&changed, &cancelled, |_| {}).unwrap();
-    assert_ne!(third.images[0].pdf_path.as_ref().unwrap(), pdf);
+    assert_eq!(third.images[0].pdf_path.as_ref().unwrap(), pdf);
+    assert!(!third.images[0].cached);
 }
 
 #[test]
@@ -187,7 +187,7 @@ fn rejects_references_outside_project_and_existing_pdf_is_not_converted() {
 }
 
 #[test]
-fn corrupt_cache_is_rebuilt_and_modified_pdf_blocks_replacement() {
+fn edited_managed_pdf_is_not_rebuilt_and_blocks_replacement() {
     let dir = tempfile::tempdir().unwrap();
     write(dir.path(), "main.tex", "\\includegraphics{a.png}");
     png(dir.path(), "a.png");
@@ -199,8 +199,8 @@ fn corrupt_cache_is_rebuilt_and_modified_pdf_blocks_replacement() {
     assert!(ws.plan().is_err());
     let rebuilt = ws.convert(&opts, &AtomicBool::new(false), |_| {}).unwrap();
     assert!(!rebuilt.images[0].cached);
-    assert!(rebuilt.images[0].error.is_none());
-    assert_eq!(ws.plan().unwrap().reference_count, 1);
+    assert!(rebuilt.images[0].error.is_some());
+    assert_eq!(fs::read(pdf).unwrap(), b"broken");
 }
 
 #[test]
@@ -279,7 +279,8 @@ fn svg_resources_are_bounded_and_participate_in_cache_and_staleness_checks() {
     assert!(ws.plan().is_err());
     let second = ws.convert(&options(&ws), &AtomicBool::new(false), |_| {}).unwrap();
     assert!(second.images[0].error.is_none());
-    assert_ne!(first.images[0].pdf_path, second.images[0].pdf_path);
+    assert_eq!(first.images[0].pdf_path, second.images[0].pdf_path);
+    assert!(!second.images[0].cached);
 }
 
 #[test]
@@ -348,9 +349,8 @@ fn replaced_images_remain_linked_to_sources_and_noop_rebuilds_preserve_undo() {
     assert!(rebuilt.images[0].error.is_none());
     image::RgbaImage::from_pixel(32, 16, image::Rgba([5, 200, 5, 255])).save(dir.path().join("a.png")).unwrap();
     let updated = reopened.convert(&options(&reopened), &AtomicBool::new(false), |_| {}).unwrap();
-    assert_ne!(first.images[0].pdf_path, updated.images[0].pdf_path);
-    assert_eq!(reopened.plan().unwrap().reference_count, 1);
-    reopened.apply().unwrap();
+    assert_eq!(first.images[0].pdf_path, updated.images[0].pdf_path);
+    assert_eq!(reopened.plan().unwrap().reference_count, 0);
     let output_name = Path::new(updated.images[0].pdf_path.as_ref().unwrap()).file_name().unwrap().to_str().unwrap();
     assert!(fs::read_to_string(main).unwrap().contains(output_name));
 }
@@ -370,7 +370,8 @@ fn identical_images_with_colliding_sanitized_names_keep_independent_sources() {
     assert_eq!(reopened.project().images.len(), 2);
     image::RgbaImage::from_pixel(32, 16, image::Rgba([5, 200, 5, 255])).save(dir.path().join("a+b.png")).unwrap();
     let updated = reopened.convert(&options(&reopened), &AtomicBool::new(false), |_| {}).unwrap();
-    assert_ne!(first.images[0].pdf_path, updated.images[0].pdf_path);
+    assert_eq!(first.images[0].pdf_path, updated.images[0].pdf_path);
+    assert!(!updated.images[0].cached);
     assert_eq!(first.images[1].pdf_path, updated.images[1].pdf_path);
-    assert_eq!(reopened.plan().unwrap().reference_count, 1);
+    assert_eq!(reopened.plan().unwrap().reference_count, 0);
 }

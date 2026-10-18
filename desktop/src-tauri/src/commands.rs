@@ -19,7 +19,7 @@ async fn work<T: Send + 'static>(state: AppState, action: impl FnOnce(&mut Optio
 }
 
 fn current(workspace: &mut Option<Workspace>) -> Result<&mut Workspace, String> {
-    workspace.as_mut().ok_or_else(|| "请先选择 TeX 主文件".into())
+    workspace.as_mut().ok_or_else(|| "请先打开 .tex 主文件或图片目录".into())
 }
 
 #[tauri::command]
@@ -30,6 +30,36 @@ async fn open_project(main_file: String, state: State<'_, AppState>) -> Result<P
         *workspace = Some(opened);
         Ok(project)
     }).await
+}
+
+#[tauri::command]
+async fn open_directory(directory: String, recursive: bool, state: State<'_, AppState>) -> Result<Project, String> {
+    work(state.inner().clone(), move |workspace| {
+        let opened = Workspace::open_directory(Path::new(&directory), recursive)?;
+        let project = opened.project().clone();
+        *workspace = Some(opened);
+        Ok(project)
+    }).await
+}
+
+#[tauri::command]
+async fn add_image_directory(directory: String, recursive: bool, state: State<'_, AppState>) -> Result<Project, String> {
+    work(state.inner().clone(), move |workspace| current(workspace)?.add_image_directory(Path::new(&directory), recursive)).await
+}
+
+#[tauri::command]
+async fn refresh_workspace(state: State<'_, AppState>) -> Result<Project, String> {
+    work(state.inner().clone(), |workspace| current(workspace)?.refresh()).await
+}
+
+#[tauri::command]
+async fn conversion_history(state: State<'_, AppState>) -> Result<Vec<ConversionHistoryEntry>, String> {
+    work(state.inner().clone(), |workspace| current(workspace)?.conversion_history()).await
+}
+
+#[tauri::command]
+async fn undo_conversion(entry_id: String, state: State<'_, AppState>) -> Result<Project, String> {
+    work(state.inner().clone(), move |workspace| current(workspace)?.undo_conversion(&entry_id)).await
 }
 
 struct ConversionGuard(Arc<AtomicBool>);
@@ -78,7 +108,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
-        .invoke_handler(tauri::generate_handler![open_project, convert_images, cancel_conversion, asset_preview, preview_changes, apply_replacements, undo_replacements])
+        .invoke_handler(tauri::generate_handler![open_project, open_directory, add_image_directory, refresh_workspace, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, preview_changes, apply_replacements, undo_replacements])
         .run(tauri::generate_context!())
         .expect("failed to start texgo desktop");
 }

@@ -26,6 +26,8 @@ cargo test --manifest-path desktop/src-tauri/Cargo.toml --no-default-features --
 
 ```sh
 texgo-engine scan --main /project/main.tex --json
+texgo-engine directory --directory /project --recursive --json
+texgo-engine directory --directory /project --recursive --convert --dpi 300 --jpeg-quality 100 --output-dir output --json
 texgo-engine build --config /project/.texgo/project.json --json
 texgo-engine run --config /project/.texgo/project.json --json
 texgo-engine watch --config /project/.texgo/project.json
@@ -40,6 +42,7 @@ inspect asset statuses and warnings before deciding whether to proceed.
 | Command | Behavior |
 | --- | --- |
 | `scan --main PATH` | Scan reachable TeX sources and image references without editing them. |
+| `directory --directory PATH [--recursive] [--convert]` | Open images without TeX references; optionally convert through the shared workspace engine. Without `--convert`, JSON is `Project`; with it, JSON is `{project,conversion}`. No TeX compilation. |
 | `build --config PATH` | Compile only; never convert images or replace TeX references. |
 | `run --config PATH` | Scan, validate, optionally convert/replace, then compile. |
 | `watch --config PATH` | Run the pipeline immediately, then repeat after relevant edits. |
@@ -67,10 +70,10 @@ For `/project/.texgo/project.json`:
   "mainFile": "../main.tex",
   "images": {
     "enabled": true,
-    "quality": "original",
+    "quality": "custom",
     "dpi": 300,
-    "maxWidthMm": 160,
-    "jpegQuality": 90,
+    "jpegQuality": 100,
+    "outputDir": "texgo-pdf",
     "replace": true
   },
   "build": {
@@ -92,10 +95,11 @@ repository and tagged release source.
 | `version` | Required | Exactly `1`. |
 | `mainFile` | Required | Existing UTF-8 `.tex` file; relative to the **config's parent directory**, or absolute. |
 | `images.enabled` | `true` | Convert every ready image when running the pipeline. |
-| `images.quality` | `"original"` | `original`, `high`, `compact`, or `custom`. |
+| `images.quality` | `"custom"` | `original`, `high`, `compact`, or `custom`. |
 | `images.dpi` | `300` | Integer 72 through 1200. |
-| `images.maxWidthMm` | `160` | Finite number 10 through 1000. |
-| `images.jpegQuality` | `90` | Integer 1 through 100. |
+| `images.maxWidthMm` | Ignored | Deprecated numeric compatibility field for version 1 only; never affects sampling. |
+| `images.jpegQuality` | `90` | Integer 1 through 100; 100 uses lossless image encoding. |
+| `images.outputDir` | `"texgo-pdf"` | Workspace-root-relative strict subdirectory, no traversal, symlinks or reserved state directories. |
 | `images.replace` | `false` | Only explicit JSON `true` authorizes automated reference edits. |
 | `build.engine` | `"xelatex"` | `xelatex`, `lualatex`, or `pdflatex`. |
 | `build.outputDir` | `"build"` | Dedicated strict subdirectory of the main file's canonical parent. |
@@ -109,7 +113,11 @@ It cannot be the project root, use `..`, contain symlinks, use reserved
 project sources or other TeX/raster/vector source material.
 
 `original` preserves original image quality and natural physical dimensions.
-Other modes use the existing converter's sizing/compression policies. PDF
+`custom` downsamples to the target DPI relative to the intrinsic density
+(72 DPI fallback), never upscales, and preserves physical page dimensions.
+`high` and `compact` optionally preset DPI/JPEG quality to 300/92 and 150/75.
+Transparent images retain a lossless alpha channel. SVG stays vector with
+bounded workspace-local dependencies. PDF
 images already usable by TeX are not rasterized or reconverted.
 
 ### Pipeline Safety
@@ -133,8 +141,11 @@ images already usable by TeX are not rasterized or reconverted.
    runs retain latexmk's normal incremental behavior; auxiliary files are not
    deleted.
 
-Source images are preserved. Conversion writes PDFs into `texgo-pdf` beside
-the images. Managed reference provenance and the latest undo transaction live
+Source images are preserved. Conversion writes same-stem PDFs into `texgo-pdf`
+at the workspace root by default. For `images.outputDir:"output"`,
+`figures/实验 图.png` becomes `output/figures/实验 图.pdf`. Names preserve Unicode
+and spaces; hashes are internal identities only. Managed provenance, backups,
+conversion history, added image directories, and reference undo records live
 under `.texgo`. On later scans the core resolves managed PDFs back to their
 original images, so changed originals can regenerate PDFs. Cache hits with no
 path changes skip `apply`, preserving the existing undo journal. A project
@@ -145,8 +156,11 @@ around actual compilation/log persistence, so another managed writer cannot
 modify that project during a compile. Concurrent lock contention is an error,
 not an indefinite wait. This is not a lock against external editor processes;
 core preflight and undo checks refuse to overwrite changed source files.
-Undo restores references, not images or build artifacts. It is a one-level
-persisted transaction, not a general editor history.
+Reference undo is a one-level persisted transaction and does not restore PDFs.
+Conversion undo independently restores previous managed PDFs or removes PDFs
+created by the latest meaningful batch. It never changes source images or build
+artifacts. Outstanding reference undo blocks conversion undo until resolved.
+New reference replacements cannot overwrite an outstanding reference undo record.
 
 ## JSON Result Contracts
 
@@ -202,6 +216,7 @@ command. User/system latexmk configuration still applies.
 
 ```text
 Project {
+  mode: "tex"|"directory", recursive: boolean, convertedImages: ConvertedImage[],
   mainFile: string, root: string, texFiles: string[],
   images: ImageAsset[], warnings: string[], undoAvailable: boolean
 }
@@ -218,11 +233,27 @@ Use opaque image IDs from the current scan. Status `ready` means convertible,
 and `unsupported` require attention. `line` is one-based; `start` and `end` are
 UTF-8 byte offsets within the scanned source. `original` is the current path
 text in TeX, which can already be a managed PDF path.
+Directory mode has `mainFile:""`, no TeX sources or references, and selectable
+recursive scanning. Added image directories must be inside the workspace root;
+they persist across refresh and reopen in either mode. Folder scans skip
+`texgo-pdf`, `.texgo`, `.git`, `node_modules`, all configured conversion
+output directories, and symlinks. `convertedImages` always exists and includes
+only outputs whose PDF, source and dependency hashes remain valid on reopen.
 
 ### Conversion, References, And Pipeline
 
 ```text
 ConversionResult { images: ConvertedImage[], cancelled: boolean }
+ConversionOptions {
+  imageIds: string[], quality?: string, dpi: integer, jpegQuality: integer,
+  outputDir?: string
+}
+ConversionHistoryEntry {
+  id: string, createdAt: integer, outputDir: string, dpi: integer,
+  jpegQuality: integer, files: ConversionHistoryFile[], undone: boolean, canUndo: boolean,
+  cancelled: boolean, undoReason: string|null
+}
+ConversionHistoryFile { source: string, output: string, cached: boolean, error: string|null }
 ConvertedImage {
   id: string, pdfPath: string|null, bytes: integer|null,
   cached: boolean, error: string|null
@@ -243,6 +274,24 @@ pipeline treats any such error as failure and never compiles or applies a
 partial batch. `conversion:null` means no conversion was needed/enabled;
 `replacement:null` means no reference edits were applied.
 
+Conversion options default `quality` to `custom` and `outputDir` to `texgo-pdf`.
+`maxWidthMm` is not a conversion option. The GUI supplies DPI 300 / quality 100;
+headless config and CLI retain JPEG quality 90 unless specified. History is
+latest first, `createdAt` is epoch milliseconds, and file source/output paths
+are workspace-relative. No PDF blobs or backup bytes are sent to clients.
+
+Before any PDF write, same-stem destination collisions are checked against
+the entire workspace source tree, including unselected and unreferenced images.
+Existing unrelated PDFs or externally modified managed PDFs are never adopted
+or overwritten. Source and SVG dependency integrity is rechecked before commit.
+Write intents and backups precede PDF replacement; failure and cancellation
+retain history and any successful earlier outputs. Undo preflights the entire
+latest write batch, refuses edited/missing outputs without changing any file,
+validates backups, and journals partial undo for retry after interruption.
+Cached-only and failed-without-write batches do not displace meaningful undo.
+`canUndo` is true only for the latest compatible write batch, with no outstanding
+reference undo. State corruption is an error, not permission to overwrite PDFs.
+
 ## JSON-RPC 2.0 Stdio
 
 Spawn `texgo-engine rpc`, write UTF-8 JSON objects ending in a newline to stdin,
@@ -260,9 +309,13 @@ notification and receives an error with a null ID where no valid ID exists.
 | Method | Params | Result |
 | --- | --- | --- |
 | `tools.info` | `{}` | Engine version, config version, transport, methods, engines, compiler, request bound. |
-| `project.open` | `{"mainFile":"/project/main.tex"}` | `Project`; select a project and clear previous session conversions. |
-| `project.scan` | `{"mainFile":"/project/main.tex"}` or `{}` | Rescan/select project; clear previous session conversions. Omitted main uses the open project. |
-| `images.convert` | `{"options":{"imageIds":["ID"],"quality":"original","dpi":300,"maxWidthMm":160,"jpegQuality":90}}` | `ConversionResult`; retain conversions in session. All option fields are required. |
+| `project.open` | `{"mainFile":"/project/main.tex"}` | `Project`; reopen and rehydrate valid conversions and added directories. |
+| `project.openDirectory` | `{"directory":"/project","recursive":true}` | `Project` in directory mode. |
+| `project.addDirectory` | `{"directory":"/project/figures","recursive":true}` | `Project`; persist an extra image directory within root, preserving mode. |
+| `project.scan` | `{"mainFile":"/project/main.tex"}` or `{}` | Rescan/select project; omitted main retains current mode and extra directories. |
+| `images.convert` | `{"options":{"imageIds":["ID"],"quality":"custom","dpi":300,"jpegQuality":100,"outputDir":"texgo-pdf"}}` | `ConversionResult`; quality and outputDir are optional. |
+| `images.history` | `{}` | `ConversionHistoryEntry[]`, latest first. |
+| `images.undo` | `{"confirm":true,"entryId":"BATCH-ID"}` | `Project`; undo the latest compatible write batch and refresh. |
 | `references.preview` | `{}` | `ReplacementPlan` for successful session conversions; no writes. |
 | `references.apply` | `{"confirm":true}` | `MutationResult`; apply the current plan and refresh session. |
 | `references.undo` | `{"confirm":true}` | `MutationResult`; restore latest persisted transaction and refresh session. |
@@ -270,15 +323,14 @@ notification and receives an error with a null ID where no valid ID exists.
 | `pipeline.run` | `{"configPath":"/project/.texgo/project.json"}` | `PipelineResult`; config's explicit `images.replace:true` authorizes edits. |
 
 Methods needing a Workspace fail until a project is opened. A failed open
-preserves the previously open session. `project.scan` intentionally resets
-conversion plans: use open → convert → preview → apply without rescanning in
-between. Build/pipeline configuration paths are independent of the current
+preserves the previously open session. Refresh rehydrates valid conversions
+but invalidates stale TeX offsets. Build/pipeline configuration paths are independent of the current
 session project; a pipeline refreshes a matching session to discard stale
 plans. Use `project.open` to inspect another project after a pipeline call.
 RPC paths in params are relative to the server process cwd or absolute;
 config-contained paths follow the config rules above.
 
-Both reference mutation methods reject omitted, false, and non-boolean
+Reference mutation and conversion undo methods reject omitted, false, and non-boolean
 confirmation. Conversion writes PDF cache files but does not edit TeX.
 `pipeline.run` is also a potentially source-mutating operation: only pass a
 trusted configuration with `images.replace:true` when that is intended.
@@ -287,7 +339,7 @@ Example request/response exchange (replace `ID` with an ID from the open result)
 
 ```json
 {"jsonrpc":"2.0","id":1,"method":"project.open","params":{"mainFile":"/project/main.tex"}}
-{"jsonrpc":"2.0","id":2,"method":"images.convert","params":{"options":{"imageIds":["ID"],"quality":"original","dpi":300,"maxWidthMm":160,"jpegQuality":90}}}
+{"jsonrpc":"2.0","id":2,"method":"images.convert","params":{"options":{"imageIds":["ID"],"quality":"custom","dpi":300,"jpegQuality":100}}}
 {"jsonrpc":"2.0","id":3,"method":"references.preview"}
 {"jsonrpc":"2.0","id":4,"method":"references.apply","params":{"confirm":true}}
 {"jsonrpc":"2.0","id":5,"method":"document.build","params":{"configPath":"/project/.texgo/project.json"}}

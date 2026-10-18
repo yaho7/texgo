@@ -32,7 +32,7 @@ fn config_resolves_main_against_config_and_output_against_main() {
     let root = dir.path().canonicalize().unwrap();
     assert_eq!(config.main_file, root.join("main.tex"));
     assert_eq!(config.output_dir, root.join("build"));
-    assert_eq!(config.config.images.quality, "original");
+    assert_eq!(config.config.images.quality, "custom");
     assert_eq!(config.config.images.dpi, 300);
     assert!(config.config.images.replace);
     let path = dir.path().join(".texgo/project.json");
@@ -67,7 +67,6 @@ fn config_requires_version_rejects_typos_and_unsafe_settings() {
         json!({"version":1,"mainFile":"../main.tex","images":{"replace":"true"}}),
         json!({"version":1,"mainFile":"../main.tex","images":{"quality":"bad"}}),
         json!({"version":1,"mainFile":"../main.tex","images":{"dpi":0}}),
-        json!({"version":1,"mainFile":"../main.tex","images":{"maxWidthMm":1}}),
         json!({"version":1,"mainFile":"../main.tex","images":{"jpegQuality":101}}),
         json!({"version":1,"mainFile":"../main.tex","build":{"engine":"sh"}}),
         json!({"version":1,"mainFile":"../main.tex","build":{"outputDir":"../outside"}}),
@@ -79,6 +78,8 @@ fn config_requires_version_rejects_typos_and_unsafe_settings() {
     }
     fs::write(&path, json!({"version":1,"mainFile":"../main.tex"}).to_string()).unwrap();
     assert!(!load_config(&path).unwrap().config.images.replace);
+    fs::write(&path, json!({"version":1,"mainFile":"../main.tex","images":{"maxWidthMm":1}}).to_string()).unwrap();
+    assert!(load_config(&path).is_ok());
 }
 
 #[cfg(unix)]
@@ -128,7 +129,7 @@ fn rpc_conversion_preview_confirm_apply_and_persistent_undo() {
     let opened = request(&mut session, "project.open", json!({"mainFile":dir.path().join("main.tex")}));
     let id = opened["result"]["images"][0]["id"].clone();
     let converted = request(&mut session, "images.convert", json!({"options":{
-        "imageIds":[id], "quality":"original", "dpi":300, "maxWidthMm":160, "jpegQuality":90
+        "imageIds":[id], "quality":"original", "dpi":300, "jpegQuality":90
     }}));
     assert!(converted["result"]["images"][0]["error"].is_null(), "{converted}");
     assert_eq!(request(&mut session, "references.preview", json!({}))["result"]["referenceCount"], 1);
@@ -158,6 +159,27 @@ fn rpc_transport_bounds_requests_recovers_and_flushes_notifications() {
     assert_eq!(responses[0]["error"]["code"], -32600);
     assert_eq!(responses[1]["error"]["code"], -32700);
     assert_eq!(responses[2]["id"], 7);
+}
+
+#[test]
+fn rpc_directory_conversion_defaults_history_reopen_and_confirmed_undo() {
+    let dir = fixture();
+    image::RgbImage::new(4, 2).save(dir.path().join("a.png")).unwrap();
+    let mut session = RpcSession::default();
+    let opened = request(&mut session, "project.openDirectory", json!({"directory":dir.path(),"recursive":true}));
+    assert_eq!(opened["result"]["mode"], "directory");
+    let id = opened["result"]["images"][0]["id"].clone();
+    let converted = request(&mut session, "images.convert", json!({"options":{"imageIds":[id],"dpi":150,"jpegQuality":100}}));
+    assert!(Path::new(converted["result"]["images"][0]["pdfPath"].as_str().unwrap()).ends_with(Path::new("texgo-pdf").join("a.pdf")));
+    let refreshed = request(&mut session, "project.scan", json!({}));
+    assert_eq!(refreshed["result"]["mode"], "directory");
+    assert_eq!(refreshed["result"]["convertedImages"].as_array().unwrap().len(), 1);
+    let history = request(&mut session, "images.history", json!({}));
+    let id = history["result"][0]["id"].clone();
+    assert_eq!(history["result"][0]["canUndo"], true);
+    assert_eq!(request(&mut session, "images.undo", json!({"entryId":id,"confirm":false}))["error"]["code"], -32602);
+    assert_eq!(request(&mut session, "images.undo", json!({"entryId":id,"confirm":true}))["result"]["mode"], "directory");
+    assert!(!dir.path().join("texgo-pdf/a.pdf").exists());
 }
 
 #[cfg(all(unix, feature = "automation"))]
@@ -315,15 +337,15 @@ exit 0
         assert!(dir.path().join("a.png").is_file());
         assert!(!fs::read_to_string(dir.path().join("compiler-args.txt")).unwrap().lines().any(|arg| arg == "-g"));
 
-        // Cache paths have fixed-length hashes, so a same-second edit must not
-        // rely on latexmk noticing a size or timestamp change in main.tex.
+        // Stable PDF paths require a forced build after same-second source edits.
         image::RgbImage::from_pixel(4, 2, image::Rgb([40, 167, 69])).save(dir.path().join("a.png")).unwrap();
         fs::remove_file(dir.path().join("compiler-args.txt")).unwrap();
         let updated = invoke(dir.path(), "run");
         assert!(updated.status.success(), "{}", String::from_utf8_lossy(&updated.stdout));
         let result: Value = serde_json::from_slice(&updated.stdout).unwrap();
-        assert_eq!(result["replacement"]["referencesChanged"], 1);
-        assert_ne!(fs::read(dir.path().join("main.tex")).unwrap(), replaced);
+        assert!(result["replacement"].is_null());
+        assert_eq!(fs::read(dir.path().join("main.tex")).unwrap(), replaced);
+        assert_eq!(fs::read(dir.path().join(".texgo/undo.json")).unwrap(), undo);
         assert!(fs::read_to_string(dir.path().join("compiler-args.txt")).unwrap().lines().any(|arg| arg == "-g"));
     }
 
