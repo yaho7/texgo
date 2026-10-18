@@ -149,6 +149,15 @@ export default function App() {
     });
   }
 
+  function changeRecursive(value: boolean) {
+    if (project?.mode !== "directory") { setRecursive(value); return; }
+    void execute("opening", async () => {
+      const next = await invoke<Project>("open_directory", { directory: project.root, recursive: value });
+      await acceptProject(next, true);
+      setRecursive(next.recursive);
+    });
+  }
+
   function updateSettings(next: ConversionSettings) {
     setSettings(next);
     if (project && !storeSettings(workspaceKey(projectEntry(project)), next)) setNotice("设置仅保留在本次会话中，请检查应用存储权限");
@@ -184,12 +193,12 @@ export default function App() {
         const failed = Object.values(next).filter((image) => image.error).length;
         setNotice(result.cancelled ? `已取消：${succeeded} 张已完成` : `转换完成：${succeeded} 成功，${failed} 失败`);
         setRevision((value) => value + 1);
-        await loadHistory();
       } finally {
         acceptingEvents = false;
         unlisten();
         cancelRef.current = false;
         setCancelRequested(false);
+        await loadHistory();
       }
     });
   }
@@ -211,7 +220,19 @@ export default function App() {
   function replace(undo: boolean) {
     if (!project || (!undo && !review)) return;
     void execute(undo ? "undoing" : "applying", async () => {
-      const result = await invoke<ReplacementResult>(undo ? "undo_replacements" : "apply_replacements");
+      let result: ReplacementResult;
+      try { result = await invoke<ReplacementResult>(undo ? "undo_replacements" : "apply_replacements"); }
+      catch (reason) {
+        // A failed write may still have created an undo record or changed some files.
+        setReview(null);
+        try { await refresh("操作中断，已重新读取工作区"); }
+        catch (refreshError) {
+          setProject(null);
+          throw new Error(`${errorMessage(reason)}；重新扫描失败，请重新打开工作区：${errorMessage(refreshError)}`);
+        }
+        restoreFocus();
+        throw reason;
+      }
       setReview(null);
       clearAssetState();
       const message = `${undo ? "已恢复" : "已替换"} ${result.filesChanged} 个文件中的 ${result.referencesChanged} 处引用`;
@@ -260,7 +281,7 @@ export default function App() {
         {(missingCount > 0 || project.warnings.length > 0) && <Alert className="workbench-alert scan-alert"><TriangleAlert aria-hidden="true" /><AlertTitle>{missingCount > 0 ? `${missingCount} 个图片引用缺失` : "项目扫描警告"}</AlertTitle><AlertDescription><details><summary>{project.warnings.length || missingCount} 条警告</summary><ul>{project.warnings.map((warning, index) => <li key={index}>{warning}</li>)}{missingCount > 0 && project.warnings.length === 0 && project.images.filter((image) => image.status === "missing").map((image) => <li key={image.id}>{image.relativePath}：{image.message || "文件不存在"}</li>)}</ul></details></AlertDescription></Alert>}
         <Tabs value={view} onValueChange={setView} className="workspace-tabs">
           <div className="workspace-nav"><TabsList variant="line" aria-label="工作区视图"><TabsTrigger value="assets"><Images aria-hidden="true" />图片</TabsTrigger><TabsTrigger value="history"><History aria-hidden="true" />转换记录<Badge variant="secondary">{history.length}</Badge></TabsTrigger></TabsList>
-            <div className="directory-actions"><Field orientation="horizontal" className="directory-recursive"><Checkbox id="workspace-recursive" name="recursive" checked={recursive} disabled={busy} onCheckedChange={(checked) => setRecursive(checked === true)} /><FieldLabel htmlFor="workspace-recursive">包含子目录</FieldLabel></Field><Button variant="ghost" size="sm" disabled={busy} onClick={() => openDirectory(true)}><FolderPlus data-icon="inline-start" aria-hidden="true" />添加图片目录</Button></div>
+            <div className="directory-actions"><Field orientation="horizontal" className="directory-recursive"><Checkbox id="workspace-recursive" name="recursive" checked={recursive} disabled={busy} onCheckedChange={(checked) => changeRecursive(checked === true)} /><FieldLabel htmlFor="workspace-recursive">{project.mode === "directory" ? "包含子目录" : "新增目录包含子目录"}</FieldLabel></Field><Button variant="ghost" size="sm" disabled={busy} onClick={() => openDirectory(true)}><FolderPlus data-icon="inline-start" aria-hidden="true" />添加图片目录</Button></div>
           </div>
           <main id="main-content" tabIndex={-1} className="workspace-grid" style={layoutStyle}>
             <div className="workspace-library"><TabsContent value="assets" className="library-content"><AssetList images={visibleImages} total={project.images.length} selected={selected} activeId={activeId} results={results} busy={busy} search={search} filter={filter} onSearch={setSearch} onFilter={setFilter} onActivate={setActiveId}
@@ -268,7 +289,7 @@ export default function App() {
               onSelectAll={(ids, select) => { if (!busy) setSelected((previous) => { const next = new Set(previous); ids.forEach((id) => { if (select) next.add(id); else next.delete(id); }); return next; }); }} /></TabsContent>
               <TabsContent value="history" className="library-content"><ConversionHistory entries={history} busy={busy} referencesPending={project.undoAvailable} onUndo={(entry) => { rememberFocus(); setError(null); setUndoEntry(entry); }} /></TabsContent></div>
             <Splitter label="调整图片列表宽度" value={assetsWidth} min={380} max={1100} onChange={setAssetsWidth} />
-            <div className="asset-inspector"><AssetPreview key={`${revision}:${activeAsset?.id ?? "empty"}`} asset={activeAsset} result={activeAsset ? results[activeAsset.id] : undefined} revision={revision} />
+            <div className="asset-inspector" key={workspaceKey(projectEntry(project))}><AssetPreview key={`${revision}:${activeAsset?.id ?? "empty"}`} asset={activeAsset} result={activeAsset ? results[activeAsset.id] : undefined} revision={revision} />
               <ConversionPanel settings={settings} selectedCount={selected.size} busy={busy} converting={operation === "converting"} canReview={Boolean(canReview)} undoAvailable={project.undoAvailable} activeAsset={activeAsset} root={project.root} directoryMode={project.mode === "directory"} onSettings={updateSettings} onConvert={convert} onReview={() => { rememberFocus(); void execute("reviewing", async () => setReview(await invoke<ChangePreview>("preview_changes"))); }} onUndo={() => replace(true)} />
             </div>
           </main>

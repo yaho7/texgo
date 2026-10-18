@@ -262,16 +262,42 @@ describe("LaTeX 图片工作流", () => {
     expect(calls.some(({ command }) => command === "apply_replacements")).toBe(false);
   });
 
-  it("keeps an apply failure in the review and allows retry", async () => {
-    handlers.apply_replacements = () => { throw new Error("文件已被修改，请重新扫描"); };
+  it("rescans after a partial apply failure and exposes the recovery action", async () => {
+    handlers.apply_replacements = () => { backendProject.undoAvailable = true; throw new Error("替换未全部完成，已保留恢复记录"); };
     const user = await openProject();
     await convertFirst(user);
     await user.click(screen.getByRole("button", { name: "预览替换" }));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "应用替换" }));
-    await within(dialog).findByText("文件已被修改，请重新扫描");
-    expect(within(dialog).getByRole("button", { name: "应用替换" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "撤销替换", hidden: true })).toBeDisabled();
+    await screen.findByText("替换未全部完成，已保留恢复记录");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "撤销替换" })).toBeEnabled();
+    expect(calls.some(({ command }) => command === "refresh_workspace")).toBe(true);
+  });
+
+  it("reloads conversion history even when the conversion command rejects", async () => {
+    handlers.convert_images = () => { throw new Error("保存转换记录失败"); };
+    const user = await openProject();
+    const historyReads = calls.filter(({ command }) => command === "conversion_history").length;
+    await user.click(screen.getByRole("checkbox", { name: "选择 figures/alpha.png" }));
+    await user.click(screen.getByRole("button", { name: "转换所选图片" }));
+    await screen.findByText("保存转换记录失败");
+    expect(calls.filter(({ command }) => command === "conversion_history")).toHaveLength(historyReads + 1);
+    expect(screen.getByRole("button", { name: "预览替换" })).toBeDisabled();
+  });
+
+  it("rescans an open directory when recursive scanning changes", async () => {
+    handlers["plugin:dialog|open"] = () => "/images";
+    handlers.open_directory = ({ recursive }) => ({ ...project, mode: "directory", recursive,
+      mainFile: "", root: "/images", texFiles: [], warnings: [], images: recursive ? project.images.slice(0, 2) : project.images.slice(0, 1) });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "转换图片目录" }));
+    await screen.findByRole("button", { name: "预览 figures/beta.jpg" });
+    await user.click(screen.getByRole("checkbox", { name: "包含子目录" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "预览 figures/beta.jpg" })).not.toBeInTheDocument());
+    expect(calls).toContainEqual({ command: "open_directory", args: { directory: "/images", recursive: false } });
+    expect(screen.getByRole("checkbox", { name: "包含子目录" })).not.toBeChecked();
   });
 
   it("rescans the current main file and clears stale selection and conversion state", async () => {
