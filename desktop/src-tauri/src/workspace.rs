@@ -200,6 +200,10 @@ impl Workspace {
         cancelled |= cancel.load(Ordering::Relaxed);
         journal.finish_batch(&root, batch, cancelled)?;
         self.rehydrate(&journal);
+        // Keep a failed or cancelled selection out of this session's reference plan.
+        let succeeded: HashSet<_> = images.iter().filter(|image| image.error.is_none() && image.pdf_path.is_some()).map(|image| image.id.as_str()).collect();
+        self.converted.retain(|id, _| !selected.contains(id.as_str()) || succeeded.contains(id.as_str()));
+        self.scan.project.converted_images.retain(|image| !selected.contains(image.id.as_str()) || succeeded.contains(image.id.as_str()));
         Ok(ConversionResult { images, cancelled })
     }
 

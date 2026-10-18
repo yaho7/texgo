@@ -314,3 +314,23 @@ fn recovery_rehydrates_a_committed_pdf_and_retries_an_interrupted_undo() {
     assert!(!dir.path().join("output/b.pdf").exists());
     assert!(ws.conversion_history().unwrap()[0].undone);
 }
+
+#[test]
+fn failed_selected_images_do_not_silently_reuse_older_outputs_in_a_plan() {
+    let dir = tempfile::tempdir().unwrap();
+    png(dir.path(), "a.png", 1);
+    png(dir.path(), "b.png", 2);
+    fs::write(dir.path().join("main.tex"), "\\includegraphics{a.png}\n\\includegraphics{b.png}").unwrap();
+    let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    let mut opts = options(&ws);
+    ws.convert(&opts, &AtomicBool::new(false), |_| {}).unwrap();
+    opts.output_dir = "next".into();
+    fs::create_dir(dir.path().join("next")).unwrap();
+    fs::write(dir.path().join("next/a.pdf"), b"unrelated").unwrap();
+    let result = ws.convert(&opts, &AtomicBool::new(false), |_| {}).unwrap();
+    assert!(result.images[0].error.is_some());
+    assert!(result.images[1].error.is_none());
+    let plan = ws.plan().unwrap();
+    assert_eq!(plan.reference_count, 1);
+    assert_eq!(plan.files[0].changes[0].after, "next/b.pdf");
+}
