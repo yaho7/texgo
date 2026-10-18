@@ -264,7 +264,8 @@ fn commands(text: &str) -> Vec<Command> {
     let mut out = Vec::new();
     let mut i = 0;
     let mut depth: usize = 0;
-    while i < bytes.len() {
+    let mut input_end = bytes.len();
+    while i < input_end {
         if bytes[i] == b'{' { depth += 1; i += 1; continue; }
         if bytes[i] == b'}' { depth = depth.saturating_sub(1); i += 1; continue; }
         if bytes[i] != b'\\' { i += 1; continue; }
@@ -274,6 +275,11 @@ fn commands(text: &str) -> Vec<Command> {
         while i < bytes.len() && bytes[i].is_ascii_alphabetic() { i += 1; }
         if start == i { i += 1; continue; }
         let name = &text[start..i];
+        if name == "endinput" && depth == 0 {
+            // TeX still processes tokens remaining on the current input line.
+            input_end = bytes[i..].iter().position(|&byte| byte == b'\n').map_or(bytes.len(), |end| i + end);
+            continue;
+        }
         if name == "newif" {
             i = skip_space(bytes, i);
             if bytes.get(i) == Some(&b'\\') {
@@ -288,6 +294,7 @@ fn commands(text: &str) -> Vec<Command> {
         if matches!(name, "endgroup" | "egroup") { depth = depth.saturating_sub(1); continue; }
         if matches!(name, "begin" | "end") {
             if let Some((start, end)) = group(bytes, skip_space(bytes, i), b'{', b'}') {
+                if name == "end" && &text[start..end] == "document" && depth == 0 { break; }
                 if &text[start..end] != "document" {
                     if name == "begin" { depth += 1; } else { depth = depth.saturating_sub(1); }
                 }
@@ -305,6 +312,12 @@ fn commands(text: &str) -> Vec<Command> {
         if let Some((start, end)) = group(bytes, i, b'{', b'}') {
             out.push(Command { name: name.into(), start, end, depth, line: bytes[..command_at].iter().filter(|&&b| b == b'\n').count() + 1 });
             i = end + 1;
+        } else if name == "input" {
+            let start = i;
+            while i < input_end && !bytes[i].is_ascii_whitespace() && !matches!(bytes[i], b'{' | b'}') { i += 1; }
+            if i > start {
+                out.push(Command { name: name.into(), start, end: i, depth, line: bytes[..command_at].iter().filter(|&&b| b == b'\n').count() + 1 });
+            }
         }
     }
     out

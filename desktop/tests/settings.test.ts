@@ -27,4 +27,8 @@ describe("backend-aligned conversion settings", () => {
   it.each(["", "0", "101", "85.5"])("rejects JPEG quality %s", (jpegQuality) => {
     expect(settingsIssues({ ...custom, jpegQuality }).jpegQuality).toBe("质量需为 1–100 的整数");
   });
+
+  it.each(["out$draft", "out&draft", "out^draft", "out~draft"])("rejects TeX-active output characters in %s", (outputDir) => {
+    expect(settingsIssues({ ...custom, outputDir }).outputDir).toBeTruthy();
+  });
 });

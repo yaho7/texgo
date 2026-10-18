@@ -267,7 +267,7 @@ fn output_paths_reject_cross_platform_reserved_and_tex_special_names() {
     let dir = tempfile::tempdir().unwrap();
     png(dir.path(), "a.png", 1);
     let mut ws = Workspace::open_directory(dir.path(), false).unwrap();
-    for output in ["../out", ".texgo/out", ".GIT/out", "C:\\out", "out#files", "CON", "out/..", "out."] {
+    for output in ["../out", ".texgo/out", ".GIT/out", "C:\\out", "out#files", "CON", "out/..", "out.", "out$draft", "out&draft", "out^draft", "out~draft"] {
         let mut opts = options(&ws);
         opts.output_dir = output.into();
         let result = ws.convert(&opts, &AtomicBool::new(false), |_| {});

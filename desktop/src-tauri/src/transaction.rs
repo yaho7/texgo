@@ -46,7 +46,7 @@ pub(crate) fn prepare(project: &Project, sources: &BTreeMap<PathBuf, Vec<u8>>, c
         }
         // TeX resolves includegraphics relative to the main compilation directory.
         let relative = pathdiff::diff_paths(&real, root).ok_or("无法生成相对图片路径")?.to_string_lossy().replace('\\', "/");
-        if relative.contains(['{', '}', '%', '#', '\n', '\r']) { return Err("输出目录含有 TeX 特殊字符，请调整图片目录名称".into()); }
+        if relative.contains(['{', '}', '%', '#', '$', '&', '^', '~', '\n', '\r']) { return Err("输出目录含有 TeX 特殊字符，请调整图片目录名称".into()); }
         for reference in &asset.references {
             if reference.original == relative { continue; }
             edits.entry(PathBuf::from(&reference.file)).or_default().push((reference.start, reference.end, reference.line, reference.original.clone(), relative.clone()));

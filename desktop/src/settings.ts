@@ -19,7 +19,7 @@ export function settingsIssues(settings: ConversionSettings): SettingsIssues {
   const parts = directory.split("/");
   if (!directory || directory.startsWith("/") || /^[a-z]:/i.test(directory)
     || parts.some((part) => !part || part === "." || part === ".." || [".texgo", ".git", "node_modules"].includes(part.toLowerCase()))
-    || /[<>:"|?*\x00-\x1f{}%#]/.test(directory)
+    || /[<>:"|?*\x00-\x1f{}%#$&^~]/.test(directory)
     || parts.some((part) => /[. ]$/.test(part) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part))) {
     errors.outputDir = "请输入工作区内的目录名，例如 figures-pdf；不能使用上级路径或保留名称";
   }

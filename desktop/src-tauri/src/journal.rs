@@ -68,7 +68,7 @@ pub(crate) fn output_directory(root: &Path, value: &str) -> Result<PathBuf, Stri
     let normalized = value.replace('\\', "/");
     let path = Path::new(&normalized);
     if normalized.trim() != normalized || normalized.is_empty() || path.is_absolute()
-        || normalized.chars().any(|c| c.is_control() || "<>:\"|?*{}%#".contains(c)) {
+        || normalized.chars().any(|c| c.is_control() || "<>:\"|?*{}%#$&^~".contains(c)) {
         return Err("请输入工作区内的输出目录名，不能使用绝对路径或特殊字符".into());
     }
     for part in normalized.split('/') {

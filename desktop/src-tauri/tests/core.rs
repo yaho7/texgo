@@ -44,6 +44,41 @@ fn recursively_resolves_graphicspath_and_unicode_references() {
 }
 
 #[test]
+fn scans_unbraced_inputs_and_does_not_read_past_endinput() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "main.tex", "\\input chapters/body\n");
+    write(dir.path(), "chapters/body.tex", "\\includegraphics{a.png}\n\\endinput\n\\includegraphics{unused.png}");
+    png(dir.path(), "a.png");
+    let ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    assert_eq!(ws.project().tex_files.len(), 2);
+    assert_eq!(ws.project().images.len(), 1);
+    assert_eq!(ws.project().images[0].relative_path, "a.png");
+}
+
+#[test]
+fn dynamic_unbraced_inputs_are_reported_instead_of_silently_ignored() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "main.tex", "\\input \\chapterfile\n");
+    let ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    assert!(ws.project().warnings.iter().any(|warning| warning.contains("chapterfile")));
+}
+
+#[test]
+fn endinput_keeps_the_current_line_and_document_end_stops_scanning() {
+    let dir = tempfile::tempdir().unwrap();
+    png(dir.path(), "a.png");
+    for source in [
+        "\\endinput \\includegraphics{a.png}\n\\includegraphics{unused.png}",
+        "\\begin{document}\\includegraphics{a.png}\\end{document}\n\\includegraphics{unused.png}",
+    ] {
+        write(dir.path(), "main.tex", source);
+        let ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+        assert_eq!(ws.project().images.len(), 1);
+        assert_eq!(ws.project().images[0].relative_path, "a.png");
+    }
+}
+
+#[test]
 fn mapped_pdfs_do_not_bypass_unsafe_graphics_context() {
     let dir = tempfile::tempdir().unwrap();
     write(dir.path(), "main.tex", "\\includegraphics{a.png}");
