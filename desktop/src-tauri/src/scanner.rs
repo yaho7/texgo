@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 const EXTENSIONS: &[&str] = &["pdf", "png", "jpg", "jpeg", "svg", "webp", "tif", "tiff", "bmp", "gif", "eps", "ps"];
 
+#[derive(Clone)]
 pub(crate) struct Scan {
     pub project: Project,
     pub sources: BTreeMap<PathBuf, Vec<u8>>,

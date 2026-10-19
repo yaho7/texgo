@@ -53,6 +53,8 @@ export interface ConversionHistoryEntry {
   canUndo: boolean;
   cancelled?: boolean;
   undoReason?: string | null;
+  referencesChanged?: number;
+  filesChanged?: number;
 }
 
 export interface ConvertedImage {
@@ -74,7 +76,7 @@ export interface AssetPreviewData {
 }
 
 export interface ChangePreview {
-  files: { path: string; changes: { line: number; before: string; after: string }[] }[];
+  files: { path: string; changes: { id: string; line: number; before: string; after: string }[] }[];
   referenceCount: number;
 }
 

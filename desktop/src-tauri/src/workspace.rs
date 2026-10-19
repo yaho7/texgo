@@ -10,12 +10,17 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+#[derive(Clone)]
 pub struct Workspace {
     scan: scanner::Scan,
     converted: BTreeMap<String, StoredConversion>,
     extra_directories: Vec<(PathBuf, bool)>,
+    observed: Option<crate::observation::Snapshot>,
+    pending_repair: Option<(String, PathBuf, ReplacementPlan)>,
+    invalidated: HashSet<String>,
 }
 
+#[derive(Clone)]
 pub(crate) struct StoredConversion {
     pub path: PathBuf,
     pub source_hash: String,
@@ -47,8 +52,9 @@ impl Workspace {
                 scan.project.warnings.push(format!("附加图片目录暂不可用：{}：{error}", directory.display()));
             }
         }
-        let mut workspace = Self { scan, converted: BTreeMap::new(), extra_directories };
+        let mut workspace = Self { scan, converted: BTreeMap::new(), extra_directories, observed: None, pending_repair: None, invalidated: HashSet::new() };
         workspace.rehydrate(&journal);
+        workspace.observed = crate::observation::snapshot(Path::new(&workspace.scan.project.root)).ok();
         Ok(workspace)
     }
 
@@ -56,9 +62,10 @@ impl Workspace {
         let root = Path::new(&self.scan.project.root);
         self.converted.clear();
         self.scan.project.converted_images.clear();
-        self.scan.project.undo_available = transaction::undo_available(root);
+        self.scan.project.undo_available = transaction::standalone_undo_available(root).unwrap_or_else(|_| transaction::legacy_undo_available(root));
         for asset in &mut self.scan.project.images {
             asset.update_available = false;
+            if self.invalidated.contains(&asset.id) { continue; }
             for output in journal.preferred_outputs(&asset.relative_path) {
                 let Some(managed) = journal.outputs.get(&output) else { continue; };
                 if managed.source != asset.relative_path || !journal.valid_output(root, &output, managed) { continue; }
@@ -108,7 +115,11 @@ impl Workspace {
             let journal = Journal::load(root)?;
             scanner::scan_directory(root, self.scan.project.recursive, &journal.excluded(root))?
         } else { scanner::scan(Path::new(&self.scan.project.main_file))? };
-        Self::from_scan(scan, directories)
+        let mut refreshed = Self::from_scan(scan, directories)?;
+        refreshed.invalidated = self.invalidated.clone();
+        refreshed.converted.retain(|id, _| !refreshed.invalidated.contains(id));
+        refreshed.scan.project.converted_images.retain(|image| !refreshed.invalidated.contains(&image.id));
+        Ok(refreshed)
     }
 
     pub fn refresh(&mut self) -> Result<Project, String> {
@@ -118,6 +129,12 @@ impl Workspace {
 
     pub fn refresh_workspace(&mut self) -> Result<Project, String> { self.refresh() }
 
+    pub fn poll_changes(&mut self) -> Result<Option<Project>, String> {
+        let observed = crate::observation::snapshot(Path::new(&self.scan.project.root))?;
+        if self.observed.as_ref() == Some(&observed) { return Ok(None); }
+        self.refresh().map(Some)
+    }
+
     pub fn conversion_history(&self) -> Result<Vec<ConversionHistoryEntry>, String> {
         let root = Path::new(&self.scan.project.root);
         Ok(Journal::load(root)?.history(root))
@@ -125,17 +142,22 @@ impl Workspace {
 
     pub fn undo_conversion(&mut self, entry_id: &str) -> Result<Project, String> {
         let root = Path::new(&self.scan.project.root);
-        {
+        let result = (|| {
             let _lock = transaction::lock_project(root)?;
-            let mut journal = Journal::load(root)?;
-            journal.undo(root, entry_id)?;
-        }
-        self.refresh()
+            transaction::undo_batch_locked(&self.scan.project, entry_id)
+        })();
+        let refreshed = self.refresh();
+        result?;
+        refreshed
     }
 
     pub fn project(&self) -> &Project { &self.scan.project }
 
     pub fn convert(&mut self, options: &ConversionOptions, cancel: &AtomicBool, progress: impl Fn(Progress)) -> Result<ConversionResult, String> {
+        self.convert_with_results(options, cancel, progress, |_| {})
+    }
+
+    pub fn convert_with_results(&mut self, options: &ConversionOptions, cancel: &AtomicBool, progress: impl Fn(Progress), on_image: impl Fn(ConvertedImage)) -> Result<ConversionResult, String> {
         conversion::validate(options)?;
         let selected: HashSet<&str> = options.image_ids.iter().map(String::as_str).collect();
         if selected.is_empty() { return Err("请先选择图片".into()); }
@@ -143,6 +165,7 @@ impl Workspace {
             return Err("所选图片不存在或无法转换，请重新扫描".into());
         }
         // Any failure below must not leave an older output eligible for replacement.
+        self.invalidated.extend(selected.iter().map(|id| (*id).to_owned()));
         self.converted.retain(|id, _| !selected.contains(id.as_str()));
         self.scan.project.converted_images.retain(|image| !selected.contains(image.id.as_str()));
         let root = PathBuf::from(&self.scan.project.root);
@@ -204,14 +227,16 @@ impl Workspace {
             let converted = result.unwrap_or_else(|error| ConvertedImage { id: asset.id.clone(), pdf_path: None, bytes: None, cached: false, error: Some(error) });
             journal.finish_file(&root, batch, converted.cached, converted.error.clone())?;
             let status = if converted.error.is_some() { "error" } else { "done" };
+            on_image(converted.clone());
             images.push(converted);
             progress(Progress { current: images.len(), total: selected.len(), name: asset.relative_path.clone(), status: status.into() });
         }
         cancelled |= cancel.load(Ordering::Relaxed);
         journal.finish_batch(&root, batch, cancelled)?;
-        self.rehydrate(&journal);
         // Keep a failed or cancelled selection out of this session's reference plan.
         let succeeded: HashSet<_> = images.iter().filter(|image| image.error.is_none() && image.pdf_path.is_some()).map(|image| image.id.as_str()).collect();
+        self.invalidated.retain(|id| !succeeded.contains(id.as_str()));
+        self.rehydrate(&journal);
         self.converted.retain(|id, _| !selected.contains(id.as_str()) || succeeded.contains(id.as_str()));
         self.scan.project.converted_images.retain(|image| !selected.contains(image.id.as_str()) || succeeded.contains(image.id.as_str()));
         Ok(ConversionResult { images, cancelled })
@@ -220,6 +245,42 @@ impl Workspace {
     pub fn plan(&self) -> Result<ReplacementPlan, String> {
         Journal::load(Path::new(&self.scan.project.root))?.ensure_settled()?;
         Ok(transaction::prepare(&self.scan.project, &self.scan.sources, &self.converted)?.plan)
+    }
+
+    pub(crate) fn repair_candidates(&self, image_id: &str) -> Result<Vec<crate::repair::Candidate>, String> {
+        crate::repair::candidates(self.project(), image_id)
+    }
+
+    pub fn preview_repair(&mut self, image_id: &str, target: &Path) -> Result<ReplacementPlan, String> {
+        let prepared = crate::repair::prepare(&self.scan, image_id, target)?;
+        self.pending_repair = Some((image_id.into(), target.to_path_buf(), prepared.plan.clone()));
+        Ok(prepared.plan)
+    }
+
+    pub fn apply_reviewed(&mut self, selection: HashSet<String>, expected: &ReplacementPlan, repair: bool) -> Result<MutationResult, String> {
+        let result = (|| {
+            let root = Path::new(&self.scan.project.root);
+            let _lock = transaction::lock_project(root)?;
+            let mut journal = Journal::load(root)?;
+            journal.ensure_settled()?;
+            let prepared = if repair {
+                let (id, target, reviewed) = self.pending_repair.as_ref().ok_or("修复预览已失效，请重新定位文件")?;
+                transaction::verify_review(reviewed, expected)?;
+                crate::repair::prepare_reviewed(&self.scan, id, target, expected, &selection)?
+            } else { transaction::prepare_reviewed(&self.scan.project, &self.scan.sources, &self.converted, &selection, expected)? };
+            let candidate = journal.latest_batch_id().map(str::to_owned).filter(|id|
+                journal.history(root).iter().any(|entry| entry.id == *id && entry.references_changed == 0));
+            let batch_id = if repair || candidate.is_none() {
+                let options = ConversionOptions { image_ids: Vec::new(), quality: "custom".into(), dpi: 300, jpeg_quality: 100, output_dir: "texgo-pdf".into() };
+                let index = journal.begin(root, &options)?;
+                journal.finish_batch(root, index, false)?;
+                journal.latest_batch_id().map(str::to_owned)
+            } else { candidate };
+            transaction::apply_linked(&self.scan.project, prepared, batch_id.as_deref())
+        })();
+        if result.is_ok() { self.pending_repair = None; }
+        self.refresh()?;
+        result
     }
 
     pub fn apply(&mut self) -> Result<MutationResult, String> {
@@ -248,6 +309,12 @@ impl Workspace {
         let path = if converted {
             self.converted.get(image_id).map(|entry| entry.path.as_path()).ok_or("请先转换此图片")?
         } else { Path::new(asset.path.as_deref().ok_or("图片路径未解析")?) };
+        self.preview_output(image_id, path)
+    }
+
+    pub fn preview_output(&self, image_id: &str, path: &Path) -> Result<AssetPreview, String> {
+        let asset = self.scan.project.images.iter().find(|asset| asset.id == image_id).ok_or("找不到图片")?;
+        journal::safe_path(Path::new(&self.scan.project.root), path)?;
         let path = path.canonicalize().map_err(|e| e.to_string())?;
         if !path.starts_with(&self.scan.project.root) { return Err("图片位于项目之外".into()); }
         if fs::metadata(&path).map_err(|e| e.to_string())?.len() > 64 * 1024 * 1024 { return Err("文件过大，无法内嵌预览".into()); }

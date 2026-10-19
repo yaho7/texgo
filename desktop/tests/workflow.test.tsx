@@ -585,6 +585,29 @@ describe("LaTeX 图片工作流", () => {
     expect(screen.getByText("暂无转换记录")).toBeInTheDocument();
   });
 
+  it("refreshes recovery history after an interrupted batch undo", async () => {
+    handlers.conversion_history = () => [{ id: "batch-1", createdAt: 1700000000000, outputDir: "pdf", dpi: 300, jpegQuality: 90, undone: false, canUndo: true, referencesChanged: 1, filesChanged: 1, files: [] }];
+    handlers.undo_conversion = () => { throw new Error("撤销中断，保留恢复记录"); };
+    const user = await openProject();
+    await user.click(screen.getByRole("tab", { name: /转换记录/ }));
+    await user.click(screen.getByRole("button", { name: "撤销此批次" }));
+    await user.click(within(screen.getByRole("dialog", { name: "撤销此批次？" })).getByRole("button", { name: "确认撤销" }));
+    await screen.findByText("撤销中断，保留恢复记录");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(calls.filter(({ command }) => command === "refresh_workspace")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "撤销此批次" })).toBeEnabled();
+  });
+
+  it("keeps comparison selected when a background scan refreshes the current asset", async () => {
+    backendProject.convertedImages = success.images;
+    const user = await openProject();
+    await user.click(screen.getByRole("radio", { name: "对比" }));
+    handlers.poll_workspace = () => structuredClone(backendProject);
+    await act(async () => { window.dispatchEvent(new Event("focus")); });
+    await screen.findByText("已自动更新图片状态");
+    expect(screen.getByRole("radio", { name: "对比" })).toHaveAttribute("aria-checked", "true");
+  });
+
   it("discards the stale workspace when recovery refresh also fails after a partial apply", async () => {
     const user = await openProject();
     await convertFirst(user);

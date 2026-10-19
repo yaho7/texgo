@@ -7,6 +7,7 @@ import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { AssetStatus, ImageAsset, ImageResult } from "./types";
 import { formatBytes } from "./utils";
@@ -21,11 +22,13 @@ export const statusLabels: Record<AssetStatus, string> = {
 
 interface Props {
   images: ImageAsset[];
+  allImages?: ImageAsset[];
   total: number;
   selected: Set<string>;
   activeId: string | null;
   results: Record<string, ImageResult>;
   busy: boolean;
+  previewDisabled?: boolean;
   search: string;
   filter: string;
   onSearch: (value: string) => void;
@@ -45,6 +48,14 @@ export default function AssetList(props: Props) {
   const readyIds = props.images.filter((image) => image.status === "ready").map((image) => image.id);
   const checkedCount = readyIds.filter((id) => props.selected.has(id)).length;
   const allChecked = readyIds.length > 0 && checkedCount === readyIds.length;
+  const sourceImages = props.allImages ?? props.images;
+  const summary = [
+    { value: "all", label: "全部", count: sourceImages.length },
+    { value: "pending", label: "待处理", count: sourceImages.filter((image) => image.status === "ready" && !(props.results[image.id]?.pdfPath && !props.results[image.id]?.error)).length },
+    { value: "attention", label: "需注意", count: sourceImages.filter((image) => ["missing", "ambiguous", "unsupported"].includes(image.status) || props.results[image.id]?.error).length },
+    { value: "converted", label: "已完成", count: sourceImages.filter((image) => props.results[image.id]?.pdfPath && !props.results[image.id]?.error).length },
+    { value: "updatable", label: "可更新", count: sourceImages.filter((image) => image.updateAvailable && !(props.results[image.id]?.pdfPath && !props.results[image.id]?.error)).length },
+  ];
   return (
     <section className="asset-panel @container flex min-h-0 min-w-0 flex-1 flex-col bg-background" aria-label="项目图片">
       <header className="flex shrink-0 flex-col gap-3 px-4 py-3">
@@ -56,6 +67,8 @@ export default function AssetList(props: Props) {
           </InputGroup>
           <NativeSelect name="assetStatus" autoComplete="off" aria-label="筛选状态" value={props.filter} onChange={(event) => props.onFilter(event.target.value)}>
             <NativeSelectOption value="all">全部状态</NativeSelectOption>
+            <NativeSelectOption value="pending">待处理</NativeSelectOption>
+            <NativeSelectOption value="attention">需注意</NativeSelectOption>
             <NativeSelectOption value="ready">可转换</NativeSelectOption>
             <NativeSelectOption value="updatable">可更新</NativeSelectOption>
             <NativeSelectOption value="converted">已转换</NativeSelectOption>
@@ -66,6 +79,9 @@ export default function AssetList(props: Props) {
             <NativeSelectOption value="pdf">PDF</NativeSelectOption>
           </NativeSelect>
         </div>
+        <ToggleGroup type="single" className="asset-summary" value={props.filter} onValueChange={(value) => { if (value) props.onFilter(value); }} aria-label="图片状态摘要">
+          {summary.map((item) => <ToggleGroupItem key={item.value} value={item.value} aria-label={`${item.label} ${item.count}`}><span>{item.label}</span><span className="tabular-nums">{item.count}</span></ToggleGroupItem>)}
+        </ToggleGroup>
       </header>
       <Separator />
       <div className="min-h-0 flex-1 overflow-auto">
@@ -77,7 +93,6 @@ export default function AssetList(props: Props) {
                 <label className="asset-selection-target"><Checkbox aria-label="选择当前列表" checked={allChecked ? true : checkedCount > 0 ? "indeterminate" : false} disabled={props.busy || readyIds.length === 0} onCheckedChange={() => props.onSelectAll(readyIds, !allChecked)} /></label>
               </TableHead>
               <TableHead>图片</TableHead>
-              <TableHead className="hidden w-28 @min-[36rem]:table-cell">尺寸</TableHead>
               <TableHead className="w-20 text-right">大小</TableHead>
               <TableHead className="w-28 pr-4 text-right">状态</TableHead>
             </TableRow>
@@ -94,23 +109,21 @@ export default function AssetList(props: Props) {
               const filename = normalizedPath.slice(slash + 1);
               const folder = slash < 0 ? "." : normalizedPath.slice(0, slash);
               return (
-                <TableRow key={asset.id} data-state={props.activeId === asset.id ? "selected" : undefined} data-disabled={props.busy} className="asset-row h-[76px]">
+                <TableRow key={asset.id} data-state={props.activeId === asset.id ? "selected" : undefined} data-disabled={Boolean(props.previewDisabled)} className="asset-row h-[60px]">
                   <TableCell className="asset-selection-cell">
                     <label className="asset-selection-target"><Checkbox aria-label={`选择 ${asset.relativePath}`} checked={props.selected.has(asset.id)} disabled={props.busy || asset.status !== "ready"} onCheckedChange={() => props.onSelect(asset.id)} /></label>
                   </TableCell>
                   <TableCell className="min-w-0 whitespace-normal">
                     <div className="flex min-w-0 flex-col gap-1">
-                      <Button variant="ghost" className="asset-preview-trigger h-auto min-w-0 justify-start px-0 py-0" disabled={props.busy} aria-label={`预览 ${asset.relativePath}`} aria-pressed={props.activeId === asset.id} onClick={() => props.onActivate(asset.id)} title={asset.relativePath}>
+                      <Button variant="ghost" className="asset-preview-trigger h-auto min-w-0 justify-start px-0 py-0" disabled={props.previewDisabled} aria-label={`预览 ${asset.relativePath}`} aria-pressed={props.activeId === asset.id} onClick={() => props.onActivate(asset.id)} title={asset.relativePath}>
                         {warning ? <FileWarning data-icon="inline-start" aria-hidden="true" /> : <FileImage data-icon="inline-start" aria-hidden="true" />}
                         <span className="truncate">{filename}</span>
                       </Button>
-                      <p className="truncate text-xs text-muted-foreground" title={asset.relativePath}>{folder}</p>
-                      <p className="text-xs text-muted-foreground">{asset.format.toUpperCase()}{asset.references.length > 0 ? ` · ${asset.references.length} 处引用` : ""}</p>
+                      <p className="truncate text-xs text-muted-foreground" title={asset.relativePath}>{folder} · {asset.format.toUpperCase()}{asset.width && asset.height ? ` · ${asset.width} × ${asset.height}` : ""}</p>
                       {result?.error && !result.cancelled && <p className="break-words text-xs text-destructive">{result.error}</p>}
                       {asset.message && <p className="break-words text-xs text-muted-foreground">{asset.message}</p>}
                     </div>
                   </TableCell>
-                  <TableCell className="hidden @min-[36rem]:table-cell"><span className="text-xs tabular-nums text-muted-foreground">{asset.width && asset.height ? `${asset.width} × ${asset.height}` : "-"}</span></TableCell>
                   <TableCell className="text-right"><span className="text-xs tabular-nums text-muted-foreground">{formatBytes(asset.bytes)}</span></TableCell>
                   <TableCell className="pr-4 text-right">
                     <Badge className={updatable && !result?.error ? "update-badge" : undefined} variant={result?.error && !result.cancelled ? "destructive" : converted ? "success" : warning ? "warning" : "secondary"} title={updatable ? "源图片或 SVG 依赖已变化，可重新转换" : result?.pdfPath ?? undefined}>

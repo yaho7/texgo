@@ -1,4 +1,4 @@
-import { FileCode2, FolderOpen, Images, Plus, X } from "lucide-react";
+import { FileCode2, FolderOpen, House, Images, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import IconButton from "./IconButton";
 import type { RecentWorkspace } from "./recents";
@@ -21,9 +21,9 @@ export default function WorkspaceSidebar(props: Props) {
   return <nav className="sidebar-content" aria-label="项目导航">
     <div className="sidebar-brand" translate="no"><FileCode2 aria-hidden="true" /><span>Texgo</span></div>
     <div className="sidebar-actions">
-      <Button variant="ghost" disabled={props.busy} onClick={props.onHome}><Plus aria-hidden="true" />新建工作区</Button>
-      <Button variant="ghost" disabled={props.busy} onClick={props.onOpenTex}><FolderOpen aria-hidden="true" />打开项目</Button>
-      <Button variant="ghost" disabled={props.busy} onClick={props.onOpenDirectory}><Images aria-hidden="true" />图片目录</Button>
+      <Button variant="ghost" disabled={props.busy} onClick={props.onHome}><House aria-hidden="true" />主页</Button>
+      <Button variant="ghost" disabled={props.busy} onClick={props.onOpenTex}><FolderOpen aria-hidden="true" />打开 LaTeX 项目</Button>
+      <Button variant="ghost" disabled={props.busy} onClick={props.onOpenDirectory}><Images aria-hidden="true" />批量转换图片</Button>
     </div>
     <section className="sidebar-recents" aria-label="最近打开">
       <h2>最近打开<span>{props.recents.length}</span></h2>

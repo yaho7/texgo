@@ -393,6 +393,10 @@ fn failed_selected_images_do_not_silently_reuse_older_outputs_in_a_plan() {
     let plan = ws.plan().unwrap();
     assert_eq!(plan.reference_count, 1);
     assert_eq!(plan.files[0].changes[0].after, "next/b.pdf");
+    ws.refresh().unwrap();
+    let plan = ws.plan().unwrap();
+    assert_eq!(plan.reference_count, 1, "background refresh must not revive a failed image's older PDF");
+    assert_eq!(plan.files[0].changes[0].after, "next/b.pdf");
 }
 
 #[test]
@@ -407,6 +411,9 @@ fn failed_batch_start_invalidates_selected_outputs_in_the_session() {
     fs2::FileExt::lock_exclusive(&lock).unwrap();
     assert!(ws.convert(&opts, &AtomicBool::new(false), |_| {}).is_err());
     drop(lock);
+    assert!(ws.project().converted_images.is_empty());
+    assert_eq!(ws.plan().unwrap().reference_count, 0);
+    ws.refresh().unwrap();
     assert!(ws.project().converted_images.is_empty());
     assert_eq!(ws.plan().unwrap().reference_count, 0);
 }
