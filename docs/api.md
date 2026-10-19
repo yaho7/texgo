@@ -243,7 +243,11 @@ only outputs whose PDF, source and dependency hashes remain valid on reopen.
 
 `updateAvailable` is true when a convertible source or its SVG dependencies have
 changed since a managed, intact PDF was generated. It is recomputed when opening,
-refreshing, converting or undoing a workspace; it is not a filesystem watcher.
+refreshing, converting or undoing a workspace. The desktop app checks metadata
+in the background every 2.5 seconds while visible and idle, and on window focus;
+it rescans only after a change. Review dialogs and file mutations pause polling.
+Search, filters, valid selections and comparison mode survive automatic refresh.
+The headless engine does not start background work merely by opening a project.
 Content hashes are compared, so rewriting identical bytes does not trigger an
 update. Missing or externally edited PDFs are not offered as safe updates. If a
 valid current output exists, it takes precedence over older stale conversions.

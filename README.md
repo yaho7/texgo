@@ -16,10 +16,13 @@ ad-hoc signed and not notarized. See [platform requirements and signing](docs/de
 ## Workflow
 
 1. Open a `.tex` main file, or choose an image directory without TeX references.
-2. Select images and set DPI, quality percentage and the output directory.
+2. Select images; expand output settings for presets, DPI, quality and destination.
 3. Convert to same-stem PDFs while preserving source images and subdirectories.
-4. Preview PDFs and review TeX reference replacements before applying them.
-5. Reopen recent workspaces or inspect conversion history to undo a batch safely.
+4. Compare the original and PDF side by side, then review and select reference changes.
+5. Undo a complete task, including its references and PDFs, from conversion history.
+
+Image changes are detected in the background. The application menu contains
+GitHub release checks, manual rescanning and other less frequent actions.
 
 Conversion does not require GraphicsMagick or TeX. Document compilation through
 the engine requires an installed TeX distribution and `latexmk`. Quality 100

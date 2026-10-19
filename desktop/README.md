@@ -6,8 +6,13 @@ workspaces and settings are remembered. PDFs retain the source stem and relative
 subdirectories in a custom output folder; source images remain intact.
 
 Conversion settings are DPI and quality percentage only (100 is lossless).
-Persistent conversion history supports guarded batch undo, separately from
-reference replacement undo. Existing unrelated PDFs are never overwritten.
+Persistent conversion history groups converted PDFs and reviewed reference
+changes into one guarded undo operation. Originals and unrelated PDFs are preserved.
+The primary action advances from conversion to reference review. Settings are
+collapsed by default; image changes refresh automatically without clearing selection.
+Original/PDF comparison, selectable reference review and reviewed missing-image
+repairs share the same workspace. Low-frequency actions and GitHub app updates
+live in the menu, with native desktop shortcuts and TeX file drag-and-drop.
 
 Every installer includes the independent `texgo-engine` CLI/JSON-RPC API.
 Install once for both GUI and automation; no second engine download is needed.
