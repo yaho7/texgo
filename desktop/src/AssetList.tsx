@@ -48,10 +48,7 @@ export default function AssetList(props: Props) {
   return (
     <section className="asset-panel @container flex min-h-0 min-w-0 flex-1 flex-col bg-background" aria-label="项目图片">
       <header className="flex shrink-0 flex-col gap-3 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold">项目图片</h2>
-          <Badge variant="secondary">{props.total}</Badge>
-        </div>
+        <h2 className="sr-only">项目图片</h2>
         <div className="flex min-w-0 items-center gap-2">
           <InputGroup className="min-w-0 flex-1">
             <InputGroupInput type="search" name="imageSearch" autoComplete="off" spellCheck={false} aria-label="搜索图片" placeholder="搜索路径或格式…" value={props.search} onChange={(event) => props.onSearch(event.target.value)} />

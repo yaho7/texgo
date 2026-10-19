@@ -75,13 +75,17 @@ try {
   await page.getByRole("button", { name: "打开 .tex 主文件", exact: true }).click();
   await page.getByRole("button", { name: "预览 figures/result.png", exact: true }).waitFor();
   await page.getByRole("img", { name: "原始：figures/result.png", exact: true }).waitFor();
+  await page.getByRole("button", { name: "收起侧栏", exact: true }).click();
+  assert.equal(await page.getByRole("navigation", { name: "项目导航", exact: true }).count(), 0);
+  await page.getByRole("button", { name: "展开侧栏", exact: true }).click();
+  await page.getByRole("navigation", { name: "项目导航", exact: true }).waitFor();
   // Hit the row padding and metadata, not just its filename button.
   const secondPreview = page.getByRole("button", { name: "预览 figures/实验装置与磁流体响应结果.png", exact: true });
   const secondRow = secondPreview.locator("xpath=ancestor::tr");
   for (const column of [1, 2, 3, 4]) {
     await page.getByRole("button", { name: "预览 figures/result.png", exact: true }).click();
-    const cell = await secondRow.getByRole("cell").nth(column).boundingBox();
-    assert.ok(cell);
+    const cell = await secondRow.locator("td").nth(column).boundingBox();
+    if (!cell || cell.width === 0) continue;
     await page.mouse.click(cell.x + cell.width - 4, cell.y + cell.height - 4);
     assert.equal(await secondPreview.getAttribute("aria-pressed"), "true", `Column ${column} padding must activate preview`);
   }
@@ -141,11 +145,20 @@ try {
     await page.getByRole("button", { name: "预览 figures/result.png", exact: true }).click();
   }
   await page.getByRole("button", { name: "返回首页", exact: true }).click();
+  await page.getByRole("button", { name: "打开项目导航", exact: true }).click();
+  await page.getByRole("dialog", { name: "项目导航", exact: true }).waitFor();
+  await page.screenshot({ path: "screenshots/fixture-navigation-mobile.png", fullPage: true });
+  await page.keyboard.press("Escape");
+  await page.getByRole("dialog", { name: "项目导航", exact: true }).waitFor({ state: "hidden" });
+  await page.waitForFunction(() => document.activeElement?.id === "sidebar-toggle");
+  await page.getByRole("button", { name: "打开项目导航", exact: true }).click();
   const recent = page.getByRole("button", { name: "打开最近项目 /论文/main.tex", exact: true });
   const recentBox = await recent.boundingBox();
   await page.mouse.click(recentBox.x + recentBox.width - 4, recentBox.y + recentBox.height - 4);
   await page.getByRole("button", { name: "预览 figures/result.png", exact: true }).waitFor();
+  assert.equal(await page.getByRole("dialog").count(), 0, "Switching projects must dismiss navigation");
   await page.getByRole("button", { name: "返回首页", exact: true }).click();
+  await page.getByRole("button", { name: "打开项目导航", exact: true }).click();
   await page.getByRole("button", { name: /移除.*main.tex/ }).click();
   await page.getByText("暂无最近记录", { exact: true }).waitFor();
 

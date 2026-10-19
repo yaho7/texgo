@@ -1,9 +1,9 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ArrowLeft, Check, ChevronRight, FileCode2, FolderOpen, FolderPlus, History, Images, LoaderCircle, RefreshCw, RotateCcw, Square, TriangleAlert, X } from "lucide-react";
+import { ArrowLeft, Check, FolderOpen, FolderPlus, History, Images, LoaderCircle, PanelLeft, RefreshCw, RotateCcw, Square, TriangleAlert, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import IconButton from "./IconButton";
@@ -20,6 +19,7 @@ import AssetPreview from "./AssetPreview";
 import ConversionPanel from "./ConversionPanel";
 import ConversionHistory from "./ConversionHistory";
 import Home from "./Home";
+import WorkspaceSidebar from "./WorkspaceSidebar";
 import ReviewDialog from "./ReviewDialog";
 import Splitter from "./Splitter";
 import { conversionOptions, defaultSettings, settingsIssues } from "./settings";
@@ -60,8 +60,25 @@ export default function App() {
   const cancelRef = useRef(false);
   const [review, setReview] = useState<ChangePreview | null>(null);
   const [revision, setRevision] = useState(0);
-  const [assetsWidth, setAssetsWidth] = useState(720);
+  const [assetsWidth, setAssetsWidth] = useState(560);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [narrow, setNarrow] = useState(() => window.matchMedia?.("(max-width: 980px)").matches ?? false);
   const busy = operation !== null;
+
+  useEffect(() => {
+    const media = window.matchMedia?.("(max-width: 980px)");
+    if (!media) return;
+    const update = () => { setNarrow(media.matches); setDrawerOpen(false); };
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  function goHome() {
+    if (operationRef.current) return;
+    setDrawerOpen(false);
+    clearAssetState(); setProject(null); setError(null); setNotice("就绪");
+  }
 
   function restoreFocus() {
     requestAnimationFrame(() => {
@@ -139,6 +156,7 @@ export default function App() {
   }
 
   function openRecent(entry: RecentWorkspace) {
+    if (project && workspaceKey(projectEntry(project)) === workspaceKey(entry)) return;
     void execute("opening", async () => {
       try {
         const next = entry.mode === "tex"
@@ -266,26 +284,30 @@ export default function App() {
   const missingCount = project?.images.filter((image) => image.status === "missing").reduce((sum, image) => sum + image.references.length, 0) ?? 0;
   const progressValue = progress && progress.total > 0 ? Math.min(100, Math.max(0, progress.current / progress.total * 100)) : 0;
   const layoutStyle = { "--assets-width": `${assetsWidth}px` } as CSSProperties;
+  const sidebar = <WorkspaceSidebar busy={busy} activeKey={project ? workspaceKey(projectEntry(project)) : null} recents={recents} failedRecent={failedRecent}
+    onHome={goHome} onOpenTex={() => { setDrawerOpen(false); openProject(); }} onOpenDirectory={() => { setDrawerOpen(false); openDirectory(); }}
+    onRecent={(entry) => { setDrawerOpen(false); openRecent(entry); }}
+    onRemove={(entry) => { const saved = removeRecent(entry); setRecents(readRecents()); setNotice(saved ? "已移除最近记录，文件未删除" : "无法移除记录，请检查应用存储权限"); }} />;
 
   return <TooltipProvider delayDuration={350}><div className="app-shell">
     <div className="workbench" inert={review !== null || undoEntry !== null}>
       <a href="#main-content" className="skip-link">跳转到工作区</a>
+      {!narrow && sidebarOpen && <aside className="workspace-sidebar">{sidebar}</aside>}
+      <div className="workspace-main">
       <header className="app-toolbar">
-        {project && <IconButton label="返回首页" disabled={busy} onClick={() => { clearAssetState(); setProject(null); setError(null); setNotice("就绪"); }}><ArrowLeft aria-hidden="true" /></IconButton>}
-        <div className="brand" translate="no"><span className="brand-mark"><FileCode2 aria-hidden="true" /></span><span>Texgo</span></div>
-        <ChevronRight className="project-chevron" aria-hidden="true" />
-        <div className="project-title"><strong title={project?.mainFile || project?.root}>{project ? fileName(project.mainFile || project.root) : "工作台"}</strong></div>
-        {project && <div className="toolbar-actions"><IconButton label="重新扫描" disabled={busy} onClick={() => { void execute("opening", () => refresh()); }}><RefreshCw aria-hidden="true" /></IconButton><Separator orientation="vertical" className="h-5" /><Button variant="outline" size="sm" disabled={busy} onClick={openProject}><FolderOpen data-icon="inline-start" aria-hidden="true" />打开 .tex 主文件</Button></div>}
+        <IconButton id="sidebar-toggle" label={narrow ? "打开项目导航" : sidebarOpen ? "收起侧栏" : "展开侧栏"} aria-expanded={narrow ? drawerOpen : sidebarOpen} onClick={() => narrow ? setDrawerOpen(true) : setSidebarOpen((value) => !value)}><PanelLeft aria-hidden="true" /></IconButton>
+        {project && <IconButton label="返回首页" disabled={busy} onClick={goHome}><ArrowLeft aria-hidden="true" /></IconButton>}
+        <div className="project-title">{project ? <><h1 title={project.mainFile || project.root}>{fileName(project.mainFile || project.root)}</h1><p title={project.root}>{project.root}</p></> : <span>新工作区</span>}</div>
+        {project && <div className="toolbar-actions"><Badge variant="outline" className="project-file-count">{project.mode === "directory" ? "图片目录" : `${project.texFiles.length} 个 TeX 文件`}</Badge><IconButton label="重新扫描" disabled={busy} onClick={() => { void execute("opening", () => refresh()); }}><RefreshCw aria-hidden="true" /></IconButton><IconButton label="打开 .tex 主文件" disabled={busy} onClick={openProject}><FolderOpen aria-hidden="true" /></IconButton></div>}
       </header>
       {error && !review && !undoEntry && <Alert variant="destructive" role="alert" className="workbench-alert"><TriangleAlert aria-hidden="true" /><AlertTitle>操作未完成</AlertTitle><AlertDescription className="flex items-start justify-between gap-4"><span>{error}</span><IconButton label="关闭错误提示" onClick={() => setError(null)}><X aria-hidden="true" /></IconButton></AlertDescription></Alert>}
-      {!project ? <Home busy={busy} recursive={recursive} recents={recents} failedRecent={failedRecent} onRecursive={setRecursive} onOpenTex={openProject} onOpenDirectory={() => openDirectory()} onRecent={openRecent} onRemove={(entry) => { const saved = removeRecent(entry); setRecents(readRecents()); setNotice(saved ? "已移除最近记录，文件未删除" : "无法移除记录，请检查应用存储权限"); }} /> : <>
-        <section className="project-heading"><div><div className="workspace-title"><Images aria-hidden="true" /><h1>{project.mode === "directory" ? "图片目录" : "项目图片"}</h1><Badge variant="secondary">{project.images.length}</Badge></div><p title={project.root}>{project.root}</p></div><Badge variant="outline">{project.mode === "directory" ? "目录转换" : `${project.texFiles.length} 个 TeX 文件`}</Badge></section>
+      {!project ? <Home busy={busy} recursive={recursive} onRecursive={setRecursive} onOpenTex={openProject} onOpenDirectory={() => openDirectory()} /> : <>
         {(missingCount > 0 || project.warnings.length > 0) && <Alert className="workbench-alert scan-alert"><TriangleAlert aria-hidden="true" /><AlertTitle>{missingCount > 0 ? `${missingCount} 个图片引用缺失` : "项目扫描警告"}</AlertTitle><AlertDescription><details><summary>{project.warnings.length || missingCount} 条警告</summary><ul>{project.warnings.map((warning, index) => <li key={index}>{warning}</li>)}{missingCount > 0 && project.warnings.length === 0 && project.images.filter((image) => image.status === "missing").map((image) => <li key={image.id}>{image.relativePath}：{image.message || "文件不存在"}</li>)}</ul></details></AlertDescription></Alert>}
         <Tabs value={view} onValueChange={setView} className="workspace-tabs">
           <div className="workspace-nav"><TabsList variant="line" aria-label="工作区视图"><TabsTrigger value="assets"><Images aria-hidden="true" />图片</TabsTrigger><TabsTrigger value="history"><History aria-hidden="true" />转换记录<Badge variant="secondary">{history.length}</Badge></TabsTrigger></TabsList>
             <div className="directory-actions"><Field orientation="horizontal" className="directory-recursive"><FieldLabel htmlFor="workspace-recursive" className="checkbox-option"><Checkbox id="workspace-recursive" name="recursive" checked={recursive} disabled={busy} onCheckedChange={(checked) => changeRecursive(checked === true)} /><span>{project.mode === "directory" ? "包含子目录" : "新增目录包含子目录"}</span></FieldLabel></Field><Button variant="ghost" size="sm" disabled={busy} onClick={() => openDirectory(true)}><FolderPlus data-icon="inline-start" aria-hidden="true" />添加图片目录</Button></div>
           </div>
-          <main id="main-content" tabIndex={-1} className="workspace-grid" style={layoutStyle}>
+          <main id="main-content" tabIndex={-1} className="workspace-grid" data-view={view} style={layoutStyle}>
             <div className="workspace-library"><TabsContent value="assets" className="library-content"><AssetList images={visibleImages} total={project.images.length} selected={selected} activeId={activeId} results={results} busy={busy} search={search} filter={filter} onSearch={setSearch} onFilter={setFilter} onActivate={setActiveId}
               onSelect={(id) => { if (!busy) setSelected((previous) => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }}
               onSelectAll={(ids, select) => { if (!busy) setSelected((previous) => { const next = new Set(previous); ids.forEach((id) => { if (select) next.add(id); else next.delete(id); }); return next; }); }} /></TabsContent>
@@ -298,7 +320,15 @@ export default function App() {
         </Tabs>
       </>}
       <footer className="status-bar"><div className="status-text" role="status" aria-live="polite">{busy ? <LoaderCircle className="spin" aria-hidden="true" /> : project ? <Check aria-hidden="true" /> : <span className="status-dot" />}<span>{operation ? cancelRequested ? "正在完成当前图片，随后取消…" : operationLabels[operation] : notice}</span>{operation === "converting" && progress && <span className="progress-name" title={progress.name}>{progress.current} / {progress.total}　{progress.name}</span>}</div>{operation === "converting" && <div className="progress-controls"><Progress value={progressValue} aria-label="转换进度" className="w-28" /><Button variant="outline" size="sm" aria-label="取消转换" disabled={cancelRequested} onClick={() => { void cancelConversion(); }}><Square data-icon="inline-start" aria-hidden="true" />{cancelRequested ? "等待取消…" : "取消转换"}</Button></div>}{!busy && project && <span className="status-file-count">{selected.size} 张已选</span>}</footer>
+      </div>
     </div>
+    <Dialog open={narrow && drawerOpen} onOpenChange={setDrawerOpen}>
+      <DialogContent className="navigation-drawer" showCloseButton={false} onCloseAutoFocus={(event) => { event.preventDefault(); document.getElementById("sidebar-toggle")?.focus(); }}>
+        <DialogTitle className="sr-only">项目导航</DialogTitle><DialogDescription className="sr-only">打开项目与最近工作区</DialogDescription>
+        <Button variant="ghost" size="icon" className="drawer-close" aria-label="关闭项目导航" title="关闭项目导航" onClick={() => setDrawerOpen(false)}><X aria-hidden="true" /></Button>
+        {sidebar}
+      </DialogContent>
+    </Dialog>
     {review && project && <ReviewDialog preview={review} root={project.root} busy={busy} error={error} onClose={() => { if (!operationRef.current) { setReview(null); setError(null); restoreFocus(); } }} onApply={() => replace(false)} />}
     <Dialog open={undoEntry !== null} onOpenChange={(value) => { if (!value && !operationRef.current) { setUndoEntry(null); setError(null); } }}>
       <DialogContent showCloseButton={false} onCloseAutoFocus={(event) => { event.preventDefault(); restoreFocus(); }} onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }} onInteractOutside={(event) => { if (busy) event.preventDefault(); }}>

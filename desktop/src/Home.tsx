@@ -1,26 +1,15 @@
-import { Clock3, FileCode2, FolderOpen, Images, LoaderCircle, X } from "lucide-react";
+import { FileCode2, FolderOpen, Images, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Badge } from "@/components/ui/badge";
-import IconButton from "./IconButton";
-import type { RecentWorkspace } from "./recents";
-import { workspaceKey } from "./recents";
-import { fileName } from "./utils";
 
 interface Props {
   busy: boolean;
   recursive: boolean;
-  recents: RecentWorkspace[];
-  failedRecent: string | null;
   onRecursive: (value: boolean) => void;
   onOpenTex: () => void;
   onOpenDirectory: () => void;
-  onRecent: (entry: RecentWorkspace) => void;
-  onRemove: (entry: RecentWorkspace) => void;
 }
-
-const dateFormat = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
 export default function Home(props: Props) {
   return <main id="main-content" tabIndex={-1} className="home-workspace">
@@ -37,20 +26,6 @@ export default function Home(props: Props) {
           <span>图片目录包含子目录</span>
         </FieldLabel>
       </Field>
-    </section>
-    <section className="recent-section" aria-labelledby="recent-title">
-      <header><h2 id="recent-title"><Clock3 aria-hidden="true" />最近打开</h2><span>{props.recents.length}</span></header>
-      {props.recents.length === 0 ? <p className="recent-empty">暂无最近记录</p> : <ul className="recent-list">
-        {props.recents.map((entry) => <li key={workspaceKey(entry)} className="recent-item">
-          <Button variant="ghost" className="recent-open" disabled={props.busy} aria-label={`打开最近${entry.mode === "tex" ? "项目" : "目录"} ${entry.path}`} onClick={() => props.onRecent(entry)}>
-            {entry.mode === "tex" ? <FileCode2 aria-hidden="true" /> : <Images aria-hidden="true" />}
-            <span className="recent-copy"><strong>{fileName(entry.path)}</strong><span title={entry.path}>{entry.path}</span>{props.failedRecent === workspaceKey(entry) && <span className="text-destructive">无法打开，请检查路径或重新选择</span>}</span>
-            <Badge variant="secondary">{entry.mode === "tex" ? "TeX" : "目录"}</Badge>
-            <time dateTime={new Date(entry.openedAt).toISOString()}>{dateFormat.format(entry.openedAt)}</time>
-          </Button>
-          <IconButton label={`移除最近记录 ${entry.path}`} disabled={props.busy} onClick={() => props.onRemove(entry)}><X aria-hidden="true" /></IconButton>
-        </li>)}
-      </ul>}
     </section>
   </main>;
 }

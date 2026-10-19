@@ -91,6 +91,21 @@ async function convertFirst(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("LaTeX 图片工作流", () => {
+  it("keeps the current workspace intact when its sidebar recent entry is clicked", async () => {
+    const user = await openProject();
+    await user.click(screen.getByRole("checkbox", { name: "选择 figures/alpha.png" }));
+    const recent = screen.getByRole("button", { name: "打开最近项目 /paper/main.tex" });
+    expect(recent).toHaveAttribute("aria-current", "page");
+    await user.click(recent);
+    expect(calls.filter(({ command }) => command === "open_project")).toHaveLength(1);
+    expect(screen.getByRole("checkbox", { name: "选择 figures/alpha.png" })).toBeChecked();
+    await user.click(screen.getByRole("button", { name: "收起侧栏" }));
+    expect(screen.queryByRole("navigation", { name: "项目导航" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "展开侧栏" }));
+    expect(screen.getByRole("navigation", { name: "项目导航" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "选择 figures/alpha.png" })).toBeChecked();
+  });
+
   it("toggles the entire recursive option without double toggling its checkbox", async () => {
     const user = userEvent.setup();
     render(<App />);
