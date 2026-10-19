@@ -111,6 +111,7 @@ pub(crate) fn apply_linked(project: &Project, prepared: Prepared, batch_id: Opti
     let root = Path::new(&project.root);
     // Workspace holds the project lock from validation through the final write.
     archive_linked_legacy(root)?;
+    crate::journal::Journal::load(root)?.cleanup_finished_references(root)?;
     let record_path = match batch_id {
         Some(id) => {
             if legacy_undo_available(root) { return Err("存在旧版独立引用恢复记录，请先单独恢复".into()); }
@@ -139,6 +140,9 @@ pub(crate) fn apply_linked(project: &Project, prepared: Prepared, batch_id: Opti
         journal.associate_references(root, id, prepared.plan.reference_count, prepared.files.len())?;
     }
     save_atomic(&record_path, &serde_json::to_vec_pretty(&record).map_err(|e| e.to_string())?)?;
+    if let Some(id) = batch_id {
+        crate::journal::Journal::load(root)?.references_ready(root, id)?;
+    }
     for (path, before, after) in &prepared.files {
         // Recheck immediately before each write. A partial operation retains its recovery record.
         ensure_current(root, path, before).and_then(|_| save_atomic(path, after))
@@ -225,21 +229,46 @@ fn batch_record(root: &Path, batch_id: &str) -> Result<Option<Undo>, String> {
 }
 
 pub(crate) fn preflight_for_batch(root: &Path, batch_id: &str) -> Result<(), String> {
-    let Some(record) = batch_record(root, batch_id)? else { return Ok(()); };
-    restore_files(root, &record).map(|_| ())
+    crate::journal::Journal::load(root)?.preflight_references(root, batch_id)
+}
+
+pub(crate) fn preflight_recovery(root: &Path, batch_id: &str, required: bool, restored: bool) -> Result<(), String> {
+    let Some(record) = batch_record(root, batch_id)? else {
+        return if required { Err("批次引用恢复记录丢失，无法安全撤销；请恢复记录后重试".into()) } else { Ok(()) };
+    };
+    let remaining = restore_files(root, &record)?;
+    if restored && !remaining.is_empty() { return Err("已恢复的 TeX 文件又被修改，不能继续撤销 PDF".into()); }
+    Ok(())
+}
+
+// Called only after a durable completed journal entry; never restores user files.
+pub(crate) fn cleanup_batch_record(root: &Path, batch_id: &str) -> Result<(), String> {
+    let path = batch_undo_path(root, batch_id)?;
+    match fs::symlink_metadata(&path) {
+        Ok(_) => {
+            let record = read_record(&path)?;
+            if record.batch_id.as_deref() != Some(batch_id) { return Err("批次引用恢复记录归属不一致".into()); }
+            fs::remove_file(&path).map_err(|e| e.to_string())?;
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+        Err(error) => return Err(error.to_string()),
+    }
+    if path.parent().unwrap().is_dir() { crate::workspace::sync_directory(path.parent().unwrap())?; }
+    Ok(())
 }
 
 /// Atomic workflow boundary: caller holds ONE lock for this entire operation.
 pub(crate) fn undo_batch_locked(project: &Project, batch_id: &str) -> Result<(), String> {
     let root = Path::new(&project.root);
     archive_linked_legacy(root)?;
+    let mut journal = crate::journal::Journal::load(root)?;
+    if journal.cleanup_completed_references(root, batch_id)? { return Ok(()); }
     if let Some(record) = batch_record(root, batch_id)? {
         if record.main_file != project.main_file { return Err("撤销记录不属于当前主文件".into()); }
     }
-    let mut journal = crate::journal::Journal::load(root)?;
     journal.begin_undo(root, batch_id)?;
     undo_locked(project, Some(batch_id))?;
-    journal.undo(root, batch_id)
+    crate::journal::Journal::load(root)?.undo(root, batch_id)
 }
 
 fn restore_files(root: &Path, record: &Undo) -> Result<Vec<(PathBuf, Vec<u8>, Vec<u8>)>, String> {
@@ -262,21 +291,29 @@ pub(crate) fn undo_locked(project: &Project, batch_id: Option<&str>) -> Result<M
     let root = Path::new(&project.root);
     archive_linked_legacy(root)?;
     let (path, record) = if let Some(id) = batch_id {
-        let Some(record) = batch_record(root, id)? else { return Ok(MutationResult { files_changed: 0, references_changed: 0 }); };
+        let mut journal = crate::journal::Journal::load(root)?;
+        if !journal.undo_in_progress(id) { return Err("必须先预检并开始批次撤销".into()); }
+        journal.preflight_references(root, id)?;
+        let Some(record) = batch_record(root, id)? else {
+            journal.references_restored(root, id, false)?;
+            return Ok(MutationResult { files_changed: 0, references_changed: 0 });
+        };
         (batch_undo_path(root, id)?, record)
     } else { (undo_path(root)?, read_undo(root)?) };
     if record.batch_id.as_deref() != batch_id { return Err("引用恢复记录与请求批次不一致；关联记录必须通过撤销批次恢复".into()); }
-    if let Some(id) = batch_id {
-        if !crate::journal::Journal::load(root)?.undo_in_progress(id) { return Err("必须先预检并开始批次撤销".into()); }
-    }
     if record.version != 1 || record.main_file != project.main_file { return Err("撤销记录不属于当前主文件".into()); }
     let restore = restore_files(root, &record)?;
     for (file, before, expected) in &restore {
         ensure_current(root, file, expected)?;
         save_atomic(file, before)?;
     }
-    fs::remove_file(&path).map_err(|e| e.to_string())?;
-    crate::workspace::sync_directory(path.parent().unwrap())?;
+    if let Some(id) = batch_id {
+        preflight_recovery(root, id, true, true)?;
+        crate::journal::Journal::load(root)?.references_restored(root, id, true)?;
+    } else {
+        fs::remove_file(&path).map_err(|e| e.to_string())?;
+        crate::workspace::sync_directory(path.parent().unwrap())?;
+    }
     Ok(MutationResult { files_changed: restore.len(), references_changed: record.references_changed })
 }
 
@@ -352,6 +389,7 @@ mod batch_workflow {
         assert!(undo_locked(&project, Some(&id)).is_err());
         journal.begin_undo(root, &id).unwrap();
         undo_locked(&project, Some(&id)).unwrap();
+        assert!(batch_undo_available(root, &id).unwrap());
         // Simulate restart after TeX recovery, before PDF recovery.
         let mut journal = Journal::load(root).unwrap();
         journal.begin_undo(root, &id).unwrap();
@@ -374,6 +412,96 @@ mod batch_workflow {
         apply_linked(&project, prepared(&project), Some(&id)).unwrap();
         assert!(undo_batch_locked(&project, "another-batch").is_err());
         assert!(undo_locked(&project, None).is_err());
+    }
+
+    #[test]
+    fn edits_after_tex_restore_block_pdf_recovery_even_if_they_match_the_old_applied_text() {
+        let (_dir, project, _, id) = fixture();
+        let root = Path::new(&project.root);
+        let _lock = lock_project(root).unwrap();
+        apply_linked(&project, prepared(&project), Some(&id)).unwrap();
+        Journal::load(root).unwrap().begin_undo(root, &id).unwrap();
+        undo_locked(&project, Some(&id)).unwrap();
+        assert!(batch_undo_available(root, &id).unwrap());
+        // Crash after TeX restoration; the user then edits that file.
+        for edit in [b"user edit".as_slice(), b"new".as_slice()] {
+            fs::write(root.join("main.tex"), edit).unwrap();
+            assert!(undo_batch_locked(&project, &id).is_err());
+            assert_eq!(fs::read(root.join("main.tex")).unwrap(), edit);
+            assert_eq!(fs::read(root.join("out/a.pdf")).unwrap(), b"pdf");
+        }
+        fs::write(root.join("main.tex"), b"old").unwrap();
+        undo_batch_locked(&project, &id).unwrap();
+        assert!(!batch_undo_available(root, &id).unwrap());
+        undo_batch_locked(&project, &id).unwrap();
+    }
+
+    #[test]
+    fn missing_active_or_restored_records_never_authorize_pdf_undo() {
+        for restored in [false, true] {
+            let (_dir, project, _, id) = fixture();
+            let root = Path::new(&project.root);
+            let _lock = lock_project(root).unwrap();
+            apply_linked(&project, prepared(&project), Some(&id)).unwrap();
+            if restored {
+                Journal::load(root).unwrap().begin_undo(root, &id).unwrap();
+                undo_locked(&project, Some(&id)).unwrap();
+            }
+            fs::remove_file(batch_undo_path(root, &id).unwrap()).unwrap();
+            assert!(!Journal::load(root).unwrap().history(root)[0].can_undo);
+            assert!(undo_batch_locked(&project, &id).is_err());
+            assert_eq!(fs::read(root.join("out/a.pdf")).unwrap(), b"pdf");
+            assert_eq!(fs::read(root.join("main.tex")).unwrap(), if restored { b"old" } else { b"new" });
+        }
+    }
+
+    #[test]
+    fn prepared_association_without_record_proves_no_tex_write_started() {
+        let (_dir, project, mut journal, id) = fixture();
+        let root = Path::new(&project.root);
+        let _lock = lock_project(root).unwrap();
+        journal.associate_references(root, &id, 1, 1).unwrap();
+        // Crash between association and recovery record persistence.
+        undo_batch_locked(&project, &id).unwrap();
+        assert_eq!(fs::read(root.join("main.tex")).unwrap(), b"old");
+        assert!(!root.join("out/a.pdf").exists());
+        undo_batch_locked(&project, &id).unwrap();
+    }
+
+    #[test]
+    fn completed_journal_cleanup_is_idempotent_and_never_restores_user_files_again() {
+        let (_dir, project, _, id) = fixture();
+        let root = Path::new(&project.root);
+        let _lock = lock_project(root).unwrap();
+        apply_linked(&project, prepared(&project), Some(&id)).unwrap();
+        let record_path = batch_undo_path(root, &id).unwrap();
+        let record = fs::read(&record_path).unwrap();
+        undo_batch_locked(&project, &id).unwrap();
+        // Recreate the exact durable state before cleanup: completed journal + record.
+        save_atomic(&record_path, &record).unwrap();
+        fs::write(root.join("main.tex"), b"subsequent user edit").unwrap();
+        fs::write(root.join("out/a.pdf"), b"subsequent user PDF").unwrap();
+        undo_batch_locked(&project, &id).unwrap();
+        assert!(!record_path.exists());
+        undo_batch_locked(&project, &id).unwrap();
+        assert_eq!(fs::read(root.join("main.tex")).unwrap(), b"subsequent user edit");
+        assert_eq!(fs::read(root.join("out/a.pdf")).unwrap(), b"subsequent user PDF");
+    }
+
+    #[test]
+    fn older_unfinished_journals_without_phase_must_retain_their_reference_record() {
+        let (_dir, project, _, id) = fixture();
+        let root = Path::new(&project.root);
+        let _lock = lock_project(root).unwrap();
+        apply_linked(&project, prepared(&project), Some(&id)).unwrap();
+        let path = root.join(".texgo/conversions.json");
+        let mut old: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        old["batches"][0].as_object_mut().unwrap().remove("reference_phase");
+        old["batches"][0]["undoing"] = true.into();
+        save_atomic(&path, &serde_json::to_vec(&old).unwrap()).unwrap();
+        fs::remove_file(batch_undo_path(root, &id).unwrap()).unwrap();
+        assert!(undo_batch_locked(&project, &id).is_err());
+        assert_eq!(fs::read(root.join("out/a.pdf")).unwrap(), b"pdf");
     }
 
     #[test]

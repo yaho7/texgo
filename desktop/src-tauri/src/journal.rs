@@ -24,6 +24,16 @@ struct Change {
     committed: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ReferencePhase {
+    Prepared,
+    Active,
+    Restored,
+    NotApplied,
+    Complete,
+}
+
 #[derive(Serialize, Deserialize)]
 struct Batch {
     entry: ConversionHistoryEntry,
@@ -32,6 +42,8 @@ struct Batch {
     undoing: bool,
     #[serde(default)]
     references_applying: bool,
+    #[serde(default)]
+    reference_phase: Option<ReferencePhase>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -148,6 +160,7 @@ impl Journal {
     pub fn begin(&mut self, root: &Path, options: &ConversionOptions) -> Result<usize, String> {
         self.ensure_settled()?;
         crate::transaction::archive_linked_legacy(root)?;
+        self.cleanup_finished_references(root)?;
         if crate::transaction::legacy_undo_available(root) {
             return Err("存在旧版独立引用恢复记录，请先单独恢复".into());
         }
@@ -157,7 +170,7 @@ impl Journal {
             entry: ConversionHistoryEntry { id, created_at, output_dir: options.output_dir.clone(),
                 dpi: options.dpi, jpeg_quality: options.jpeg_quality, files: Vec::new(), undone: false, can_undo: false, cancelled: false, undo_reason: None,
                 references_changed: 0, files_changed: 0 },
-            changes: Vec::new(), undoing: false, references_applying: false,
+            changes: Vec::new(), undoing: false, references_applying: false, reference_phase: None,
         });
         self.save(root)?;
         Ok(self.batches.len() - 1)
@@ -285,7 +298,7 @@ impl Journal {
     }
 
     fn undo_preflight(&self, root: &Path, index: usize) -> Result<(), String> {
-        crate::transaction::preflight_for_batch(root, &self.batches[index].entry.id)?;
+        self.preflight_references(root, &self.batches[index].entry.id)?;
         for change in &self.batches[index].changes {
             let path = root.join(&change.output);
             safe_path(root, &path)?;
@@ -311,13 +324,67 @@ impl Journal {
         batch.entry.references_changed = references;
         batch.entry.files_changed = files;
         batch.references_applying = true;
+        batch.reference_phase = Some(ReferencePhase::Prepared);
+        self.save(root)
+    }
+
+    // Persist after the recovery record, but BEFORE the first TeX write.
+    pub fn references_ready(&mut self, root: &Path, id: &str) -> Result<(), String> {
+        let batch = self.batches.iter_mut().find(|batch| batch.entry.id == id).ok_or("找不到引用关联批次")?;
+        if !matches!(batch.reference_phase, Some(ReferencePhase::Prepared)) || !batch.references_applying {
+            return Err("引用写入阶段不一致".into());
+        }
+        batch.reference_phase = Some(ReferencePhase::Active);
         self.save(root)
     }
 
     pub fn finish_references(&mut self, root: &Path, id: &str) -> Result<(), String> {
         let batch = self.batches.iter_mut().find(|batch| batch.entry.id == id).ok_or("找不到引用关联批次")?;
+        if !matches!(batch.reference_phase, Some(ReferencePhase::Active)) { return Err("引用写入阶段不一致".into()); }
         batch.references_applying = false;
         self.save(root)
+    }
+
+    pub fn preflight_references(&self, root: &Path, id: &str) -> Result<(), String> {
+        let batch = self.batches.iter().find(|batch| batch.entry.id == id).ok_or("找不到引用关联批次")?;
+        if matches!(batch.reference_phase, Some(ReferencePhase::Complete)) && !batch.entry.undone {
+            return Err("引用恢复阶段损坏".into());
+        }
+        let unapplied = matches!(batch.reference_phase, Some(ReferencePhase::Prepared | ReferencePhase::NotApplied));
+        let required = batch.entry.references_changed > 0 && !unapplied;
+        let restored = unapplied || matches!(batch.reference_phase, Some(ReferencePhase::Restored));
+        crate::transaction::preflight_recovery(root, id, required, restored)
+    }
+
+    pub fn references_restored(&mut self, root: &Path, id: &str, had_record: bool) -> Result<(), String> {
+        self.preflight_references(root, id)?;
+        let batch = self.batches.iter_mut().find(|batch| batch.entry.id == id).ok_or("找不到引用关联批次")?;
+        if !batch.undoing || batch.entry.undone { return Err("必须先开始批次撤销".into()); }
+        if batch.entry.references_changed > 0 {
+            batch.reference_phase = Some(if had_record { ReferencePhase::Restored } else { ReferencePhase::NotApplied });
+        }
+        self.save(root)
+    }
+
+    // The durable final journal is the authority, never an unsaved in-memory flag.
+    pub fn cleanup_completed_references(&self, root: &Path, id: &str) -> Result<bool, String> {
+        let durable = Self::load(root)?;
+        let batch = durable.batches.iter().find(|batch| batch.entry.id == id).ok_or("找不到转换批次")?;
+        if !batch.entry.undone { return Ok(false); }
+        if batch.entry.references_changed > 0 && !matches!(batch.reference_phase, Some(ReferencePhase::Complete) | None) {
+            return Err("批次完成标记与引用恢复阶段不一致".into());
+        }
+        // A previous save may have renamed successfully but failed directory sync.
+        crate::workspace::sync_directory(&root.join(".texgo"))?;
+        crate::transaction::cleanup_batch_record(root, id)?;
+        Ok(true)
+    }
+
+    pub fn cleanup_finished_references(&self, root: &Path) -> Result<(), String> {
+        for batch in self.batches.iter().filter(|batch| batch.entry.undone) {
+            self.cleanup_completed_references(root, &batch.entry.id)?;
+        }
+        Ok(())
     }
 
     pub fn latest_batch_id(&self) -> Option<&str> {
@@ -367,13 +434,21 @@ impl Journal {
     }
 
     pub fn undo(&mut self, root: &Path, id: &str) -> Result<(), String> {
+        // TeX recovery persists its own phase through a separate Journal instance.
+        *self = Self::load(root)?;
+        if self.cleanup_completed_references(root, id)? { return Ok(()); }
         let index = self.latest().ok_or("No conversion writes to undo")?;
         if self.batches[index].entry.id != id { return Err("Only the latest compatible conversion batch can be undone".into()); }
         self.undo_preflight(root, index)?;
-        if crate::transaction::batch_undo_available(root, id)? { return Err("批次撤销尚未完成引用恢复".into()); }
+        if self.batches[index].entry.references_changed > 0
+            && !matches!(self.batches[index].reference_phase, Some(ReferencePhase::Restored | ReferencePhase::NotApplied)) {
+            return Err("批次撤销尚未完成引用恢复".into());
+        }
         self.batches[index].undoing = true;
         self.save(root)?;
         for change in &self.batches[index].changes {
+            // Retained TeX snapshots protect retries and every subsequent PDF write.
+            self.preflight_references(root, id)?;
             let path = root.join(&change.output);
             safe_path(root, &path)?;
             let current = read_optional(&path)?;
@@ -388,8 +463,14 @@ impl Journal {
             if let Some(before) = &change.before { self.outputs.insert(change.output.clone(), before.clone()); }
             else { self.outputs.remove(&change.output); }
         }
+        self.preflight_references(root, id)?;
         self.batches[index].entry.undone = true;
         self.batches[index].undoing = false;
-        self.save(root)
+        self.batches[index].references_applying = false;
+        if self.batches[index].entry.references_changed > 0 {
+            self.batches[index].reference_phase = Some(ReferencePhase::Complete);
+        }
+        self.save(root)?;
+        self.cleanup_completed_references(root, id).map(|_| ())
     }
 }
