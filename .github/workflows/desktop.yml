@@ -30,8 +30,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop/src-tauri
-      - name: Resolve desktop plugin dependencies
-        run: cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
+      - name: Validate desktop dependency lock
+        run: cargo metadata --manifest-path src-tauri/Cargo.toml --locked --format-version 1 > /dev/null
       - uses: actions/upload-artifact@v4
         with:
           name: resolved-cargo-lock
