@@ -4,6 +4,7 @@
 #[path = "../src/journal.rs"] mod journal;
 #[path = "../src/manifest.rs"] mod manifest;
 #[path = "../src/models.rs"] mod models;
+#[path = "../src/preferences.rs"] mod preferences;
 #[path = "../src/observation.rs"] mod observation;
 #[path = "../src/repair.rs"] mod repair;
 #[path = "../src/scanner.rs"] mod scanner;
