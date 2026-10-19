@@ -66,7 +66,6 @@ impl Workspace {
         self.scan.project.undo_available = transaction::standalone_undo_available(root).unwrap_or_else(|_| transaction::legacy_undo_available(root));
         for asset in &mut self.scan.project.images {
             asset.update_available = false;
-            if self.invalidated.contains(&asset.id) { continue; }
             for output in journal.preferred_outputs(&asset.relative_path) {
                 let Some(managed) = journal.outputs.get(&output) else { continue; };
                 if managed.source != asset.relative_path || !journal.valid_output(root, &output, managed) { continue; }
@@ -76,6 +75,9 @@ impl Workspace {
                 }
                 // A current valid output takes precedence over older stale conversions.
                 asset.update_available = false;
+                // Failed output remains ineligible for reference replacement, but changed
+                // source fingerprints above must still be visible for a safe Smart retry.
+                if self.invalidated.contains(&asset.id) { break; }
                 let path = root.join(&output);
                 self.scan.project.converted_images.push(ConvertedImage { id: asset.id.clone(), pdf_path: Some(path.to_string_lossy().into()),
                     bytes: fs::metadata(&path).ok().map(|m| m.len()), cached: true, error: None });

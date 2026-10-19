@@ -16,6 +16,7 @@ pub(crate) struct AppState {
     preferences: Arc<Mutex<Preferences>>,
     shortcut: Arc<Mutex<Option<String>>>,
     startup_error: Arc<Mutex<Option<String>>>,
+    settings_update: Arc<Mutex<()>>,
 }
 
 async fn work<T: Send + 'static>(state: AppState, action: impl FnOnce(&mut Option<Workspace>) -> Result<T, String> + Send + 'static) -> Result<T, String> {
@@ -43,18 +44,18 @@ async fn save_preferences(preferences: Preferences, app: tauri::AppHandle, state
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         preferences.validate()?;
-        let mut current = state.preferences.lock().map_err(|_| "设置状态不可用")?;
+        let _update = state.settings_update.lock().map_err(|_| "设置状态不可用")?;
         let mut shortcut = state.shortcut.lock().map_err(|_| "快捷键状态不可用")?;
+        let path = app.path().app_config_dir().map_err(|e| e.to_string())?.join("preferences.json");
         let next = normalized_shortcut(&preferences)?;
         let old = shortcut.clone();
         let registrar = NativeRegistrar(app.clone());
         crate::background::replace_shortcut(&registrar, &mut shortcut, next)?;
-        let path = app.path().app_config_dir().map_err(|e| e.to_string())?.join("preferences.json");
         if let Err(error) = preferences.save(&path) {
             if let Err(rollback) = crate::background::replace_shortcut(&registrar, &mut shortcut, old) { return Err(format!("{error}；{rollback}")); }
             return Err(error);
         }
-        *current = preferences.clone();
+        *state.preferences.lock().map_err(|_| "设置状态不可用")? = preferences.clone();
         *state.startup_error.lock().map_err(|_| "状态不可用")? = None;
         Ok(preferences)
     }).await.map_err(|e| e.to_string())?
@@ -155,16 +156,18 @@ async fn convert_images(options: ConversionOptions, app: tauri::AppHandle, state
     work(state.inner().clone(), move |workspace| {
         let _guard = guard;
         let ws = current(workspace)?;
+        let result = (|| {
         ws.refresh()?;
         ws.ensure_can_convert(allow_unreviewed)?;
-        let result = ws.convert_with_results(&options, &cancel,
+        ws.convert_with_results(&options, &cancel,
             |progress| { let _ = app.emit("conversion-progress", progress); },
             |image| {
                 if image.error.is_none() {
                     if let Some(path) = &image.pdf_path { if let Ok(mut paths) = completed.lock() { paths.insert(image.id.clone(), path.clone()); } }
                 }
                 let _ = app.emit("conversion-result", image);
-            });
+            })
+        })();
         match &result {
             Ok(result) => {
                 let target = conversion_target(ws, result, ws.conversion_history().ok().and_then(|h| h.first().map(|e| e.id.clone())));
@@ -255,9 +258,9 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("failed to start texgo desktop")
         .run(|app, event| {
-            if matches!(event, tauri::RunEvent::Exit) { let _ = app.global_shortcut().unregister_all(); }
+            if matches!(&event, tauri::RunEvent::Exit) { let _ = app.global_shortcut().unregister_all(); }
             #[cfg(target_os = "macos")]
-            if matches!(event, tauri::RunEvent::Reopen { .. }) { show_window(app); }
+            if matches!(&event, tauri::RunEvent::Reopen { .. }) { show_window(app); }
         });
 }
 
@@ -338,11 +341,18 @@ async fn run_smart(app: tauri::AppHandle, state: AppState) -> Result<(), String>
     let guard = ConversionGuard(state.converting.clone());
     state.cancel.store(false, Ordering::Relaxed);
     let cancel = state.cancel.clone(); let completed = state.completed_previews.clone();
+    let preview_snapshot = state.preview.clone();
     let preferences = state.preferences.lock().map_err(|_| "设置状态不可用")?.clone();
     let events = app.clone();
     let result = work(state, move |workspace| {
         let _guard = guard;
         let ws = current(workspace)?;
+        if let Err(error) = ws.refresh() {
+            if preferences.notify_failure { deliver_notice(&events, Notice { title: "Texgo · 转换失败".into(), body: error.clone() }, workspace_target(ws, "problems", None, None)); }
+            let _ = events.emit("desktop-error", &error);
+            return Err(error);
+        }
+        *preview_snapshot.lock().map_err(|_| "预览状态不可用")? = Some(ws.clone());
         let _ = events.emit("background-start", ws.project());
         completed.lock().map_err(|_| "预览状态不可用")?.clear();
         let report = ws.smart_convert(&preferences, &cancel,
@@ -363,7 +373,10 @@ async fn run_smart(app: tauri::AppHandle, state: AppState) -> Result<(), String>
                 }
                 if !report.result.images.is_empty() || (!blocked_review && report.problem_ids.is_empty()) {
                     if let Some(notice) = crate::background::result_notice(&report.result, &preferences) {
-                        let target = conversion_target(ws, &report.result, report.batch_ids.last().cloned());
+                        let failed_source = report.result.images.iter().find(|i| i.error.is_some()).and_then(|i| ws.project().images.iter().find(|a| a.id == i.id)).map(|a| a.relative_path.as_str());
+                        let batch_id = failed_source.and_then(|source| ws.conversion_history().ok()?.into_iter().find(|entry| report.batch_ids.contains(&entry.id) && entry.files.iter().any(|file| file.source == source && file.error.is_some())).map(|entry| entry.id))
+                            .or_else(|| report.batch_ids.last().cloned());
+                        let target = conversion_target(ws, &report.result, batch_id);
                         deliver_notice(&events, notice, target);
                     }
                 }
@@ -416,4 +429,17 @@ fn install_background(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>
     if let Some(icon) = app.default_window_icon() { tray = tray.icon(icon.clone()); }
     tray.build(app)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod desktop_policy_tests {
+    use super::*;
+    #[test]
+    fn shortcuts_validate_modifiers_and_disable_without_parsing() {
+        let mut prefs = Preferences::default();
+        assert!(normalized_shortcut(&prefs).unwrap().is_some());
+        prefs.shortcut = "Ctrl+Enter".into(); assert!(normalized_shortcut(&prefs).is_err());
+        prefs.shortcut = "bad shortcut".into(); assert!(normalized_shortcut(&prefs).is_err());
+        prefs.shortcut_enabled = false; assert!(normalized_shortcut(&prefs).unwrap().is_none());
+    }
 }

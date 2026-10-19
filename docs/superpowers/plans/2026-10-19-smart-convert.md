@@ -27,3 +27,6 @@ Tech stack: Tauri 2, Rust, React, existing shadcn primitives, Vitest.
 User override (2026-10-19): do not run tests or compilation locally. Local edits and static no-emit checks only; tests/builds run on CI.
 
 CI checks: use npm run check, npm test, npm run test:pdf; cargo test --no-default-features, cargo test, cargo build. Cross-platform compilation requires corresponding runners; preserve the existing CI matrix and extend checks there.
+
+
+Implementation checkpoint: all four units are committed locally. Independent static review found stale success retention and failed Smart retry problems; fixes and regression tests are included in the follow-up commit. TypeScript no-emit checking passes. Local testing/compilation stopped at the user's override. Remote CI is prepared but pushing the feature branch was rejected by automatic approval review pending explicit human authorization. Cargo.lock resolution and platform validation remain pending CI; no full-completion claim is made.

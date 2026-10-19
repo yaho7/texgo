@@ -30,16 +30,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop/src-tauri
-      - run: npm ci
-      - run: npm run check
-      - run: npm test
-      - run: npm run test:pdf
       - name: Resolve desktop plugin dependencies
         run: cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
       - uses: actions/upload-artifact@v4
         with:
           name: resolved-cargo-lock
           path: desktop/src-tauri/Cargo.lock
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run test:pdf
       - run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features --features automation
 
   package:

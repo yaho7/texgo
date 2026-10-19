@@ -282,7 +282,8 @@ export default function App() {
   function inspectProblem(imageId: string) {
     if (!project || busy) return;
     setView("assets"); setActiveId(imageId); setProblemId(imageId); setRepairCandidates([]); rememberFocus();
-    void execute("reviewing", async () => setRepairCandidates(await invoke<RepairCandidate[]>("repair_candidates", { imageId })));
+    const asset = project.images.find((image) => image.id === imageId);
+    if (asset && ["missing", "ambiguous"].includes(asset.status)) void execute("reviewing", async () => setRepairCandidates(await invoke<RepairCandidate[]>("repair_candidates", { imageId })));
   }
 
   function chooseRepair(imageId: string, target: string) {
@@ -314,6 +315,7 @@ export default function App() {
     if (!imageIds.length) return;
     void execute("converting", async () => {
       setReview(null);
+      setHighlightBatch(null);
       setProgress(null);
       cancelRef.current = false;
       setCancelRequested(false);
@@ -423,13 +425,22 @@ export default function App() {
   });
   backgroundStart.current = (nativeProject) => {
     if (!project || project.root !== nativeProject.root || project.mainFile !== nativeProject.mainFile) return;
+    setProject(nativeProject);
+    setResults((previous) => ({
+      ...Object.fromEntries(Object.entries(previous).filter(([id, image]) => (image.error || image.cancelled) && nativeProject.images.some((asset) => asset.id === id))),
+      ...Object.fromEntries(nativeProject.convertedImages.map((image) => [image.id, image])),
+    }));
     backgroundActive.current = true;
     operationRef.current = "converting"; setOperation("converting"); setProgress(null); setError(null);
   };
   backgroundFinished.current = (report) => {
     if (!project || project.root !== report.project.root || project.mainFile !== report.project.mainFile) return;
     setProject(report.project);
-    setResults((previous) => ({ ...previous, ...Object.fromEntries(report.project.convertedImages.map((image) => [image.id, image])), ...Object.fromEntries(report.result.images.map((image) => [image.id, image])) }));
+    setResults((previous) => ({
+      ...Object.fromEntries(Object.entries(previous).filter(([id, image]) => (image.error || image.cancelled) && report.project.images.some((asset) => asset.id === id))),
+      ...Object.fromEntries(report.project.convertedImages.map((image) => [image.id, image])),
+      ...Object.fromEntries(report.result.images.map((image) => [image.id, image])),
+    }));
     setSelected((previous) => new Set([...previous].filter((id) => !report.result.images.some((image) => image.id === id))));
     setRevision((value) => value + 1);
     const failed = report.result.images.filter((image) => image.error).length;
@@ -448,7 +459,13 @@ export default function App() {
         catch (reason) { setError(errorMessage(reason)); setView("history"); }
       } else if (target.view === "problems") {
         setView("assets"); setFilter("attention"); setActiveId(target.imageId);
-        if (target.imageId && next.images.some((image) => image.id === target.imageId)) { setProblemId(target.imageId); setRepairCandidates([]); }
+        if (target.imageId && next.images.some((image) => image.id === target.imageId)) {
+          setProblemId(target.imageId); setRepairCandidates([]);
+          const imageId = target.imageId;
+          if (next.images.some((image) => image.id === imageId && ["missing", "ambiguous"].includes(image.status))) {
+            void execute("reviewing", async () => setRepairCandidates(await invoke<RepairCandidate[]>("repair_candidates", { imageId })));
+          }
+        }
       } else { setView("history"); if (target.imageId) setActiveId(target.imageId); }
     })();
   };

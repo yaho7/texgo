@@ -112,3 +112,18 @@ fn smart_never_overwrites_an_edited_managed_output() {
     assert!(report.result.images.is_empty());
     assert_eq!(fs::read(dir.path().join("original-output/a.pdf")).unwrap(), b"user edited PDF");
 }
+
+#[test]
+fn repaired_source_is_retried_after_a_failed_smart_conversion() {
+    let (dir, mut ws) = managed_pair();
+    fs::write(dir.path().join("a.png"), b"broken image").unwrap();
+    let prefs = texgo_desktop::preferences::Preferences::default();
+    let failed = ws.smart_convert(&prefs, &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+    assert_eq!(failed.result.images.iter().filter(|i| i.error.is_some()).count(), 1);
+    make_png(dir.path(), "a.png", 120);
+    let recovered = ws.smart_convert(&prefs, &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+    assert_eq!(recovered.result.images.len(), 1);
+    assert!(recovered.result.images[0].pdf_path.is_some());
+    assert!(recovered.result.images[0].error.is_none());
+    assert!(!ws.project().images.iter().any(|a| a.update_available));
+}

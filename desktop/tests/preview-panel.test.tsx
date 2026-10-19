@@ -126,8 +126,17 @@ it("drags and resets a shared comparison divider and scopes keyboard input to pr
   fireEvent.keyDown(slider, { key: "0" });
   expect(slider).toHaveAttribute("aria-valuenow", "50");
   vi.spyOn(slider.parentElement!, "getBoundingClientRect").mockReturnValue({ left: 0, width: 200 } as DOMRect);
+  let captured = false;
+  slider.setPointerCapture = () => { captured = true; };
+  slider.hasPointerCapture = () => captured;
+  slider.releasePointerCapture = () => { captured = false; };
   fireEvent.pointerDown(slider, { clientX: 160, pointerId: 1 });
   expect(slider).toHaveAttribute("aria-valuenow", "80");
+  fireEvent.pointerMove(slider, { clientX: 40, pointerId: 1 });
+  expect(slider).toHaveAttribute("aria-valuenow", "20");
+  fireEvent.pointerUp(slider, { pointerId: 1 });
+  fireEvent.pointerMove(slider, { clientX: 100, pointerId: 1 });
+  expect(slider).toHaveAttribute("aria-valuenow", "20");
   fireEvent.doubleClick(slider);
   expect(slider).toHaveAttribute("aria-valuenow", "50");
   fireEvent.keyDown(preview, { key: "Escape" });

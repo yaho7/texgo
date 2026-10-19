@@ -25,7 +25,7 @@ export interface AssetProblemsProps {
   onLocate: (assetId: string) => void;
   /** Request the normal ReviewDialog. Selection is not write authorization. */
   onChoose: (assetId: string, targetPath: string) => void;
-  /** Session-only hiding/exclusion. Never persist or edit TeX from this callback. */
+  /** Session-only exclusion with a visible ignored status. Never persist or edit TeX from this callback. */
   onIgnore: (assetId: string) => void;
 }
 

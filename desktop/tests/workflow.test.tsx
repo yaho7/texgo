@@ -683,7 +683,19 @@ it("updates background results without stealing browsing and routes a notificati
 });
 
 it("routes a problem notification to its problem dialog", async () => {
+  handlers.repair_candidates = () => [];
   await openProject();
   await act(async () => { await emit("notification-navigate", { project: backendProject, target: { mode: "tex", path: backendProject.mainFile, recursive: true, view: "problems", batchId: null, imageId: "missing" } }); });
   expect(await screen.findByRole("dialog", { name: "图片引用问题" })).toBeInTheDocument();
+});
+
+
+it("drops invalidated successful previews when Smart Convert refresh reports a managed output problem", async () => {
+  backendProject.convertedImages = success.images;
+  await openProject();
+  expect(screen.getByRole("radio", { name: "对比" })).toBeEnabled();
+  const fresh = { ...backendProject, convertedImages: [] };
+  await act(async () => { await emit("background-start", backendProject); await emit("background-finished", { project: fresh, result: { images: [], cancelled: false }, batchIds: [], problemIds: ["a"], pendingReferences: 0 }); await emit("background-idle", null); });
+  expect(screen.getByRole("radio", { name: "对比" })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "检查引用变更" })).not.toBeInTheDocument();
 });

@@ -137,3 +137,32 @@ fn legacy_cli_apply_keeps_its_standalone_recovery_contract() {
     assert!(directory.path().join("pdf-a/plot.pdf").exists());
     assert!(!directory.path().join(".texgo/undo.json").exists());
 }
+
+#[test]
+fn bypassed_unreviewed_batches_use_a_separate_reference_batch_with_independent_undo() {
+    let directory = tempfile::tempdir().unwrap();
+    let original = r"\includegraphics{a.png}\includegraphics{b.png}";
+    fs::write(directory.path().join("main.tex"), original).unwrap();
+    for file in ["a.png", "b.png"] { image::RgbImage::new(24, 12).save(directory.path().join(file)).unwrap(); }
+    let mut ws = Workspace::open(&directory.path().join("main.tex")).unwrap();
+    let mut ids = vec![];
+    for file in ["a.png", "b.png"] {
+        let id = ws.project().images.iter().find(|a| a.relative_path == file).unwrap().id.clone();
+        ws.ensure_can_convert(true).unwrap();
+        ws.convert(&ConversionOptions { image_ids: vec![id], quality: "custom".into(), dpi: 300, jpeg_quality: 90, output_dir: "pdf".into() }, &AtomicBool::new(false), |_| {}).unwrap();
+        ids.push(ws.conversion_history().unwrap()[0].id.clone());
+    }
+    apply_all(&mut ws);
+    let history = ws.conversion_history().unwrap();
+    assert_eq!(history.len(), 3);
+    assert!(history[0].files.is_empty());
+    assert_eq!(history[0].references_changed, 2);
+    assert_eq!(history[1].references_changed, 0);
+    ws.undo_conversion(&history[0].id).unwrap();
+    assert_eq!(tex(directory.path()), original);
+    assert!(directory.path().join("pdf/a.pdf").exists());
+    assert!(directory.path().join("pdf/b.pdf").exists());
+    ws.undo_conversion(&ids[1]).unwrap();
+    ws.undo_conversion(&ids[0]).unwrap();
+    assert!(!directory.path().join("pdf/a.pdf").exists());
+}

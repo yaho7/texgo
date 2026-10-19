@@ -90,7 +90,7 @@ function PreviewPanel({ asset, result, revision }: Props) {
         <ToggleGroupItem value="compare" disabled={!hasConverted}>对比</ToggleGroupItem>
       </ToggleGroup>
     </div>
-    <div ref={surface} className="preview-surface" onPointerDown={(event) => { if (event.target === event.currentTarget) event.currentTarget.closest<HTMLElement>(".preview-panel")?.focus(); }}>
+    <div ref={surface} className="preview-surface" onPointerDown={(event) => { if (!(event.target as HTMLElement).closest('button, input, [role="slider"]')) event.currentTarget.closest<HTMLElement>(".preview-panel")?.focus(); }}>
       {unavailable ? <Empty><EmptyHeader><EmptyMedia variant="icon"><FileImage aria-hidden="true" /></EmptyMedia><EmptyTitle>{asset ? asset.message || "此图片暂不可预览" : "未选择图片"}</EmptyTitle></EmptyHeader></Empty> : <>
         <div className="comparison-frame" style={{ width, height: width / aspect }} onLoadCapture={(event) => { const img = event.target; if (img instanceof HTMLImageElement && img.naturalWidth && img.naturalHeight) setNaturalAspect(img.naturalWidth / img.naturalHeight); }}>
           <section className="comparison-layer" aria-label="原图预览"><PreviewContent asset={asset!} converted={false} revision={revision} /></section>
