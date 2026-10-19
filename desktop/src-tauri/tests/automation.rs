@@ -403,6 +403,9 @@ exit 0
         assert!(result["conversion"].is_null());
         assert!(result["replacement"].is_null());
         assert_eq!(result["build"]["success"], true);
+        assert_eq!(result["project"]["status"]["totalImages"], 1);
+        assert_eq!(result["project"]["status"]["problemCount"], 1);
+        assert_eq!(result["project"]["status"]["nextAction"], "resolveProblems");
     }
 
     #[test]

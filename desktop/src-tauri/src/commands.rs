@@ -173,8 +173,11 @@ async fn convert_images(options: ConversionOptions, app: tauri::AppHandle, state
                 let target = conversion_target(ws, result, ws.conversion_history().ok().and_then(|h| h.first().map(|e| e.id.clone())));
                 if let Some(notice) = crate::background::workspace_notice(&ws.project().status, result, &preferences) { deliver_notice(&native_app, notice, target); }
             }
-            Err(error) if preferences.notify_failure => deliver_notice(&native_app, crate::background::Notice { title: "Texgo · 更新失败".into(), body: error.clone() }, workspace_target(ws, "history", None, None)),
-            _ => (),
+            Err(error) => {
+                let project = ws.reconcile_after_error(error);
+                publish_workspace(&native_app, &project);
+                if preferences.notify_failure { deliver_notice(&native_app, crate::background::Notice { title: "Texgo · 更新失败".into(), body: error.clone() }, workspace_target(ws, "problems", None, project.status.problem_ids.first().cloned())); }
+            }
         }
         result
     }).await
@@ -206,6 +209,13 @@ async fn ignore_asset(image_id: String, ignored: bool, app: tauri::AppHandle, st
         ws.ignore(&image_id, ignored)?;
         Ok(ws.project().clone())
     }).await?;
+    update_tray_status(&app, &project);
+    Ok(project)
+}
+
+#[tauri::command]
+async fn retry_asset(image_id: String, app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Project, String> {
+    let project = work(state.inner().clone(), move |workspace| current(workspace)?.retry_asset(&image_id)).await?;
     update_tray_status(&app, &project);
     Ok(project)
 }
@@ -253,7 +263,7 @@ pub fn run() {
             install_background(app)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![desktop_status, set_shortcut_recording, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, open_project, refresh_workspace, poll_workspace, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, preview_changes, apply_replacements, undo_replacements])
+        .invoke_handler(tauri::generate_handler![desktop_status, set_shortcut_recording, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, retry_asset, open_project, refresh_workspace, poll_workspace, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, preview_changes, apply_replacements, undo_replacements])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let background = window.state::<AppState>().preferences.lock().is_ok_and(|p| p.close_action == "background");
@@ -311,6 +321,11 @@ fn update_tray_status(app: &tauri::AppHandle, project: &Project) {
     }
 }
 
+fn publish_workspace(app: &tauri::AppHandle, project: &Project) {
+    update_tray_status(app, project);
+    let _ = app.emit("workspace-updated", project);
+}
+
 fn deliver_notice(app: &tauri::AppHandle, notice: Notice, target: NotificationTarget) {
     // Register on_action once at setup, BEFORE any notification can be sent.
     // extra travels with the specific notification, including old workspaces/batches.
@@ -363,6 +378,8 @@ async fn run_smart(app: tauri::AppHandle, state: AppState) -> Result<(), String>
         let _guard = guard;
         let ws = current(workspace)?;
         if let Err(error) = ws.refresh() {
+            let project = ws.reconcile_after_error(&error);
+            publish_workspace(&events, &project);
             if preferences.notify_failure { deliver_notice(&events, Notice { title: "Texgo · 更新失败".into(), body: error.clone() }, workspace_target(ws, "problems", None, None)); }
             let _ = events.emit("desktop-error", &error);
             return Err(error);
@@ -388,7 +405,7 @@ async fn run_smart(app: tauri::AppHandle, state: AppState) -> Result<(), String>
                     deliver_notice(&events, Notice { title: format!("Texgo · 发现 {count} 个问题需要处理"), body: if let Some(reason) = blocking { reason.clone() } else if blocked_review { format!("{} 处引用等待确认", report.pending_references) } else { "点击查看图片问题".into() } },
                         workspace_target(ws, if blocked_review { "review" } else { "problems" }, report.batch_ids.last().cloned(), report.problem_ids.first().cloned()));
                 }
-                if !report.result.images.is_empty() || (!blocked_review && report.problem_ids.is_empty()) {
+                if blocking.is_none() && (!report.result.images.is_empty() || (!blocked_review && report.problem_ids.is_empty())) {
                     if let Some(notice) = crate::background::workspace_notice(&report.project.status, &report.result, &preferences) {
                         let failed_source = report.result.images.iter().find(|i| i.error.is_some()).and_then(|i| ws.project().images.iter().find(|a| a.id == i.id)).map(|a| a.relative_path.as_str());
                         let batch_id = failed_source.and_then(|source| ws.conversion_history().ok()?.into_iter().find(|entry| report.batch_ids.contains(&entry.id) && entry.files.iter().any(|file| file.source == source && file.error.is_some())).map(|entry| entry.id))
@@ -400,7 +417,9 @@ async fn run_smart(app: tauri::AppHandle, state: AppState) -> Result<(), String>
                 let _ = events.emit("background-finished", report);
             }
             Err(error) => {
-                if preferences.notify_failure { deliver_notice(&events, Notice { title: "Texgo · 更新失败".into(), body: error.clone() }, workspace_target(ws, "history", None, None)); }
+                let project = ws.reconcile_after_error(error);
+                publish_workspace(&events, &project);
+                if preferences.notify_failure { deliver_notice(&events, Notice { title: "Texgo · 更新失败".into(), body: error.clone() }, workspace_target(ws, "problems", None, project.status.problem_ids.first().cloned())); }
                 let _ = events.emit("desktop-error", error);
             }
         }

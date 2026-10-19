@@ -279,3 +279,78 @@ fn damaged_journal_is_a_visible_blocking_status_and_never_allows_writes() {
     assert!(ws.update_pending_with_results(&options, &AtomicBool::new(false), |_| {}, |_| {}).is_err());
     assert!(!dir.path().join("texgo-pdf").exists());
 }
+
+#[test]
+fn explicit_retry_after_only_fixing_output_conflict_survives_refresh_and_keeps_history() {
+    let dir = tempfile::tempdir().unwrap();
+    make_png(dir.path(), "a.png", 1);
+    fs::write(dir.path().join("main.tex"), r"\includegraphics{a.png}").unwrap();
+    fs::create_dir(dir.path().join("texgo-pdf")).unwrap();
+    let output = dir.path().join("texgo-pdf/a.pdf");
+    fs::write(&output, b"unrelated file").unwrap();
+    let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    let prefs = texgo_desktop::preferences::Preferences::default();
+    let failure = ws.smart_convert(&prefs, &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+    assert_eq!(failure.project.status.problem_count, 1);
+    let id = failure.project.status.problem_ids[0].clone();
+    let history = ws.conversion_history().unwrap();
+    fs::remove_file(&output).unwrap();
+    ws.retry_asset(&id).unwrap();
+    ws.refresh().unwrap();
+    assert_eq!(ws.project().status.pending_image_ids, vec![id]);
+    assert_eq!(ws.project().status.problem_count, 0);
+    assert_eq!(ws.conversion_history().unwrap().len(), history.len());
+    assert!(ws.conversion_history().unwrap()[0].files[0].error.is_some());
+    let result = ws.smart_convert(&prefs, &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+    assert_eq!(result.result.images.len(), 1);
+    assert!(result.result.images[0].error.is_none());
+}
+
+#[test]
+fn explicit_retry_after_fixing_only_svg_dependency_can_succeed() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("main.tex"), r"\includegraphics{plot.svg}").unwrap();
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"><image href="embedded.png" width="20" height="10"/></svg>"#;
+    fs::write(dir.path().join("plot.svg"), svg).unwrap();
+    let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    let prefs = texgo_desktop::preferences::Preferences::default();
+    let failed = ws.smart_convert(&prefs, &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+    assert_eq!(failed.project.status.problem_count, 1);
+    let id = failed.project.status.problem_ids[0].clone();
+    make_png(dir.path(), "embedded.png", 20);
+    ws.refresh().unwrap();
+    assert_eq!(ws.project().status.problem_count, 1);
+    ws.retry_asset(&id).unwrap();
+    let retried = ws.smart_convert(&prefs, &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+    assert_eq!(retried.result.images.len(), 1);
+    assert!(retried.result.images[0].error.is_none());
+    assert_eq!(fs::read_to_string(dir.path().join("plot.svg")).unwrap(), svg);
+}
+
+#[test]
+fn retry_does_not_bypass_safe_overwrite_and_a_second_failure_is_still_a_problem() {
+    let dir = tempfile::tempdir().unwrap();
+    make_png(dir.path(), "a.png", 1);
+    fs::write(dir.path().join("main.tex"), r"\includegraphics{a.png}").unwrap();
+    fs::create_dir(dir.path().join("texgo-pdf")).unwrap();
+    let output = dir.path().join("texgo-pdf/a.pdf");
+    fs::write(&output, b"unrelated").unwrap();
+    let prefs = texgo_desktop::preferences::Preferences::default();
+    let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    let failed = ws.smart_convert(&prefs, &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+    let id = failed.project.status.problem_ids[0].clone();
+    ws.retry_asset(&id).unwrap();
+    let failed_again = ws.smart_convert(&prefs, &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+    assert_eq!(failed_again.project.status.problem_count, 1);
+    assert!(failed_again.result.images[0].error.is_some());
+    assert_eq!(fs::read(&output).unwrap(), b"unrelated");
+    ws.retry_asset(&id).unwrap();
+    fs::remove_file(&output).unwrap();
+    ws.smart_convert(&prefs, &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+    // An externally modified managed output remains a real blocking state.
+    fs::write(&output, b"external edit").unwrap();
+    ws.refresh().unwrap();
+    assert!(ws.project().status.blocking_reason.is_some());
+    assert!(ws.retry_asset(&id).is_err());
+    assert_eq!(fs::read(&output).unwrap(), b"external edit");
+}

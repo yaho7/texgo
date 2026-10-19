@@ -32,6 +32,11 @@ pub fn result_notice(result: &ConversionResult, prefs: &Preferences) -> Option<N
 
 /// Notification follow-up comes from exactly the same next action shown in the window.
 pub fn workspace_notice(status: &WorkspaceStatus, result: &ConversionResult, prefs: &Preferences) -> Option<Notice> {
+    if result.cancelled { return None; }
+    if let Some(reason) = &status.blocking_reason {
+        return prefs.notify_failure.then(|| Notice { title: "Texgo · 项目需要处理安全问题".into(), body: reason.clone() });
+    }
+    if result.images.is_empty() && status.next_action != NextAction::UpToDate { return None; }
     let mut notice = result_notice(result, prefs)?;
     if status.next_action == NextAction::ReviewReferences && result.images.iter().all(|image| image.error.is_none()) {
         notice.body = format!("已更新 {} 张图片，{} 处引用等待确认", result.images.len(), status.pending_references);
@@ -129,5 +134,24 @@ mod workspace_status_tests {
         let status = WorkspaceStatus { next_action: NextAction::ResolveProblems, problem_count: 1, ..Default::default() };
         assert_eq!(status_label(&status), "1 个问题需要处理");
         assert_eq!(status_label(&WorkspaceStatus::default()), "项目已是最新状态");
+    }
+}
+
+#[cfg(test)]
+mod blocked_notice_tests {
+    use super::*;
+    #[test]
+    fn no_change_notification_never_claims_blocked_or_pending_projects_are_current() {
+        let prefs = Preferences { notify_unchanged: true, ..Default::default() };
+        let empty = ConversionResult { images: vec![], cancelled: false };
+        let status = WorkspaceStatus { next_action: NextAction::ConvertImages, pending_images: 1, ..Default::default() };
+        assert!(workspace_notice(&status, &empty, &prefs).is_none());
+        let status = WorkspaceStatus { blocking_reason: Some("unsafe output".into()), ..Default::default() };
+        let notice = workspace_notice(&status, &empty, &prefs).unwrap();
+        assert!(notice.title.contains("安全问题"));
+        assert_eq!(notice.body, "unsafe output");
+        let muted = Preferences { notify_failure: false, ..prefs };
+        assert!(workspace_notice(&status, &empty, &muted).is_none());
+        assert!(workspace_notice(&WorkspaceStatus::default(), &empty, &muted).unwrap().body.contains("最新"));
     }
 }

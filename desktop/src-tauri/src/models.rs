@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -42,6 +43,29 @@ pub enum NextAction {
 }
 
 impl WorkspaceStatus {
+    /// Pure classification shared by raw scans (including build-only CLI use)
+    /// and a Workspace with journal-backed conversion evidence.
+    pub(crate) fn classify(images: &[ImageAsset], completed: &HashSet<String>, problems: &HashSet<String>, ignored: &HashSet<String>,
+        pending_references: usize, blocking_reason: Option<String>) -> Self {
+        let mut status = Self { total_images: images.len(), pending_references, blocking_reason, ..Default::default() };
+        for asset in images {
+            if ignored.contains(&asset.id) { status.ignored_image_ids.push(asset.id.clone()); }
+            else if matches!(asset.status.as_str(), "missing" | "ambiguous" | "unsupported" | "error") || problems.contains(&asset.id) {
+                status.problem_ids.push(asset.id.clone());
+            } else if asset.status == "ready" && (asset.update_available || !completed.contains(&asset.id)) {
+                status.pending_image_ids.push(asset.id.clone());
+            } else if asset.status == "pdf" || completed.contains(&asset.id) {
+                status.completed_images += 1;
+                status.completed_image_ids.push(asset.id.clone());
+            }
+        }
+        status.finish()
+    }
+
+    pub(crate) fn for_scan(images: &[ImageAsset]) -> Self {
+        Self::classify(images, &HashSet::new(), &HashSet::new(), &HashSet::new(), 0, None)
+    }
+
     fn decide(&mut self) {
         self.pending_images = self.pending_image_ids.len();
         self.problem_count = self.problem_ids.len();

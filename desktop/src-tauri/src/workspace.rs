@@ -15,6 +15,7 @@ pub struct Workspace {
     scan: scanner::Scan,
     converted: BTreeMap<String, StoredConversion>,
     failures: BTreeMap<String, (String, Option<String>)>,
+    retrying: HashSet<String>,
     observed: Option<crate::observation::Snapshot>,
     pending_repair: Option<(String, PathBuf, ReplacementPlan)>,
     invalidated: HashSet<String>,
@@ -39,7 +40,7 @@ impl Workspace {
         crate::manifest::restore_sources(&mut scan.project);
         let root = Path::new(&scan.project.root);
         let journal = Journal::load(root);
-        let mut workspace = Self { scan, converted: BTreeMap::new(), failures: BTreeMap::new(), observed: None, pending_repair: None, invalidated: HashSet::new(), ignored: HashSet::new() };
+        let mut workspace = Self { scan, converted: BTreeMap::new(), failures: BTreeMap::new(), retrying: HashSet::new(), observed: None, pending_repair: None, invalidated: HashSet::new(), ignored: HashSet::new() };
         if let Ok(journal) = journal {
             workspace.rehydrate(&journal);
             for asset in &workspace.scan.project.images {
@@ -90,11 +91,14 @@ impl Workspace {
         let mut refreshed = Self::from_scan(scan)?;
         refreshed.ignored = self.ignored.clone();
         refreshed.ignored.retain(|id| refreshed.scan.project.images.iter().any(|asset| &asset.id == id));
-        refreshed.invalidated = self.invalidated.clone();
+        refreshed.invalidated.extend(self.invalidated.iter().cloned());
+        refreshed.retrying = self.retrying.iter().filter(|id| refreshed.scan.project.images.iter().any(|asset| &asset.id == *id)).cloned().collect();
+        refreshed.invalidated.extend(refreshed.retrying.iter().cloned());
         refreshed.failures.extend(self.failures.iter().filter(|(id, (_, fingerprint))| {
             refreshed.scan.project.images.iter().find(|asset| &asset.id == *id)
                 .is_some_and(|asset| Self::source_fingerprint(asset) == *fingerprint)
         }).map(|(id, failure)| (id.clone(), failure.clone())).collect::<BTreeMap<_, _>>());
+        refreshed.failures.retain(|id, _| !refreshed.retrying.contains(id));
         refreshed.converted.retain(|id, _| !refreshed.invalidated.contains(id));
         refreshed.scan.project.converted_images.retain(|image| !refreshed.invalidated.contains(&image.id));
         refreshed.update_status();
@@ -129,6 +133,7 @@ impl Workspace {
             // The journal is authoritative after undo; do not revive session-only
             // failures or invalidate outputs which have just been restored.
             self.failures.clear();
+            self.retrying.clear();
             self.invalidated.clear();
         }
         let refreshed = self.refresh();
@@ -147,6 +152,39 @@ impl Workspace {
         Ok(())
     }
 
+    /// Explicitly retry a failed image after repairing output settings, permissions,
+    /// or SVG resources. History remains immutable and all write checks still run.
+    pub fn retry_asset(&mut self, id: &str) -> Result<Project, String> {
+        self.update_status();
+        if let Some(reason) = &self.scan.project.status.blocking_reason { return Err(reason.clone()); }
+        Journal::load(Path::new(&self.scan.project.root))?.ensure_settled()?;
+        if self.ignored.contains(id) || !self.failures.contains_key(id)
+            || !self.scan.project.images.iter().any(|asset| asset.id == id && asset.status == "ready") {
+            return Err("此图片没有可以重试的更新失败，请先处理引用或重新扫描".into());
+        }
+        self.retrying.insert(id.into());
+        self.failures.remove(id);
+        self.invalidated.insert(id.into());
+        self.converted.remove(id);
+        self.scan.project.converted_images.retain(|image| image.id != id);
+        self.update_status();
+        Ok(self.project().clone())
+    }
+
+    /// A mutation may have committed earlier files before failing. Publish a safe
+    /// refreshed snapshot even when the operation itself returns an error.
+    pub(crate) fn reconcile_after_error(&mut self, error: &str) -> Project {
+        match self.refresh() {
+            Ok(project) => project,
+            Err(_) => {
+                self.update_status();
+                self.scan.project.status.blocking_reason.get_or_insert_with(|| format!("项目状态无法重新读取，请重新打开项目：{error}"));
+                self.scan.project.status = self.scan.project.status.clone().finish();
+                self.project().clone()
+            }
+        }
+    }
+
     fn source_fingerprint(asset: &ImageAsset) -> Option<String> {
         asset.path.as_ref().and_then(|path| fs::read(path).ok()).map(|bytes| digest(&bytes))
     }
@@ -163,20 +201,18 @@ impl Workspace {
     }
 
     fn update_status(&mut self) {
-        let mut status = WorkspaceStatus { total_images: self.scan.project.images.len(),
-            pending_references: self.pending_references(), ..Default::default() };
         let root = Path::new(&self.scan.project.root);
         let journal = Journal::load(root);
-        match &journal {
-            Ok(journal) => status.blocking_reason = journal.ensure_settled().err(),
-            Err(error) => status.blocking_reason = Some(error.clone()),
-        }
+        let mut blocking_reason = match &journal {
+            Ok(journal) => journal.ensure_settled().err(),
+            Err(error) => Some(error.clone()),
+        };
         if let Err(error) = transaction::prepare(&self.review_project(), &self.scan.sources, &self.converted) {
-            status.blocking_reason.get_or_insert(error);
+            blocking_reason.get_or_insert(error);
         }
         let mut unsafe_output_ids = HashSet::new();
         for asset in &self.scan.project.images {
-            if self.ignored.contains(&asset.id) { status.ignored_image_ids.push(asset.id.clone()); continue; }
+            if self.ignored.contains(&asset.id) { continue; }
             let unsafe_output = journal.as_ref().ok().is_some_and(|journal| {
                 journal.preferred_outputs(&asset.relative_path).first().is_some_and(|output| {
                     journal.outputs.get(output).is_some_and(|managed| root.join(output).exists() && !journal.valid_output(root, output, managed))
@@ -184,17 +220,13 @@ impl Workspace {
             });
             if unsafe_output {
                 unsafe_output_ids.insert(asset.id.clone());
-                status.blocking_reason.get_or_insert_with(|| "输出文件已被外部修改，无法安全覆盖，请检查问题图片".into());
-            }
-            if matches!(asset.status.as_str(), "missing" | "ambiguous" | "unsupported" | "error") || self.failures.contains_key(&asset.id) || unsafe_output {
-                status.problem_ids.push(asset.id.clone());
-            } else if asset.status == "ready" && (asset.update_available || !self.converted.contains_key(&asset.id)) {
-                status.pending_image_ids.push(asset.id.clone());
-            } else if asset.status == "pdf" || self.converted.contains_key(&asset.id) {
-                status.completed_images += 1;
-                status.completed_image_ids.push(asset.id.clone());
+                blocking_reason.get_or_insert_with(|| "输出文件已被外部修改，无法安全覆盖，请检查问题图片".into());
             }
         }
+        let mut problems = unsafe_output_ids.clone();
+        problems.extend(self.failures.keys().cloned());
+        let completed = self.converted.keys().cloned().collect();
+        let status = WorkspaceStatus::classify(&self.scan.project.images, &completed, &problems, &self.ignored, self.pending_references(), blocking_reason);
         for asset in &mut self.scan.project.images {
             if let Some((error, _)) = self.failures.get(&asset.id) { asset.message = Some(error.clone()); }
             else if unsafe_output_ids.contains(&asset.id) { asset.message = Some("输出 PDF 已被外部修改，Texgo 无法安全覆盖。请检查文件，或忽略本次处理。".into()); }
@@ -204,7 +236,7 @@ impl Workspace {
         self.scan.project.converted_images.extend(self.failures.iter().map(|(id, (error, _))| ConvertedImage {
             id: id.clone(), pdf_path: None, bytes: None, cached: false, error: Some(error.clone()),
         }));
-        self.scan.project.status = status.finish();
+        self.scan.project.status = status;
     }
 
     pub fn ensure_can_convert(&self, allow_unreviewed: bool) -> Result<(), String> {
@@ -321,6 +353,7 @@ impl Workspace {
         self.converted.retain(|id, _| !selected.contains(id.as_str()) || succeeded.contains(id.as_str()));
         self.scan.project.converted_images.retain(|image| !selected.contains(image.id.as_str()) || succeeded.contains(image.id.as_str()));
         for image in &images {
+            self.retrying.remove(&image.id);
             if let Some(error) = &image.error {
                 let fingerprint = self.scan.project.images.iter().find(|asset| asset.id == image.id).and_then(Self::source_fingerprint);
                 self.failures.insert(image.id.clone(), (error.clone(), fingerprint));
@@ -511,4 +544,32 @@ pub(crate) fn sync_directory(path: &Path) -> Result<(), String> {
     #[cfg(not(unix))]
     let _ = path;
     Ok(())
+}
+
+#[cfg(test)]
+mod error_snapshot_tests {
+    use super::*;
+
+    #[test]
+    fn reconciliation_exposes_partial_conversion_and_journal_failure_without_watcher() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        image::RgbImage::new(20, 10).save(root.join("a.png")).unwrap();
+        fs::write(root.join("main.tex"), r"\includegraphics{a.png}").unwrap();
+        let mut ws = Workspace::open(&root.join("main.tex")).unwrap();
+        let options = crate::preferences::Preferences::default().options(vec![]);
+        // Simulate state storage becoming unavailable immediately after a PDF
+        // was committed. The operation must fail, while its real snapshot shows
+        // the safety blocker instead of claiming that no work happened.
+        let result = ws.update_pending_with_results(&options, &AtomicBool::new(false), |_| {}, |_| {
+            fs::rename(root.join(".texgo/conversions.json"), root.join(".texgo/saved-conversions.json")).unwrap();
+            fs::create_dir(root.join(".texgo/conversions.json")).unwrap();
+        });
+        assert!(result.is_err());
+        assert!(root.join("texgo-pdf/a.pdf").is_file());
+        let project = ws.reconcile_after_error("state storage unavailable");
+        assert!(project.status.blocking_reason.is_some());
+        assert_eq!(project.status.total_images, 1);
+        assert!(ws.update_pending_with_results(&options, &AtomicBool::new(false), |_| {}, |_| {}).is_err());
+    }
 }

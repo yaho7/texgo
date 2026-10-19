@@ -57,6 +57,7 @@ pub(crate) fn scan(main: &Path) -> Result<Scan, String> {
             }
         }
     }
+    scanner.project.status = crate::models::WorkspaceStatus::for_scan(&scanner.project.images);
     Ok(Scan { project: scanner.project, sources: scanner.sources })
 }
 
