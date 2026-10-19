@@ -32,7 +32,7 @@ interface Props {
 
 const presets = {
   balanced: { dpi: "300", jpegQuality: "90" },
-  lossless: { dpi: "300", jpegQuality: "100" },
+  high: { dpi: "300", jpegQuality: "100" },
   small: { dpi: "150", jpegQuality: "75" },
 };
 
@@ -55,7 +55,7 @@ export default function ConversionPanel(props: Props) {
   return <aside className="conversion-panel" aria-label="转换设置">
     <div className="conversion-sections min-h-0 flex-1 overflow-y-auto">
       <details className="conversion-settings" open={settingsOpen} onToggle={(event) => setSettingsOpen(event.currentTarget.open)}>
-        <summary className="conversion-summary"><span>输出设置</span><span className="conversion-summary-value" title={props.settings.outputDir}>{props.settings.dpi} DPI · {props.settings.jpegQuality}% · {props.settings.outputDir}</span></summary>
+        <summary className="conversion-summary"><span>输出设置</span><span className="conversion-summary-value" title={props.settings.outputDir}>{({ balanced: "平衡", high: "高质量", small: "小体积", custom: "自定义" })[preset]} · {props.settings.dpi} DPI · {props.settings.jpegQuality}% · {props.settings.outputDir}</span></summary>
         <form className="px-4 py-4" noValidate onSubmit={(event) => { event.preventDefault(); submit(); }}>
           <FieldSet disabled={locked} className="gap-3">
             <FieldLegend className="sr-only">PDF 输出设置</FieldLegend>
@@ -68,7 +68,7 @@ export default function ConversionPanel(props: Props) {
                   if (value in presets) props.onSettings({ ...props.settings, ...presets[value as keyof typeof presets] });
                 }}>
                   <ToggleGroupItem value="balanced">平衡</ToggleGroupItem>
-                  <ToggleGroupItem value="lossless">无损</ToggleGroupItem>
+                  <ToggleGroupItem value="high">高质量</ToggleGroupItem>
                   <ToggleGroupItem value="small">小体积</ToggleGroupItem>
                   <ToggleGroupItem value="custom">自定义</ToggleGroupItem>
                 </ToggleGroup>

@@ -3,7 +3,8 @@ use std::path::Path;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::{Emitter, State};
+use tauri::{Emitter, Manager, State};
+use crate::preferences::Preferences;
 
 #[derive(Clone, Default)]
 struct AppState {
@@ -12,6 +13,7 @@ struct AppState {
     completed_previews: Arc<Mutex<BTreeMap<String, String>>>,
     cancel: Arc<AtomicBool>,
     converting: Arc<AtomicBool>,
+    preferences: Arc<Mutex<Preferences>>,
 }
 
 async fn work<T: Send + 'static>(state: AppState, action: impl FnOnce(&mut Option<Workspace>) -> Result<T, String> + Send + 'static) -> Result<T, String> {
@@ -27,6 +29,25 @@ async fn work<T: Send + 'static>(state: AppState, action: impl FnOnce(&mut Optio
 
 fn current(workspace: &mut Option<Workspace>) -> Result<&mut Workspace, String> {
     workspace.as_mut().ok_or_else(|| "请先打开 .tex 主文件或图片目录".into())
+}
+
+#[tauri::command]
+fn get_preferences(state: State<'_, AppState>) -> Result<Preferences, String> {
+    state.preferences.lock().map(|p| p.clone()).map_err(|_| "设置状态不可用".into())
+}
+
+#[tauri::command]
+fn save_preferences(preferences: Preferences, app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Preferences, String> {
+    let mut current = state.preferences.lock().map_err(|_| "设置状态不可用")?;
+    let path = app.path().app_config_dir().map_err(|e| e.to_string())?.join("preferences.json");
+    preferences.save(&path)?;
+    *current = preferences.clone();
+    Ok(preferences)
+}
+
+#[tauri::command]
+async fn close_workspace(state: State<'_, AppState>) -> Result<(), String> {
+    work(state.inner().clone(), |workspace| { *workspace = None; Ok(()) }).await
 }
 
 #[tauri::command]
@@ -106,13 +127,14 @@ async fn convert_images(options: ConversionOptions, app: tauri::AppHandle, state
     let guard = ConversionGuard(state.converting.clone());
     state.cancel.store(false, Ordering::Relaxed);
     let cancel = state.cancel.clone();
+    let allow_unreviewed = state.preferences.lock().map_err(|_| "设置状态不可用")?.allow_unreviewed;
     let completed = state.completed_previews.clone();
     completed.lock().map_err(|_| "预览状态不可用")?.clear();
     work(state.inner().clone(), move |workspace| {
         let _guard = guard;
         let ws = current(workspace)?;
         ws.refresh()?;
-        ws.ensure_can_convert(false)?;
+        ws.ensure_can_convert(allow_unreviewed)?;
         ws.convert_with_results(&options, &cancel,
             |progress| { let _ = app.emit("conversion-progress", progress); },
             |image| {
@@ -177,8 +199,16 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
-        .setup(|app| { crate::desktop_menu::install(app)?; Ok(()) })
-        .invoke_handler(tauri::generate_handler![ignore_asset, open_project, open_directory, add_image_directory, refresh_workspace, poll_workspace, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, preview_changes, apply_replacements, undo_replacements])
+        .setup(|app| {
+            crate::desktop_menu::install(app)?;
+            let path = app.path().app_config_dir()?.join("preferences.json");
+            match Preferences::load(&path) {
+                Ok(preferences) => *app.state::<AppState>().preferences.lock().unwrap() = preferences,
+                Err(error) => { eprintln!("{error}"); }
+            }
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![close_workspace, get_preferences, save_preferences, ignore_asset, open_project, open_directory, add_image_directory, refresh_workspace, poll_workspace, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, preview_changes, apply_replacements, undo_replacements])
         .run(tauri::generate_context!())
         .expect("failed to start texgo desktop");
 }

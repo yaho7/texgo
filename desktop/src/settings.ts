@@ -6,7 +6,7 @@ export interface ConversionSettings {
   outputDir: string;
 }
 
-export const defaultSettings: ConversionSettings = { dpi: "300", jpegQuality: "100", outputDir: "texgo-pdf" };
+export const defaultSettings: ConversionSettings = { dpi: "300", jpegQuality: "90", outputDir: "texgo-pdf" };
 export type SettingsIssues = Partial<Record<keyof ConversionSettings, string>>;
 
 export function settingsIssues(settings: ConversionSettings): SettingsIssues {

@@ -18,6 +18,9 @@ import ConversionPanel from "./ConversionPanel";
 import ConversionHistory from "./ConversionHistory";
 import Home from "./Home";
 import WorkspaceSidebar from "./WorkspaceSidebar";
+import SettingsPage from "./SettingsPage";
+import { defaultPreferences } from "./preferences";
+import type { Preferences } from "./preferences";
 import ApplicationUpdate from "./ApplicationUpdate";
 import WorkbenchMenu from "./WorkbenchMenu";
 import AssetProblems from "./AssetProblems";
@@ -39,6 +42,8 @@ function projectEntry(project: Project): Omit<RecentWorkspace, "openedAt"> {
 }
 
 export default function App() {
+  const [preferences, setPreferences] = useState<Preferences>(defaultPreferences);
+  const [settingsPage, setSettingsPage] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
   const [recents, setRecents] = useState(readRecents);
   const [failedRecent, setFailedRecent] = useState<string | null>(null);
@@ -76,7 +81,7 @@ export default function App() {
   const busy = operation !== null;
 
   useEffect(() => {
-    if (!project || busy || review || undoEntry || updateOpen || problemId) return;
+    if (!preferences.autoWatch || !project || busy || review || undoEntry || updateOpen || problemId) return;
     let disposed = false;
     let pending = false;
     let retryAt = 0;
@@ -105,7 +110,7 @@ export default function App() {
     const focus = () => { void poll(); };
     window.addEventListener("focus", focus);
     return () => { disposed = true; window.clearInterval(timer); window.removeEventListener("focus", focus); };
-  }, [project?.root, project?.mainFile, busy, review, undoEntry, updateOpen, problemId]);
+  }, [project?.root, project?.mainFile, busy, review, undoEntry, updateOpen, problemId, preferences.autoWatch]);
 
   useEffect(() => {
     const media = window.matchMedia?.("(max-width: 980px)");
@@ -128,8 +133,25 @@ export default function App() {
     return () => { active = false; stops.forEach((stop) => { void Promise.resolve(stop()).catch(() => {}); }); };
   }, []);
 
+  useEffect(() => {
+    let disposed = false;
+    void invoke<Preferences>("get_preferences").then((value) => {
+      if (disposed || !value) return;
+      setPreferences(value);
+      if (value.startup === "lastWorkspace") { const last = readRecents()[0]; if (last) openRecent(last); }
+      const current = import.meta.env.VITE_RELEASE_TAG;
+      if (value.autoUpdate && current && current !== "development") {
+        void fetch("https://api.github.com/repos/yaho7/texgo/releases/latest", { headers: { Accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(12000) })
+          .then(async (r) => { if (!r.ok) return; const release = await r.json() as { tag_name?: string }; if (!disposed && release.tag_name && release.tag_name !== current) setNotice(`有新版本可用：${release.tag_name}，可从菜单检查应用更新`); }).catch(() => {});
+      }
+    }).catch((reason) => { if (!disposed) setError(errorMessage(reason)); });
+    return () => { disposed = true; };
+  }, []);
+
   function goHome() {
     if (operationRef.current) return;
+    setSettingsPage(false);
+    void invoke("close_workspace").catch((reason) => setError(errorMessage(reason)));
     setDrawerOpen(false);
     clearAssetState(); setProject(null); setError(null); setNotice("就绪");
   }
@@ -173,6 +195,7 @@ export default function App() {
 
   async function acceptProject(next: Project, preserveSettings: boolean, message?: string) {
     clearAssetState();
+    setSettingsPage(false);
     setProject(next);
     setResults(Object.fromEntries(next.convertedImages.map((image) => [image.id, image])));
     setActiveId(next.images.find((image) => image.status === "ready")?.id ?? next.images[0]?.id ?? null);
@@ -182,7 +205,7 @@ export default function App() {
     if (!preserveSettings) {
       setIgnored(new Set());
       setView("assets");
-      setSettings(readSettings(workspaceKey(projectEntry(next))) ?? defaultSettings);
+      setSettings(readSettings(workspaceKey(projectEntry(next))) ?? { dpi: String(preferences.dpi), jpegQuality: String(preferences.jpegQuality), outputDir: preferences.outputDir });
     }
     const saved = rememberWorkspace(projectEntry(next));
     setRecents(readRecents());
@@ -205,7 +228,7 @@ export default function App() {
     void execute("opening", async () => {
       const directory = await open({ multiple: false, directory: true, title: add ? "添加工作区内的图片目录" : "转换图片目录", defaultPath: project?.root });
       if (typeof directory !== "string") return;
-      const next = await invoke<Project>(add ? "add_image_directory" : "open_directory", { directory, recursive: true });
+      const next = await invoke<Project>(add ? "add_image_directory" : "open_directory", { directory, recursive: preferences.recursive });
       await acceptProject(next, add);
     });
   }
@@ -267,7 +290,7 @@ export default function App() {
 
   function convert() {
     if (!project || selected.size === 0 || operationRef.current) return;
-    if (canReview) { reviewChanges(); return; }
+    if (canReview && !preferences.allowUnreviewed) { reviewChanges(); return; }
     const issues = settingsIssues(settings);
     const first = (["dpi", "jpegQuality", "outputDir"] as const).find((key) => issues[key]);
     if (first) {
@@ -303,6 +326,8 @@ export default function App() {
         const failed = Object.values(next).filter((image) => image.error).length;
         setNotice(result.cancelled ? `已取消：${succeeded} 张已完成` : `转换完成：${succeeded} 成功，${failed} 失败`);
         setRevision((value) => value + 1);
+        if (preferences.afterConversion === "history") setView("history");
+        else if (preferences.afterConversion === "review" && project.mode === "tex" && succeeded > 0) { setReviewKind("conversion"); setReview(await invoke<ChangePreview>("preview_changes")); }
       } finally {
         acceptingEvents = false;
         unlisten?.();
@@ -384,6 +409,7 @@ export default function App() {
     return output && !results[image.id]?.error && image.references.some((reference) => reference.original !== relativeFile(output, project.root));
   });
   desktopAction.current = (action) => {
+    if (action === "settings") { setSettingsPage(true); setDrawerOpen(false); return; }
     if (action === "check-updates") { setUpdateOpen(true); return; }
     if (operationRef.current || review || undoEntry || updateOpen || problemId) return;
     if (action === "open-project") openProject();
@@ -408,12 +434,16 @@ export default function App() {
   useEffect(() => {
     function keydown(event: KeyboardEvent) {
       const element = event.target as HTMLElement | null;
-      const editing = Boolean(element?.closest("input,textarea,select,[contenteditable=true]"));
+      const editing = Boolean(element?.closest("input,textarea,select,[contenteditable]:not([contenteditable=false])"));
+      if (event.defaultPrevented || event.isComposing || event.repeat || event.altKey) return;
+      if ((event.metaKey || event.ctrlKey) && event.key === ",") { event.preventDefault(); setSettingsPage(true); return; }
+      if (settingsPage) return;
       if (review || undoEntry || updateOpen || drawerOpen || problemId || document.querySelector('[data-slot="dropdown-menu-content"]')) return;
       const mod = event.metaKey || event.ctrlKey;
       if (mod && event.key.toLowerCase() === "o") { event.preventDefault(); desktopAction.current(event.shiftKey ? "open-directory" : "open-project"); }
       else if (mod && event.key.toLowerCase() === "r") { event.preventDefault(); desktopAction.current("refresh"); }
-      else if (mod && event.key === "Enter") { event.preventDefault(); desktopAction.current(selected.size ? "convert" : "review"); }
+      else if (mod && event.key === "Enter") { event.preventDefault(); desktopAction.current(event.shiftKey ? "review" : "convert"); }
+      else if (mod && event.key.toLowerCase() === "f") { event.preventDefault(); setView("assets"); document.querySelector<HTMLInputElement>('[name="imageSearch"]')?.focus(); }
       else if (!editing && !mod && event.key === "/") { event.preventDefault(); document.querySelector<HTMLInputElement>('[name="imageSearch"]')?.focus(); }
       else if (!editing && !mod && ["ArrowUp", "ArrowDown"].includes(event.key) && visibleImages.length) {
         event.preventDefault(); const index = visibleImages.findIndex((image) => image.id === activeId);
@@ -424,12 +454,12 @@ export default function App() {
     }
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
-  }, [review, undoEntry, updateOpen, drawerOpen, problemId, busy, selected.size, activeId, visibleImages]);
+  }, [review, undoEntry, updateOpen, drawerOpen, problemId, busy, selected.size, activeId, visibleImages, settingsPage]);
   const problemAssets = project?.images.filter((image) => !ignored.has(image.id) && ["missing", "ambiguous", "unsupported"].includes(image.status)) ?? [];
   const progressValue = progress && progress.total > 0 ? Math.min(100, Math.max(0, progress.current / progress.total * 100)) : 0;
   const layoutStyle = { "--assets-width": `${assetsWidth}px` } as CSSProperties;
   const sidebar = <WorkspaceSidebar busy={busy} activeKey={project ? workspaceKey(projectEntry(project)) : null} recents={recents} failedRecent={failedRecent}
-    onHome={goHome} onOpenTex={() => { setDrawerOpen(false); openProject(); }} onOpenDirectory={() => { setDrawerOpen(false); openDirectory(); }}
+    onSettings={() => { setDrawerOpen(false); setSettingsPage(true); }} onHome={goHome} onOpenTex={() => { setDrawerOpen(false); openProject(); }} onOpenDirectory={() => { setDrawerOpen(false); openDirectory(); }}
     onRecent={(entry) => { setDrawerOpen(false); openRecent(entry); }}
     onRemove={(entry) => { const saved = removeRecent(entry); setRecents(readRecents()); setNotice(saved ? "已移除最近记录，文件未删除" : "无法移除记录，请检查应用存储权限"); }} />;
 
@@ -447,7 +477,7 @@ export default function App() {
         }} /></div>
       </header>
       {error && !review && !undoEntry && !problemId && <Alert variant="destructive" role="alert" className="workbench-alert"><TriangleAlert aria-hidden="true" /><AlertTitle>操作未完成</AlertTitle><AlertDescription className="flex items-start justify-between gap-4"><span>{error}</span><IconButton label="关闭错误提示" onClick={() => setError(null)}><X aria-hidden="true" /></IconButton></AlertDescription></Alert>}
-      {!project ? <Home busy={busy} onOpenTex={openProject} onOpenDirectory={() => openDirectory()} /> : <>
+      {settingsPage ? <SettingsPage value={preferences} onSaved={setPreferences} onClose={() => setSettingsPage(false)} /> : !project ? <Home busy={busy} onOpenTex={openProject} onOpenDirectory={() => openDirectory()} /> : <>
         {(problemAssets.length > 0 || project.warnings.length > 0) && <Alert className="workbench-alert scan-alert"><TriangleAlert aria-hidden="true" /><AlertTitle>{problemAssets.length ? `${problemAssets.length} 个问题需要处理` : "项目扫描信息"}</AlertTitle><AlertDescription className="scan-actions">{problemAssets.length > 0 && <Button variant="ghost" size="sm" disabled={busy} onClick={() => inspectProblem(problemAssets[0].id)}>查看并修复</Button>}<details><summary>扫描信息</summary><ul>{project.warnings.map((warning, index) => <li key={index}>{warning}</li>)}{problemAssets.map((image) => <li key={image.id}>{image.relativePath}：{image.message || "请检查源文件"}</li>)}</ul></details></AlertDescription></Alert>}
         <Tabs value={view} onValueChange={setView} className="workspace-tabs">
           <div className="workspace-nav"><TabsList variant="line" aria-label="工作区视图"><TabsTrigger value="assets"><Images aria-hidden="true" />图片</TabsTrigger><TabsTrigger value="history"><History aria-hidden="true" />转换记录<Badge variant="secondary">{history.length}</Badge></TabsTrigger></TabsList>
@@ -459,7 +489,7 @@ export default function App() {
               <TabsContent value="history" className="library-content"><ConversionHistory entries={history} busy={busy} referencesPending={project.undoAvailable} onUndo={(entry) => { rememberFocus(); setError(null); setUndoEntry(entry); }} /></TabsContent></div>
             <Splitter label="调整图片列表宽度" value={assetsWidth} min={380} max={1100} onChange={setAssetsWidth} />
             <div className="asset-inspector" key={workspaceKey(projectEntry(project))}><AssetPreview asset={activeAsset} result={activeAsset ? results[activeAsset.id] : undefined} revision={revision} />
-              <ConversionPanel settings={settings} selectedCount={selected.size} busy={busy} converting={operation === "converting"} canReview={Boolean(canReview)} undoAvailable={project.undoAvailable || history.some((entry) => !entry.undone && Boolean(entry.referencesChanged))} activeAsset={activeAsset} root={project.root} directoryMode={project.mode === "directory"} onSettings={updateSettings} onConvert={convert} onReview={reviewChanges} onUndo={() => replace(true)} />
+              <ConversionPanel settings={settings} selectedCount={selected.size} busy={busy} converting={operation === "converting"} canReview={Boolean(canReview)} allowUnreviewed={preferences.allowUnreviewed} pendingReferences={project.images.reduce((n, image) => n + (results[image.id]?.pdfPath && !results[image.id]?.error ? image.references.filter((reference) => reference.original !== relativeFile(results[image.id].pdfPath!, project.root)).length : 0), 0)} undoAvailable={project.undoAvailable || history.some((entry) => !entry.undone && Boolean(entry.referencesChanged))} activeAsset={activeAsset} root={project.root} directoryMode={project.mode === "directory"} onSettings={updateSettings} onConvert={convert} onReview={reviewChanges} onUndo={() => replace(true)} />
             </div>
           </main>
         </Tabs>

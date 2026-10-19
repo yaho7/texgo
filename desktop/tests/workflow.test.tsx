@@ -4,6 +4,7 @@ import { mockIPC } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import * as events from "@tauri-apps/api/event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { defaultPreferences } from "../src/preferences";
 import App from "../src/App";
 import type { ConversionResult, Project } from "../src/types";
 
@@ -61,6 +62,8 @@ beforeEach(async () => {
   calls = [];
   backendProject = structuredClone(project);
   handlers = {
+    get_preferences: () => ({ ...defaultPreferences, autoUpdate: false }),
+    close_workspace: () => undefined,
     "plugin:dialog|open": () => "/paper/main.tex",
     open_project: () => structuredClone(backendProject),
     refresh_workspace: () => structuredClone(backendProject),
@@ -647,4 +650,14 @@ it("prioritizes review over a new selected batch and the convert accelerator", a
   await user.keyboard("{Control>}{Enter}{/Control}");
   await screen.findByRole("dialog", { name: "检查引用变更" });
   expect(calls.filter(({ command }) => command === "convert_images")).toHaveLength(1);
+});
+
+it("opens settings with the app shortcut and focuses search with Ctrl F", async () => {
+  const user = await openProject();
+  await user.keyboard("{Control>}f{/Control}");
+  expect(screen.getByRole("searchbox", { name: "搜索图片" })).toHaveFocus();
+  await user.keyboard("{Control>},{/Control}");
+  expect(screen.getByRole("main", { name: "设置" })).toBeInTheDocument();
+  await user.keyboard("{Escape}");
+  expect(screen.getByRole("searchbox", { name: "搜索图片" })).toBeInTheDocument();
 });

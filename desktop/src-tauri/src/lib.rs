@@ -7,6 +7,7 @@ mod transaction;
 mod workspace;
 mod observation;
 mod repair;
+pub mod preferences;
 pub mod automation;
 
 pub use models::*;

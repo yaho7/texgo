@@ -1,4 +1,4 @@
-import { FileCode2, FolderOpen, House, Images, X } from "lucide-react";
+import { FileCode2, FolderOpen, House, Images, X, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import IconButton from "./IconButton";
 import type { RecentWorkspace } from "./recents";
@@ -11,6 +11,7 @@ interface Props {
   recents: RecentWorkspace[];
   failedRecent: string | null;
   onHome: () => void;
+  onSettings?: () => void;
   onOpenTex: () => void;
   onOpenDirectory: () => void;
   onRecent: (entry: RecentWorkspace) => void;
@@ -40,6 +41,6 @@ export default function WorkspaceSidebar(props: Props) {
         })}
       </ul>}
     </section>
-    <div className="sidebar-footer"><span className="status-dot" />本地工作区</div>
+    <div className="sidebar-settings"><Button variant="ghost" onClick={props.onSettings}><Settings aria-hidden="true" />设置</Button></div>
   </nav>;
 }

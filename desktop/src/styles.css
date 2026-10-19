@@ -263,3 +263,9 @@ details[open] > .conversion-summary::after { transform: rotate(225deg); }
 .comparison-divider > span { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 4px 3px; border: 1px solid var(--border); border-radius: 5px; background: var(--background); color: var(--foreground); font-size: 11px; white-space: nowrap; }
 .comparison-label { position: absolute; top: 6px; padding: 2px 6px; border-radius: 4px; background: var(--background); color: var(--muted-foreground); font-size: 10px; pointer-events: none; }
 .comparison-label-left { left: 6px; } .comparison-label-right { right: 6px; }
+
+.sidebar-settings { padding-block: 10px; }
+.sidebar-settings > button { justify-content: flex-start; width: 100%; }
+.settings-page { flex: 1; min-height: 0; overflow: auto; padding: 20px max(24px, calc((100% - 720px) / 2)); }
+.settings-page > header { margin-bottom: 24px; }
+.settings-page form { padding-bottom: 30px; }

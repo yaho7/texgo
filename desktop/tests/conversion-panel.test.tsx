@@ -54,7 +54,7 @@ it("applies presets and recognizes manual custom values", async () => {
   await userEvent.click(screen.getByText("输出设置"));
   expect(screen.getByRole("radio", { name: "平衡" })).toHaveAttribute("aria-checked", "true");
   expect(screen.queryByLabelText("分辨率 (DPI)")).not.toBeInTheDocument();
-  await userEvent.click(screen.getByRole("radio", { name: "无损" }));
+  await userEvent.click(screen.getByRole("radio", { name: "高质量" }));
   expect(screen.getByText(/300 DPI · 100%/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole("radio", { name: "小体积" }));
   expect(screen.queryByLabelText("质量 (%)")).not.toBeInTheDocument();
