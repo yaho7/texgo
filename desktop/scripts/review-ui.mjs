@@ -1,0 +1,231 @@
+/**
+ * CI-only visual acceptance harness. Native fixtures are injected into the browser
+ * before the unmodified production bundle loads; no demo mode enters the app.
+ * Run from the UI review workflow after its frontend build and browser install.
+ */
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { setTimeout as delay } from "node:timers/promises";
+import { chromium } from "playwright";
+
+if (process.env.GITHUB_ACTIONS !== "true") throw new Error("UI review runs on GitHub Actions only; it does not run a local build or browser.");
+const desktop = fileURLToPath(new URL("../", import.meta.url));
+const output = new URL("../ui-review/", import.meta.url);
+const origin = "http://127.0.0.1:4173";
+const png = await readFile(new URL("../tests/fixtures/preview.png", import.meta.url));
+
+// Embed the existing RGB PNG's IDAT stream into a minimal valid PDF. PNG and PDF
+// both support this lossless predictor, so no image/PDF generator dependency is needed.
+function imagePdf(bytes) {
+  assert.equal(bytes.subarray(1, 4).toString(), "PNG");
+  const width = bytes.readUInt32BE(16), height = bytes.readUInt32BE(20);
+  assert.equal(bytes[24], 8, "review fixture must use eight-bit RGB");
+  assert.equal(bytes[25], 2, "review fixture must be RGB without alpha");
+  assert.equal(bytes[28], 0, "review fixture must not be interlaced");
+  const compressed = [];
+  for (let at = 8; at < bytes.length;) {
+    const length = bytes.readUInt32BE(at);
+    if (bytes.toString("ascii", at + 4, at + 8) === "IDAT") compressed.push(bytes.subarray(at + 8, at + 8 + length));
+    at += length + 12;
+  }
+  assert.ok(compressed.length, "PNG fixture requires image data");
+  const content = Buffer.from(`q\n${width} 0 0 ${height} 0 0 cm\n/Im1 Do\nQ\n`);
+  const image = Buffer.concat(compressed);
+  const objects = [
+    Buffer.from("<< /Type /Catalog /Pages 2 0 R >>"),
+    Buffer.from("<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+    Buffer.from(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${width} ${height}] /Resources << /XObject << /Im1 5 0 R >> >> /Contents 4 0 R >>`),
+    Buffer.concat([Buffer.from(`<< /Length ${content.length} >>\nstream\n`), content, Buffer.from("endstream")]),
+    Buffer.concat([Buffer.from(`<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /DecodeParms << /Predictor 15 /Colors 3 /BitsPerComponent 8 /Columns ${width} >> /Length ${image.length} >>\nstream\n`), image, Buffer.from("\nendstream")]),
+  ];
+  const chunks = [Buffer.from("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n", "binary")];
+  const offsets = [0];
+  let length = chunks[0].length;
+  objects.forEach((object, index) => {
+    offsets.push(length);
+    const chunk = Buffer.concat([Buffer.from(`${index + 1} 0 obj\n`), object, Buffer.from("\nendobj\n")]);
+    chunks.push(chunk); length += chunk.length;
+  });
+  chunks.push(Buffer.from(`xref\n0 ${offsets.length}\n0000000000 65535 f \n${offsets.slice(1).map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("")}trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${length}\n%%EOF\n`));
+  return Buffer.concat(chunks).toString("base64");
+}
+
+const source = `data:image/png;base64,${png.toString("base64")}`;
+const pdf = imagePdf(png);
+const mainFile = "/Users/research/thesis/main.tex";
+const projectRoot = "/Users/research/thesis";
+const preferences = { startup: "home", autoWatch: false, autoUpdate: false, dpi: 300, jpegQuality: 90, outputDir: "texgo-pdf", allowUnreviewed: false, notifySuccess: true, notifyFailure: true, notifyUnchanged: false, shortcutEnabled: true, shortcut: "CommandOrControl+Alt+Enter", closeAction: "background" };
+function reference(name, line = 128) { return { file: `${projectRoot}/chapters/results.tex`, line, original: `figures/${name}`, start: 0, end: name.length }; }
+const assets = Array.from({ length: 18 }, (_, index) => {
+  const name = index === 0 ? "response-curve.png" : index === 1 ? "architecture.svg" : `experiment-${String(index + 1).padStart(2, "0")}.png`;
+  return { id: `image-${index + 1}`, path: `${projectRoot}/figures/${name}`, relativePath: `figures/${name}`, format: name.endsWith("svg") ? "svg" : "png", width: 1024, height: 1024, bytes: png.length, status: "ready", updateAvailable: index > 1 && index < 6, message: null, references: [reference(name, 128 + index), ...(index === 0 ? [reference(name, 231)] : [])] };
+});
+const problems = [
+  { id: "missing", path: null, relativePath: "figures/missing-result.png", format: "png", width: null, height: null, bytes: null, status: "missing", updateAvailable: false, message: "项目中找不到 LaTeX 引用的图片。", references: [reference("missing-result.png", 46)] },
+  { id: "ambiguous", path: null, relativePath: "figures/calibration", format: "", width: null, height: null, bytes: null, status: "ambiguous", updateAvailable: false, message: "找到多个同名图片，请确认项目使用的文件。", references: [reference("calibration", 72)] },
+];
+function projectFixture(scenario) {
+  const completed = scenario === "completed" || scenario === "review";
+  const pendingImageIds = completed ? [] : assets.slice(0, 12).map((image) => image.id);
+  const completedImageIds = (completed ? assets : assets.slice(12)).map((image) => image.id);
+  const images = completed ? assets : [...assets, ...problems];
+  return { mainFile, root: projectRoot, texFiles: [mainFile, `${projectRoot}/chapters/results.tex`, `${projectRoot}/appendix.tex`], images, convertedImages: images.filter((image) => completedImageIds.includes(image.id)).map((image) => ({ id: image.id, pdfPath: `${projectRoot}/texgo-pdf/${image.id}.pdf`, bytes: Math.round(png.length * .8), cached: false, error: null })), warnings: [], undoAvailable: true, status: { pendingImages: pendingImageIds.length, pendingReferences: scenario === "review" ? 18 : 0, problemCount: completed ? 0 : problems.length, ignoredCount: 0, completedImages: completedImageIds.length, totalImages: images.length, pendingImageIds, completedImageIds, problemIds: completed ? [] : problems.map((image) => image.id), ignoredImageIds: [], nextAction: scenario === "review" ? "reviewReferences" : completed ? "upToDate" : "convertImages", blockingReason: null } };
+}
+const history = [
+  { id: "images-and-references", createdAt: new Date("2026-10-20T10:42:00Z").getTime(), outputDir: "texgo-pdf", dpi: 300, jpegQuality: 90, files: assets.slice(0, 12).map((image) => ({ source: image.relativePath, output: `texgo-pdf/${image.id}.pdf`, cached: false, error: null })), referencesChanged: 18, filesChanged: 2, undone: false, canUndo: true },
+  { id: "references-only", createdAt: new Date("2026-10-20T09:10:00Z").getTime(), outputDir: "texgo-pdf", dpi: 300, jpegQuality: 90, files: [], referencesChanged: 4, filesChanged: 1, undone: false, canUndo: true },
+];
+const preview = { referenceCount: 18, files: [{ path: `${projectRoot}/chapters/results.tex`, changes: Array.from({ length: 18 }, (_, index) => ({ id: `reference-${index}`, line: 128 + index, before: `\\includegraphics{figures/experiment-${index + 1}.png}`, after: `\\includegraphics{texgo-pdf/image-${index + 1}.pdf}` })) }] };
+
+// This mirrors @tauri-apps/api/mocks.js callback and event contracts. It lives
+// only in the review script and never becomes part of a production asset.
+function installNativeFixture(fixture) {
+  localStorage.clear();
+  localStorage.setItem("texgo.recents.v1", JSON.stringify([{ path: fixture.mainFile, openedAt: 1792492920000 }, { path: "/Users/research/paper/paper.tex", openedAt: 1792406520000 }, { path: "/Users/research/report/report.tex", openedAt: 1792320120000 }]));
+  const callbacks = new Map(), listeners = new Map(), unexpectedCommands = [];
+  let identifier = 1;
+  function unregisterListener(event, id) { listeners.get(event)?.delete(id); callbacks.delete(id); }
+  function runCallback(id, data) { callbacks.get(id)?.(data); }
+  function emit(event, payload) { for (const id of listeners.get(event) ?? []) runCallback(id, { event, id, payload }); }
+  window.__TAURI_INTERNALS__ = {
+    metadata: { currentWindow: { label: "main" }, currentWebview: { windowLabel: "main", label: "main" } },
+    callbacks,
+    transformCallback(callback, once = false) { const id = identifier++; callbacks.set(id, (data) => { if (once) callbacks.delete(id); return callback?.(data); }); return id; },
+    unregisterCallback(id) { callbacks.delete(id); }, runCallback,
+    async invoke(command, args = {}) {
+      switch (command) {
+        case "plugin:event|listen": if (!listeners.has(args.event)) listeners.set(args.event, new Set()); listeners.get(args.event).add(args.handler); return args.handler;
+        case "plugin:event|unlisten": unregisterListener(args.event, args.eventId); return null;
+        case "plugin:event|emit": emit(args.event, args.payload); return null;
+        case "get_preferences": return structuredClone(fixture.preferences);
+        case "save_preferences": return structuredClone(args.preferences);
+        case "set_shortcut_recording": return null;
+        case "desktop_status": return { error: null };
+        case "plugin:dialog|open": return fixture.mainFile;
+        case "open_project": case "refresh_workspace": return structuredClone(fixture.project);
+        case "close_workspace": return null;
+        case "poll_workspace": return null;
+        case "conversion_history": return structuredClone(fixture.history);
+        case "preview_changes": return structuredClone(fixture.preview);
+        case "asset_preview": return args.converted ? { kind: "pdf", data: fixture.pdf } : { kind: "image", data: fixture.source };
+        default: unexpectedCommands.push(command); throw new Error(`UI review has no native fixture for ${command}`);
+      }
+    },
+  };
+  window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener };
+  window.__TEXGO_UI_REVIEW__ = { unexpectedCommands, emit };
+}
+
+await mkdir(output, { recursive: true });
+const report = { boundary: "Browser presentation using deterministic LaTeX fixtures; no real Rust file operations.", playwright: "1.64.1", screenshots: [], unexpected: [] };
+let serverLog = "", serverExit = null, browser, activePage;
+const server = spawn(process.execPath, [fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url)), "preview", "--host", "127.0.0.1", "--port", "4173", "--strictPort"], { cwd: desktop, stdio: ["ignore", "pipe", "pipe"] });
+server.stdout.on("data", (chunk) => { serverLog += chunk.toString(); });
+server.stderr.on("data", (chunk) => { serverLog += chunk.toString(); });
+server.once("exit", (code) => { serverExit = code ?? "signal"; });
+server.once("error", (error) => { serverExit = error.message; });
+
+async function screenshot(page, name) {
+  await page.evaluate(async () => { await document.fonts.ready; });
+  const path = new URL(`${name}.png`, output);
+  await page.screenshot({ path: fileURLToPath(path), animations: "disabled" });
+  const commands = await page.evaluate(() => window.__TEXGO_UI_REVIEW__.unexpectedCommands);
+  assert.deepEqual(commands, [], "Every native call must have an explicit visual fixture");
+  assert.deepEqual(report.unexpected, [], "Unexpected browser console or page errors");
+  report.screenshots.push({ name, viewport: page.viewportSize() });
+}
+async function pageFor(scenario = "pending", viewport = { width: 1440, height: 900 }, reducedMotion = "no-preference") {
+  const context = await browser.newContext({ viewport, locale: "zh-CN", timezoneId: "Asia/Shanghai", reducedMotion, deviceScaleFactor: 1 });
+  await context.addInitScript(installNativeFixture, { mainFile, preferences, project: projectFixture(scenario), history, preview, source, pdf });
+  const page = await context.newPage(); activePage = page;
+  page.on("pageerror", (error) => report.unexpected.push({ kind: "pageerror", message: error.message }));
+  page.on("console", (message) => { if (["error", "warning"].includes(message.type())) report.unexpected.push({ kind: message.type(), message: message.text() }); });
+  await page.goto(origin, { waitUntil: "networkidle" });
+  await page.getByRole("heading", { name: "Texgo", exact: true }).waitFor();
+  return page;
+}
+async function openProject(page, action = "更新 12 张图片") {
+  await page.getByRole("button", { name: "打开 LaTeX 项目", exact: true }).click();
+  if (action) await page.getByRole("button", { name: action, exact: true }).waitFor();
+  else await page.getByText("项目已是最新状态", { exact: true }).waitFor();
+  await page.locator('.preview-content-frame[data-ready="true"] img').first().waitFor({ state: "visible" });
+}
+
+try {
+  for (let attempt = 0; attempt < 60; attempt++) {
+    if (serverExit !== null) throw new Error(`Vite preview exited: ${serverExit}\n${serverLog}`);
+    try { const response = await fetch(origin); if (response.ok) break; } catch { /* wait for the runner's preview server */ }
+    if (attempt === 59) throw new Error("Vite preview did not become ready");
+    await delay(500);
+  }
+  browser = await chromium.launch({ headless: true });
+  const page = await pageFor();
+  await screenshot(page, "01-home-1440");
+  await openProject(page);
+  assert.equal(await page.getByRole("checkbox").count(), 0, "Checkboxes must be hidden by default");
+  await screenshot(page, "02-pending-1440");
+  await page.getByRole("button", { name: "选择部分图片…", exact: true }).click();
+  await page.getByRole("checkbox", { name: "选择 figures/response-curve.png", exact: true }).check();
+  await page.getByRole("checkbox", { name: "选择 figures/architecture.svg", exact: true }).check();
+  await page.getByRole("button", { name: "更新已选 2 张", exact: true }).waitFor();
+  await screenshot(page, "03-selection-1440");
+  await page.keyboard.press("Escape");
+  await page.getByRole("radio", { name: "问题 2", exact: true }).click();
+  await page.getByRole("button", { name: "预览 figures/missing-result.png", exact: true }).click();
+  assert.equal(await page.getByRole("dialog").count(), 0, "Problem row clicks must not start a dialog");
+  await page.getByRole("button", { name: "定位文件", exact: true }).waitFor();
+  await screenshot(page, "05-problem-inspector-1440");
+  await page.getByRole("button", { name: "操作记录", exact: true }).click();
+  await page.getByText("更新了 12 张图片", { exact: true }).waitFor();
+  await screenshot(page, "06-history-1440");
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("heading", { name: "设置", exact: true }).waitFor();
+  await screenshot(page, "07-settings-overview-1440");
+  await page.getByRole("button", { name: "重新录制", exact: true }).click();
+  await page.getByText("正在等待按键…", { exact: true }).waitFor();
+  await screenshot(page, "08-shortcut-recording-1440");
+  await page.keyboard.press("Control+Alt+K");
+  await page.getByRole("button", { name: "重新录制", exact: true }).waitFor();
+  await page.getByRole("button", { name: "保存设置", exact: true }).click();
+  await page.getByRole("button", { name: "已保存", exact: true }).waitFor();
+  await screenshot(page, "09-settings-saved-1440");
+
+  const completed = await pageFor("completed");
+  await openProject(completed, null);
+  await completed.getByRole("radio", { name: "对比", exact: true }).click();
+  await completed.locator('.pdf-overlay .pdf-canvas-host[aria-busy="false"] canvas').waitFor({ state: "visible" });
+  assert.equal(await completed.locator(".comparison-label-left").textContent(), "原图");
+  assert.equal(await completed.locator(".comparison-label-right").textContent(), "PDF");
+  await screenshot(completed, "04-comparison-original-left-1440");
+
+  const review = await pageFor("review");
+  await openProject(review, "检查 18 处引用");
+  await review.getByRole("button", { name: "检查 18 处引用", exact: true }).click();
+  await review.getByRole("dialog").waitFor();
+  await screenshot(review, "10-reference-review-1440");
+
+  const reduced = await pageFor("pending", { width: 1440, height: 900 }, "reduce");
+  await openProject(reduced);
+  const reducedAnimation = await reduced.locator(".command-message-enter").evaluate((element) => getComputedStyle(element).animationDuration);
+  assert.ok(reducedAnimation.split(",").every((value) => Number.parseFloat(value) <= .02), "Reduced motion must shorten animation durations");
+  await screenshot(reduced, "11-reduced-motion-1440");
+
+  const compact = await pageFor("pending", { width: 1000, height: 760 });
+  await openProject(compact);
+  assert.ok(await compact.locator(".command-action").isVisible(), "The primary action must stay visible in a compact desktop window");
+  await screenshot(compact, "12-workspace-1000");
+  report.result = "passed";
+  console.log(`Captured ${report.screenshots.length} Texgo UI states without browser errors.`);
+} catch (error) {
+  report.result = "failed"; report.error = error.stack ?? String(error);
+  if (activePage && !activePage.isClosed()) await activePage.screenshot({ path: fileURLToPath(new URL("failure.png", output)), animations: "disabled" }).catch(() => {});
+  throw error;
+} finally {
+  await writeFile(new URL("report.json", output), `${JSON.stringify(report, null, 2)}\n`);
+  if (browser) await browser.close().catch(() => {});
+  server.kill("SIGTERM");
+  if (serverExit === null) await Promise.race([new Promise((resolve) => server.once("exit", resolve)), delay(3000)]);
+  if (serverExit === null) server.kill("SIGKILL");
+}

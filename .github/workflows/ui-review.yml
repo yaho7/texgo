@@ -1,0 +1,57 @@
+name: UI review
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-review-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  screenshots:
+    name: Capture desktop interaction states
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+      # Review tooling stays outside the application's manifest and dependency lock.
+      # Version verified against microsoft/playwright release v1.64.1.
+      - name: Install browser review tooling
+        run: npm install --no-save --package-lock=false playwright@1.64.1
+      - name: Install Chromium and Chinese fonts
+        run: |
+          npx playwright install --with-deps chromium
+          sudo apt-get install --no-install-recommends -y fonts-noto-cjk
+      - name: Build frontend on the GitHub runner
+        run: npm run build
+      - name: Capture UI states with isolated native fixtures
+        run: node scripts/review-ui.mjs
+      - name: Upload screenshots and review report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: texgo-ui-review
+          path: |
+            desktop/ui-review/*.png
+            desktop/ui-review/report.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Describe the review boundary
+        if: always()
+        run: |
+          {
+            printf '%s\n' '## UI review' 'Screenshots use deterministic LaTeX project fixtures and mocked Tauri IPC.'
+            printf '%s\n' 'They review presentation and browser interactions; Rust file safety and native behavior are covered by the Desktop workflow.'
+          } >> "$GITHUB_STEP_SUMMARY"
