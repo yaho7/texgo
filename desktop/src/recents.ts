@@ -1,9 +1,7 @@
 import type { ConversionSettings } from "./settings";
 
 export interface RecentWorkspace {
-  mode: "tex" | "directory";
   path: string;
-  recursive: boolean;
   openedAt: number;
 }
 
@@ -20,19 +18,25 @@ function write(key: string, value: unknown): boolean {
   catch { return false; }
 }
 
-export function workspaceKey(entry: Pick<RecentWorkspace, "mode" | "path">): string {
-  return `${entry.mode}:${entry.path}`;
+export function workspaceKey(entry: Pick<RecentWorkspace, "path">): string {
+  return `tex:${entry.path}`;
 }
 
 export function readRecents(): RecentWorkspace[] {
   const value = read(recentKey);
   if (!Array.isArray(value)) return [];
-  return value.filter((entry: unknown): entry is RecentWorkspace => {
-    if (!entry || typeof entry !== "object") return false;
+  const normalized = value.flatMap((entry: unknown): RecentWorkspace[] => {
+    if (!entry || typeof entry !== "object") return [];
     const item = entry as Record<string, unknown>;
-    return (item.mode === "tex" || item.mode === "directory") && typeof item.path === "string" && Boolean(item.path)
-      && typeof item.recursive === "boolean" && typeof item.openedAt === "number" && Number.isFinite(new Date(item.openedAt).getTime());
-  }).slice(0, 12);
+    if (item.mode !== undefined && item.mode !== "tex") return [];
+    if (typeof item.path !== "string" || !item.path.trim() || !item.path.toLowerCase().endsWith(".tex")
+      || typeof item.openedAt !== "number" || !Number.isFinite(new Date(item.openedAt).getTime())) return [];
+    return [{ path: item.path, openedAt: item.openedAt }];
+  });
+  const unique = normalized.filter((entry, index) => normalized.findIndex((item) => item.path === entry.path) === index).slice(0, 12);
+  // Persist migration so obsolete independent directory workspaces cannot return.
+  if (JSON.stringify(value) !== JSON.stringify(unique)) write(recentKey, unique);
+  return unique;
 }
 
 export function rememberWorkspace(entry: Omit<RecentWorkspace, "openedAt">): boolean {

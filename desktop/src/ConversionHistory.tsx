@@ -6,7 +6,6 @@ import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empt
 import type { ConversionHistoryEntry } from "./types";
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
-
 interface Props { highlightId?: string | null; entries: (ConversionHistoryEntry & { referencesChanged?: number; filesChanged?: number })[]; busy: boolean; referencesPending?: boolean; onUndo: (entry: ConversionHistoryEntry) => void }
 
 export default function ConversionHistory({ entries, busy, onUndo, highlightId }: Props) {
@@ -18,27 +17,30 @@ export default function ConversionHistory({ entries, busy, onUndo, highlightId }
     const index = entries.findIndex((entry) => entry.id === highlightId);
     if (index >= 0) setLimit((value) => Math.max(value, index + 1));
     setExpanded((previous) => new Set([...previous, highlightId]));
-    requestAnimationFrame(() => document.getElementById(`batch-${highlightId}`)?.scrollIntoView?.({ block: "center" }));
+    requestAnimationFrame(() => document.getElementById(`operation-${highlightId}`)?.scrollIntoView?.({ block: "center" }));
   }, [highlightId, entries]);
-  return <section className="history-panel" aria-label="转换记录">
-    {entries.length === 0 ? <Empty><EmptyHeader><EmptyMedia variant="icon"><History aria-hidden="true" /></EmptyMedia><EmptyTitle>暂无转换记录</EmptyTitle></EmptyHeader></Empty> : <ol className="history-list">
-      {entries.slice(0, limit).map((entry) => {
-        const failed = entry.files.filter((file) => file.error).length;
-        const cachedOnly = !entry.referencesChanged && entry.files.length > 0 && entry.files.every((file) => file.cached && !file.error);
-        const emptyBatch = entry.files.length === 0 && !entry.referencesChanged;
-        const date = new Date(entry.createdAt);
-        const validDate = Number.isFinite(date.getTime());
-        return <li id={`batch-${entry.id}`} key={entry.id} className="history-entry" data-highlighted={highlightId === entry.id}>
-          <header><div><time dateTime={validDate ? date.toISOString() : undefined}>{validDate ? dateFormat.format(date) : "时间未知"}</time><div className="history-summary"><Badge variant={entry.undone || cachedOnly || emptyBatch ? "secondary" : failed || entry.cancelled ? "warning" : "success"}>{entry.undone ? "已撤销" : entry.cancelled ? "已取消" : failed ? `${failed} 个失败` : cachedOnly ? "复用缓存" : emptyBatch ? "未写入文件" : "已完成"}</Badge><span>{entry.files.length} 张 · {entry.dpi} DPI · {entry.jpegQuality}%</span></div></div>
-            <Button variant="outline" size="sm" disabled={busy || !entry.canUndo} onClick={() => onUndo(entry)}><RotateCcw data-icon="inline-start" aria-hidden="true" />撤销此批次</Button>
-          </header>
-          <p className="history-directory" title={entry.outputDir}>{entry.outputDir}</p>
-          {!!entry.referencesChanged && <p className="history-directory">更新 {entry.filesChanged ?? 0} 个 TeX 文件中的 {entry.referencesChanged} 处引用</p>}
-          {entry.undoReason && !entry.undone && <p className="history-directory">{entry.undoReason}</p>}
-          <details open={expanded.has(entry.id)} onToggle={(event) => { const open = event.currentTarget.open; setExpanded((previous) => { const next = new Set(previous); if (open) next.add(entry.id); else next.delete(entry.id); return next; }); }}><summary>文件记录 ({entry.files.length})</summary>{expanded.has(entry.id) && <><ul>{entry.files.slice(0, fileLimits[entry.id] ?? 40).map((file, index) => <li key={`${file.source}:${index}`}><span title={file.source}>{file.source}</span><span title={file.output}>{file.output || "未生成 PDF"}</span>{file.error ? <p className="text-destructive">{file.error}</p> : file.cached && <Badge variant="secondary">复用缓存</Badge>}</li>)}</ul>{entry.files.length > (fileLimits[entry.id] ?? 40) && <Button variant="ghost" size="sm" onClick={() => setFileLimits((previous) => ({ ...previous, [entry.id]: (previous[entry.id] ?? 40) + 40 }))}>显示更多文件</Button>}</>}</details>
-        </li>;
-      })}
-    </ol>}
+  return <section className="history-panel page-transition" aria-label="操作记录">
+    <h2 className="history-title">操作记录</h2>
+    {entries.length === 0 ? <Empty><EmptyHeader><EmptyMedia variant="icon"><History aria-hidden="true" /></EmptyMedia><EmptyTitle>暂无操作记录</EmptyTitle></EmptyHeader></Empty> : <ol className="history-list">{entries.slice(0, limit).map((entry) => {
+      const failed = entry.files.filter((file) => file.error).length;
+      const updated = entry.files.filter((file) => !file.error && !file.cached && file.output).length;
+      const completed = entry.files.filter((file) => !file.error && file.output).length;
+      const date = new Date(entry.createdAt);
+      const validDate = Number.isFinite(date.getTime());
+      const summary = updated > 0 ? `更新了 ${updated} 张图片` : entry.referencesChanged ? `更新了 ${entry.referencesChanged} 处 LaTeX 引用` : completed ? `${completed} 张图片已是最新` : failed ? `${failed} 张图片更新失败` : "未修改项目文件";
+      return <li id={`operation-${entry.id}`} key={entry.id} className="history-entry" data-highlighted={highlightId === entry.id}>
+        <header><div><time dateTime={validDate ? date.toISOString() : undefined}>{validDate ? dateFormat.format(date) : "时间未知"}</time><div className="history-summary"><Badge variant={entry.undone ? "secondary" : failed || entry.cancelled ? "warning" : "success"}>{entry.undone ? "已撤销" : entry.cancelled ? "已取消" : failed ? "需要处理" : "已完成"}</Badge><span>{summary}</span></div>{updated > 0 && !!entry.referencesChanged && <p className="history-reference-summary">更新了 {entry.referencesChanged} 处 LaTeX 引用</p>}</div>
+          <Button variant="outline" size="sm" disabled={busy || !entry.canUndo} onClick={() => onUndo(entry)}><RotateCcw data-icon="inline-start" aria-hidden="true" />撤销</Button>
+        </header>
+        {entry.undoReason && !entry.undone && <p className="history-directory">{entry.undoReason}</p>}
+        <details open={expanded.has(entry.id)} onToggle={(event) => { const open = event.currentTarget.open; setExpanded((previous) => { const next = new Set(previous); if (open) next.add(entry.id); else next.delete(entry.id); return next; }); }}><summary>详细信息</summary>{expanded.has(entry.id) && <>
+          {entry.files.length > 0 && <p className="history-directory">{entry.dpi} DPI · 质量 {entry.jpegQuality}%</p>}
+          {entry.outputDir && <p className="history-directory" title={entry.outputDir}>{entry.outputDir}</p>}
+          {!!entry.referencesChanged && <p className="history-directory">涉及 {entry.filesChanged ?? 0} 个 LaTeX 文件</p>}
+          <ul>{entry.files.slice(0, fileLimits[entry.id] ?? 40).map((file, index) => <li key={`${file.source}:${index}`}><span title={file.source}>{file.source}</span><span title={file.output}>{file.output || "未生成 PDF"}</span>{file.error ? <p className="text-destructive">{file.error}</p> : file.cached && <Badge variant="secondary">复用已有 PDF</Badge>}</li>)}</ul>{entry.files.length > (fileLimits[entry.id] ?? 40) && <Button variant="ghost" size="sm" onClick={() => setFileLimits((previous) => ({ ...previous, [entry.id]: (previous[entry.id] ?? 40) + 40 }))}>显示更多文件</Button>}
+        </>}</details>
+      </li>;
+    })}</ol>}
     {entries.length > limit && <Button variant="outline" className="my-4" onClick={() => setLimit((value) => value + 20)}>显示更早记录</Button>}
   </section>;
 }
