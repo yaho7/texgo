@@ -32,8 +32,10 @@ export default function Home(props: Props) {
         <Button variant="outline" disabled={props.busy} onClick={props.onOpenDirectory}><Images data-icon="inline-start" aria-hidden="true" />转换图片目录</Button>
       </div>
       <Field orientation="horizontal" className="home-recursive">
-        <Checkbox id="home-recursive" name="recursive" checked={props.recursive} disabled={props.busy} onCheckedChange={(checked) => props.onRecursive(checked === true)} />
-        <FieldLabel htmlFor="home-recursive">图片目录包含子目录</FieldLabel>
+        <FieldLabel htmlFor="home-recursive" className="checkbox-option">
+          <Checkbox id="home-recursive" name="recursive" checked={props.recursive} disabled={props.busy} onCheckedChange={(checked) => props.onRecursive(checked === true)} />
+          <span>图片目录包含子目录</span>
+        </FieldLabel>
       </Field>
     </section>
     <section className="recent-section" aria-labelledby="recent-title">

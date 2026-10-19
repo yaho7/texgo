@@ -75,8 +75,8 @@ export default function AssetList(props: Props) {
           <TableCaption className="sr-only">项目图片及转换状态</TableCaption>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-11 pl-4">
-                <label className="-m-2 inline-flex size-9 items-center justify-center"><Checkbox aria-label="选择当前列表" checked={allChecked ? true : checkedCount > 0 ? "indeterminate" : false} disabled={props.busy || readyIds.length === 0} onCheckedChange={() => props.onSelectAll(readyIds, !allChecked)} /></label>
+              <TableHead className="asset-selection-cell w-12">
+                <label className="asset-selection-target"><Checkbox aria-label="选择当前列表" checked={allChecked ? true : checkedCount > 0 ? "indeterminate" : false} disabled={props.busy || readyIds.length === 0} onCheckedChange={() => props.onSelectAll(readyIds, !allChecked)} /></label>
               </TableHead>
               <TableHead>图片</TableHead>
               <TableHead className="hidden w-28 @min-[36rem]:table-cell">尺寸</TableHead>
@@ -95,13 +95,13 @@ export default function AssetList(props: Props) {
               const filename = normalizedPath.slice(slash + 1);
               const folder = slash < 0 ? "." : normalizedPath.slice(0, slash);
               return (
-                <TableRow key={asset.id} data-state={props.activeId === asset.id ? "selected" : undefined} className="h-[76px]">
-                  <TableCell className="pl-4">
-                    <label className="-m-2 inline-flex size-9 items-center justify-center"><Checkbox aria-label={`选择 ${asset.relativePath}`} checked={props.selected.has(asset.id)} disabled={props.busy || asset.status !== "ready"} onCheckedChange={() => props.onSelect(asset.id)} /></label>
+                <TableRow key={asset.id} data-state={props.activeId === asset.id ? "selected" : undefined} data-disabled={props.busy} className="asset-row h-[76px]">
+                  <TableCell className="asset-selection-cell">
+                    <label className="asset-selection-target"><Checkbox aria-label={`选择 ${asset.relativePath}`} checked={props.selected.has(asset.id)} disabled={props.busy || asset.status !== "ready"} onCheckedChange={() => props.onSelect(asset.id)} /></label>
                   </TableCell>
                   <TableCell className="min-w-0 whitespace-normal">
                     <div className="flex min-w-0 flex-col gap-1">
-                      <Button variant="ghost" className="h-auto min-w-0 justify-start px-0 py-0" disabled={props.busy} aria-label={`预览 ${asset.relativePath}`} aria-pressed={props.activeId === asset.id} onClick={() => props.onActivate(asset.id)} title={asset.relativePath}>
+                      <Button variant="ghost" className="asset-preview-trigger h-auto min-w-0 justify-start px-0 py-0" disabled={props.busy} aria-label={`预览 ${asset.relativePath}`} aria-pressed={props.activeId === asset.id} onClick={() => props.onActivate(asset.id)} title={asset.relativePath}>
                         {warning ? <FileWarning data-icon="inline-start" aria-hidden="true" /> : <FileImage data-icon="inline-start" aria-hidden="true" />}
                         <span className="truncate">{filename}</span>
                       </Button>

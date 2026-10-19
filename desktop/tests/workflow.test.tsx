@@ -91,6 +91,33 @@ async function convertFirst(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("LaTeX 图片工作流", () => {
+  it("toggles the entire recursive option without double toggling its checkbox", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const checkbox = screen.getByRole("checkbox", { name: "图片目录包含子目录" });
+    const option = checkbox.closest("label");
+    expect(option).not.toBeNull();
+    await user.click(option!);
+    expect(checkbox).not.toBeChecked();
+    await user.click(checkbox);
+    expect(checkbox).toBeChecked();
+    await user.click(screen.getByText("图片目录包含子目录"));
+    expect(checkbox).not.toBeChecked();
+  });
+
+  it("keeps selection separate from preview and supports keyboard preview", async () => {
+    const user = await openProject();
+    const preview = screen.getByRole("button", { name: "预览 figures/beta.jpg" });
+    const checkbox = screen.getByRole("checkbox", { name: "选择 figures/beta.jpg" });
+    await user.click(checkbox.closest("label")!);
+    expect(checkbox).toBeChecked();
+    expect(preview).toHaveAttribute("aria-pressed", "false");
+    preview.focus();
+    await user.keyboard("{Enter}");
+    expect(preview).toHaveAttribute("aria-pressed", "true");
+    expect(checkbox).toBeChecked();
+  });
+
   it("opens an image directory without a TeX file and can reopen it from recents", async () => {
     handlers["plugin:dialog|open"] = () => "/images";
     handlers.open_directory = () => ({ ...project, mode: "directory", mainFile: "", root: "/images", texFiles: [], warnings: [], images: [{ ...project.images[0], references: [] }] });
@@ -177,6 +204,13 @@ describe("LaTeX 图片工作流", () => {
     expect(screen.getByRole("button", { name: "预览替换" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "重新扫描" })).toBeDisabled();
     expect(screen.getByRole("checkbox", { name: "选择 figures/alpha.png" })).toBeDisabled();
+    const preview = screen.getByRole("button", { name: "预览 figures/beta.jpg" });
+    expect(preview).toBeDisabled();
+    await user.click(preview);
+    expect(preview).toHaveAttribute("aria-pressed", "false");
+    const recursive = screen.getByRole("checkbox", { name: "新增目录包含子目录" });
+    await user.click(recursive.closest("label")!);
+    expect(recursive).toBeChecked();
     expect(screen.getByRole("spinbutton", { name: "分辨率 (DPI)" })).toBeDisabled();
     expect(calls).toContainEqual({ command: "convert_images", args: { options: { imageIds: ["a"], quality: "custom", dpi: 240, jpegQuality: 85, outputDir: "texgo-pdf" } } });
     await act(async () => { pending.resolve(success); });
