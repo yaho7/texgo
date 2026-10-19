@@ -24,4 +24,6 @@ Tech stack: Tauri 2, Rust, React, existing shadcn primitives, Vitest.
    - Send shared outcome notifications; notification clicks alone show/focus and route to stored workspace/batch/problem. Add tray open/convert/quit for hidden window access.
    - Verify npm check/test/test:pdf, Rust tests and desktop build as requested; inspect rendered UI, document platform limits and commit.
 
-Checks: use npm run check, npm test, npm run test:pdf; cargo test --no-default-features, cargo test, cargo build. Cross-platform compilation requires corresponding runners; preserve the existing CI matrix and extend checks there.
+User override (2026-10-19): do not run tests or compilation locally. Local edits and static no-emit checks only; tests/builds run on CI.
+
+CI checks: use npm run check, npm test, npm run test:pdf; cargo test --no-default-features, cargo test, cargo build. Cross-platform compilation requires corresponding runners; preserve the existing CI matrix and extend checks there.

@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
-export default function PdfPreview({ data, label }: { data: string; label: string }) {
+export default function PdfPreview({ data, label, overlay = false }: { data: string; label: string; overlay?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 480, height: 240 });
@@ -82,13 +82,13 @@ export default function PdfPreview({ data, label }: { data: string; label: strin
         const pdfPage = await pdf.getPage(page);
         if (disposed) return;
         const natural = pdfPage.getViewport({ scale: 1 });
-        const fit = Math.min(Math.max(1, size.width - 48) / natural.width, Math.max(1, size.height - 32) / natural.height);
+        const fit = overlay ? Math.min(size.width / natural.width, size.height / natural.height) : Math.min(Math.max(1, size.width - 48) / natural.width, Math.max(1, size.height - 32) / natural.height);
         const viewport = pdfPage.getViewport({ scale: fit * zoom });
         const ratio = Math.min(window.devicePixelRatio || 1, 2, Math.sqrt(16_000_000 / (viewport.width * viewport.height)));
         canvas.width = Math.max(1, Math.floor(viewport.width * ratio));
         canvas.height = Math.max(1, Math.floor(viewport.height * ratio));
-        canvas.style.width = `${viewport.width}px`;
-        canvas.style.height = `${viewport.height}px`;
+        canvas.style.width = overlay ? "100%" : `${viewport.width}px`;
+        canvas.style.height = overlay ? "100%" : `${viewport.height}px`;
         const context = canvas.getContext("2d");
         if (!context) throw new Error("无法创建 PDF 画布");
         renderTask = pdfPage.render({ canvas, canvasContext: context, viewport, transform: [ratio, 0, 0, ratio, 0, 0] });
@@ -104,14 +104,14 @@ export default function PdfPreview({ data, label }: { data: string; label: strin
       renderTask?.cancel();
       canvas.remove();
     };
-  }, [document, data, label, page, size, zoom]);
+  }, [document, data, label, page, size, zoom, overlay]);
 
-  return <div className="pdf-preview">
-    <div className="pdf-toolbar" role="group" aria-label="PDF 预览工具">
+  return <div className={overlay ? "pdf-preview pdf-overlay" : "pdf-preview"}>
+    {!overlay && <div className="pdf-toolbar" role="group" aria-label="PDF 预览工具">
       <IconButton label="上一页" size="icon-sm" disabled={page <= 1 || loading} onClick={() => setPage((value) => value - 1)}><ChevronLeft aria-hidden="true" /></IconButton><span className="page-count">{page} / {pages || "…"}</span><IconButton label="下一页" size="icon-sm" disabled={page >= pages || loading} onClick={() => setPage((value) => value + 1)}><ChevronRight aria-hidden="true" /></IconButton>
       <Separator orientation="vertical" className="mx-1 h-4" />
       <IconButton label="缩小" size="icon-sm" disabled={zoom <= 0.25} onClick={() => setZoom((value) => Math.max(0.25, value - 0.25))}><Minus aria-hidden="true" /></IconButton><span className="zoom-value">{Math.round(zoom * 100)}%</span><IconButton label="放大" size="icon-sm" disabled={zoom >= 4} onClick={() => setZoom((value) => Math.min(4, value + 0.25))}><Plus aria-hidden="true" /></IconButton><IconButton label="适合页面" size="icon-sm" onClick={() => setZoom(1)}><Maximize aria-hidden="true" /></IconButton>
-    </div>
+    </div>}
     <div ref={frame} className="pdf-viewport"><div ref={host} className="pdf-canvas-host" aria-busy={loading} />{loading && <div className="pdf-render-status" role="status"><LoaderCircle size={16} className="spin" aria-hidden="true" />正在渲染</div>}{error && <p className="preview-error pdf-error" role="alert">{error}</p>}</div>
   </div>;
 }

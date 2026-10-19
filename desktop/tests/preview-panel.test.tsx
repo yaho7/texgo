@@ -16,7 +16,7 @@ beforeEach(() => {
   ipc.invoke.mockImplementation((_command, { converted }) => Promise.resolve({ kind: converted ? "pdf" : "image", data: converted ? "pdf-a" : "data:image/png;base64,YQ==" }));
 });
 
-it("defaults to the original and compares it alongside the real PDF only on request", async () => {
+it("defaults to the original and compares it overlaid on the real PDF only on request", async () => {
   const user = userEvent.setup();
   render(<AssetPreview asset={asset} result={result} revision={1} />);
   expect(await screen.findByAltText("原始：a.png")).toBeInTheDocument();
@@ -81,14 +81,14 @@ it("resets a selected comparison on asset change and ignores its late PDF", asyn
 it("toggles comparison with Space only after a successful result", async () => {
   const view = render(<AssetPreview asset={asset} revision={1} />);
   await screen.findByAltText("原始：a.png");
-  expect(fireEvent.keyDown(document.body, { key: " ", code: "Space" })).toBe(true);
+  expect(fireEvent.keyDown(screen.getByRole("region", { name: "图片预览" }), { key: " ", code: "Space" })).toBe(true);
   expect(screen.getByRole("radio", { name: "原图" })).toHaveAttribute("aria-checked", "true");
   view.rerender(<AssetPreview asset={asset} result={result} revision={1} />);
-  expect(fireEvent.keyDown(document.body, { key: " ", code: "Space" })).toBe(false);
+  expect(fireEvent.keyDown(screen.getByRole("region", { name: "图片预览" }), { key: " ", code: "Space" })).toBe(false);
   expect(await screen.findByLabelText("真实 PDF")).toBeInTheDocument();
-  fireEvent.keyDown(document.body, { key: " ", code: "Space", repeat: true });
+  fireEvent.keyDown(screen.getByRole("region", { name: "图片预览" }), { key: " ", code: "Space", repeat: true });
   expect(screen.getByRole("radio", { name: "对比" })).toHaveAttribute("aria-checked", "true");
-  fireEvent.keyDown(document.body, { key: " ", code: "Space" });
+  fireEvent.keyDown(screen.getByRole("region", { name: "图片预览" }), { key: " ", code: "Space" });
   expect(screen.queryByLabelText("真实 PDF")).not.toBeInTheDocument();
 });
 
@@ -107,4 +107,29 @@ it.each([
   focus.focus();
   expect(fireEvent.keyDown(focus, { key: " ", code: "Space" })).toBe(true);
   expect(screen.getByRole("radio", { name: "原图" })).toHaveAttribute("aria-checked", "true");
+});
+
+
+it("drags and resets a shared comparison divider and scopes keyboard input to preview", async () => {
+  render(<AssetPreview asset={asset} result={result} revision={1} />);
+  await screen.findByAltText("原始：a.png");
+  fireEvent.keyDown(document.body, { key: " " });
+  expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+  const preview = screen.getByRole("region", { name: "图片预览" });
+  fireEvent.keyDown(preview, { key: " " });
+  const slider = screen.getByRole("slider", { name: "原图与 PDF 分隔线" });
+  expect(slider).toHaveAttribute("aria-valuenow", "50");
+  fireEvent.keyDown(slider, { key: "ArrowRight" });
+  expect(slider).toHaveAttribute("aria-valuenow", "51");
+  fireEvent.keyDown(slider, { key: "ArrowLeft", shiftKey: true });
+  expect(slider).toHaveAttribute("aria-valuenow", "41");
+  fireEvent.keyDown(slider, { key: "0" });
+  expect(slider).toHaveAttribute("aria-valuenow", "50");
+  vi.spyOn(slider.parentElement!, "getBoundingClientRect").mockReturnValue({ left: 0, width: 200 } as DOMRect);
+  fireEvent.pointerDown(slider, { clientX: 160, pointerId: 1 });
+  expect(slider).toHaveAttribute("aria-valuenow", "80");
+  fireEvent.doubleClick(slider);
+  expect(slider).toHaveAttribute("aria-valuenow", "50");
+  fireEvent.keyDown(preview, { key: "Escape" });
+  expect(screen.queryByRole("slider")).not.toBeInTheDocument();
 });
