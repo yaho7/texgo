@@ -279,8 +279,8 @@ h1, h2, h3, p { margin: 0; }
 @keyframes page-enter { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 .command-bar { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 76px; padding: 14px 20px; border-top: 1px solid var(--border); background: var(--background); }
 .command-content { min-width: 0; display: flex; align-items: center; gap: 10px; }
-.command-message { min-width: 0; font-size: 13px; line-height: 1.6; display: flex; align-items: center; gap: 8px; }
-.command-message svg { width: 17px; height: 17px; }
+.command-message { display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; line-height: 1.6; }
+.command-message svg { display: inline-block; width: 17px; height: 17px; margin-right: 8px; vertical-align: -.2em; }
 .command-message[data-complete="true"] svg, .command-complete-icon { color: var(--success); animation: complete-enter var(--motion-slow) var(--ease-out); }
 .command-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: none; }
 .command-action { min-width: 168px; font-variant-numeric: tabular-nums; }
@@ -343,3 +343,9 @@ h1, h2, h3, p { margin: 0; }
 .asset-row[data-exiting="true"] { pointer-events: none; animation: row-exit var(--motion-fast) var(--ease-out) forwards; }
 @keyframes row-exit { from { opacity: 1; } to { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .asset-row[data-exiting="true"] { animation-name: row-exit !important; } }
+
+.command-action-label-stage { display: grid; align-items: center; min-width: 0; }
+.command-action-label-stage > span { grid-area: 1 / 1; white-space: nowrap; }
+.command-action-label-enter { animation: command-enter var(--motion-normal) var(--ease-out); }
+.command-action-label-exit { animation: command-exit var(--motion-normal) var(--ease-standard) forwards; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .command-action-label-enter, .command-action-label-exit { animation-name: reduced-opacity !important; } }
