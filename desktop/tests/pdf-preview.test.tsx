@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { TooltipProvider } from "../src/components/ui/tooltip";
@@ -45,4 +45,25 @@ it("destroys the previous document and resets the page when the data changes", a
   await waitFor(() => expect(screen.getByText("1 / 2")).toBeInTheDocument());
   expect(pdf.destroy).toHaveBeenCalledTimes(1);
   expect(pdf.getDocument).toHaveBeenCalledTimes(2);
+});
+
+it("retains the last painted canvas until the next render completes", async () => {
+  const user = userEvent.setup(); const ready = vi.fn();
+  const { container } = render(<TooltipProvider><PdfPreview data="cGRm" label="plot.pdf" onReady={ready} /></TooltipProvider>);
+  await waitFor(() => expect(ready).toHaveBeenCalled());
+  const painted = container.querySelector("canvas");
+  let resolve!: () => void;
+  pdf.render.mockReturnValueOnce({ promise: new Promise<void>((done) => { resolve = done; }), cancel: vi.fn() });
+  await user.click(screen.getByRole("button", { name: "放大" }));
+  await waitFor(() => expect(container.querySelector(".pdf-canvas-host")).toHaveAttribute("aria-busy", "true"));
+  expect(container.querySelector("canvas")).toBe(painted);
+  await act(async () => resolve());
+  await waitFor(() => expect(container.querySelector(".pdf-canvas-host")).toHaveAttribute("aria-busy", "false"));
+  expect(container.querySelector("canvas")).not.toBe(painted);
+});
+
+it("reports render failure to the retaining inspector", async () => {
+  const failed = vi.fn(); pdf.render.mockImplementationOnce(() => ({ promise: Promise.reject(new Error("PDF render failed")), cancel: vi.fn() }));
+  render(<TooltipProvider><PdfPreview data="cGRm" label="plot.pdf" onError={failed} /></TooltipProvider>);
+  await waitFor(() => expect(failed).toHaveBeenCalledWith("PDF render failed"));
 });

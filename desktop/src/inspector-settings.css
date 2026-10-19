@@ -1,0 +1,40 @@
+/* Local inspector and settings interactions share the application's motion tokens. */
+.preview-content-stack { position: relative; display: flex; width: 100%; height: 100%; min-height: 0; }
+.preview-content-frame { position: absolute; inset: 0; display: flex; opacity: 0; transition: opacity var(--motion-normal) var(--ease-out); }
+.preview-content-frame[data-ready="true"] { opacity: 1; }
+.preview-content-frame[data-stale="true"], .preview-retained { opacity: .55; }
+.preview-loading-note { position: absolute; right: 8px; bottom: 8px; border-radius: 4px; padding: 3px 6px; font-size: 10px; color: var(--muted-foreground); background: var(--background); }
+.preview-load-error { position: absolute; inset: auto 8px 8px; background: var(--background); border: 1px solid var(--border); border-radius: 6px; }
+.preview-surface[data-dragging="true"], .preview-surface[data-dragging="true"] * { user-select: none; -webkit-user-select: none; }
+.preview-surface[data-resetting="true"] .comparison-divider { transition: left var(--motion-normal) var(--ease-out); }
+.preview-surface[data-resetting="true"] .comparison-clip { transition: clip-path var(--motion-normal) var(--ease-out); }
+.preview-surface[data-dragging="true"] .comparison-divider, .preview-surface[data-dragging="true"] .comparison-clip { transition: none; }
+.comparison-divider > span { transition: background-color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard); }
+.comparison-divider:hover > span, .comparison-divider:focus-visible > span { background: var(--accent); box-shadow: 0 0 0 2px var(--ring); }
+.preview-reference-trigger { height: auto; min-height: 0 !important; padding: 0; font-size: inherit; }
+.preview-references ul { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; max-height: 260px; overflow: auto; }
+.preview-references li { display: flex; justify-content: space-between; gap: 16px; font-size: 12px; }
+.preview-references li > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-references li > :last-child { white-space: nowrap; color: var(--muted-foreground); }
+.inspector-image-state { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 0 20px 16px; font-size: 12px; }
+.inspector-image-state p { color: var(--muted-foreground); overflow-wrap: anywhere; }
+.inspector-image-state code { display: block; margin-top: 4px; }
+.inspector-image-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.shortcut-recorder { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.shortcut-capture { display: flex; align-items: center; min-height: 42px; min-width: 200px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; transition: border-color var(--motion-normal) var(--ease-standard); }
+.shortcut-capture[aria-disabled="true"] { opacity: .5; }
+.shortcut-capture:focus-visible, .shortcut-recorder[data-recording="true"] .shortcut-capture { outline: 2px solid var(--ring); outline-offset: 2px; border-color: var(--ring); }
+.shortcut-tokens, .shortcut-token-part { display: inline-flex; gap: 7px; align-items: center; }
+.shortcut-token-part > span { color: var(--muted-foreground); font-size: 11px; }
+.shortcut-token-part kbd { min-width: 24px; padding: 3px 6px; border-radius: 4px; border: 1px solid var(--border); background: var(--muted); text-align: center; font-family: inherit; font-size: 12px; animation: shortcut-token-in var(--motion-normal) var(--ease-out) both; }
+.shortcut-hint { flex-basis: 100%; }
+.settings-save-feedback { display: flex; min-height: 40px; }
+.settings-save-feedback > button { min-width: 132px; }
+.pdf-canvas-enter { animation: preview-canvas-in var(--motion-normal) var(--ease-out) both; }
+@keyframes shortcut-token-in { from { opacity: 0; transform: scale(.98); } to { opacity: 1; transform: scale(1); } }
+@keyframes preview-canvas-in { from { opacity: .7; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .preview-content-frame, .comparison-divider, .comparison-divider > span, .comparison-clip, .shortcut-capture { transition-duration: .01ms !important; }
+  .shortcut-token-part kbd { animation-name: preview-canvas-in; animation-delay: 0ms !important; animation-duration: .01ms; transform: none; }
+  .pdf-canvas-enter { animation-duration: .01ms; }
+}

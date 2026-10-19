@@ -6,10 +6,15 @@ import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import { errorMessage } from "./utils";
 import IconButton from "./IconButton";
 import { Separator } from "@/components/ui/separator";
+import "./inspector-settings.css";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
-export default function PdfPreview({ data, label, overlay = false }: { data: string; label: string; overlay?: boolean }) {
+export default function PdfPreview({ data, label, overlay = false, onReady, onError }: { data: string; label: string; overlay?: boolean; onReady?: () => void; onError?: (message: string) => void }) {
+  const readyCallback = useRef(onReady);
+  readyCallback.current = onReady;
+  const errorCallback = useRef(onError);
+  errorCallback.current = onError;
   const host = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 480, height: 240 });
@@ -53,7 +58,7 @@ export default function PdfPreview({ data, label, overlay = false }: { data: str
         const pdf = await task.promise;
         if (!disposed) { setPages(pdf.numPages); setDocument({ data, pdf }); }
       } catch (reason) {
-        if (!disposed) { setError(errorMessage(reason, "PDF 载入失败")); setLoading(false); }
+        if (!disposed) { const message = errorMessage(reason, "PDF 载入失败"); setError(message); setLoading(false); errorCallback.current?.(message); }
       }
     }
     void load();
@@ -74,7 +79,7 @@ export default function PdfPreview({ data, label, overlay = false }: { data: str
     const canvas = window.document.createElement("canvas");
     canvas.setAttribute("role", "img");
     canvas.setAttribute("aria-label", `${label}，第 ${page} 页`);
-    element.replaceChildren(canvas);
+    canvas.className = "pdf-canvas-enter";
     async function renderPage() {
       try {
         const pdf = document!.pdf;
@@ -93,16 +98,17 @@ export default function PdfPreview({ data, label, overlay = false }: { data: str
         if (!context) throw new Error("无法创建 PDF 画布");
         renderTask = pdfPage.render({ canvas, canvasContext: context, viewport, transform: [ratio, 0, 0, ratio, 0, 0] });
         await renderTask.promise;
-        if (!disposed) setLoading(false);
+        if (!disposed) { element!.replaceChildren(canvas); setLoading(false); readyCallback.current?.(); }
       } catch (reason) {
-        if (!disposed) { setError(errorMessage(reason, "PDF 预览失败")); setLoading(false); }
+        if (!disposed) { const message = errorMessage(reason, "PDF 预览失败"); setError(message); setLoading(false); errorCallback.current?.(message); }
       }
     }
     void renderPage();
     return () => {
       disposed = true;
       renderTask?.cancel();
-      canvas.remove();
+      // Keep the last completed canvas visible until its replacement is ready.
+      if (canvas.parentElement !== element) canvas.remove();
     };
   }, [document, data, label, page, size, zoom, overlay]);
 

@@ -16,10 +16,17 @@ beforeEach(() => {
   ipc.invoke.mockImplementation((_command, { converted }) => Promise.resolve({ kind: converted ? "pdf" : "image", data: converted ? "pdf-a" : "data:image/png;base64,YQ==" }));
 });
 
+
+async function loadOriginal(name: string) {
+  const image = await screen.findByAltText(`原始：${name}`);
+  fireEvent.load(image);
+  return image;
+}
+
 it("defaults to the original and compares it overlaid on the real PDF only on request", async () => {
   const user = userEvent.setup();
   render(<AssetPreview asset={asset} result={result} revision={1} />);
-  expect(await screen.findByAltText("原始：a.png")).toBeInTheDocument();
+  expect(await loadOriginal("a.png")).toBeInTheDocument();
   expect(ipc.invoke).toHaveBeenCalledTimes(1);
   await user.click(screen.getByRole("radio", { name: "对比" }));
   expect(await screen.findByLabelText("真实 PDF")).toHaveTextContent("pdf-a");
@@ -36,13 +43,13 @@ it("does not enable comparison for failed, cancelled, or mismatched results", ()
   expect(screen.getByRole("radio", { name: "对比" })).toBeDisabled();
 });
 
-it("ignores a late response and resets comparison when changing assets", async () => {
+it("ignores a late response when changing assets", async () => {
   let resolve!: (data: AssetPreviewData) => void;
   ipc.invoke.mockImplementationOnce(() => new Promise<AssetPreviewData>((done) => { resolve = done; }));
   const view = render(<AssetPreview asset={asset} result={result} revision={1} />);
   const next = { ...asset, id: "b", path: "/b.png", relativePath: "b.png" };
   view.rerender(<AssetPreview asset={next} revision={1} />);
-  await screen.findByAltText("原始：b.png");
+  await loadOriginal("b.png");
   await act(async () => resolve({ kind: "image", data: "stale-a" }));
   expect(screen.getByAltText("原始：b.png")).not.toHaveAttribute("src", "stale-a");
   await waitFor(() => expect(screen.getByRole("radio", { name: "原图" })).toHaveAttribute("data-state", "on"));
@@ -54,7 +61,7 @@ it("keeps the original visible during a pending or failed PDF request", async ()
     ? new Promise((_resolve, fail) => { reject = fail; })
     : Promise.resolve({ kind: "image", data: "data:image/png;base64,YQ==" }));
   render(<AssetPreview asset={asset} result={result} revision={1} />);
-  await screen.findByAltText("原始：a.png");
+  await loadOriginal("a.png");
   await userEvent.click(screen.getByRole("radio", { name: "对比" }));
   expect(screen.getByAltText("原始：a.png")).toBeVisible();
   expect(screen.getByRole("status")).toHaveTextContent("正在载入 PDF");
@@ -63,24 +70,25 @@ it("keeps the original visible during a pending or failed PDF request", async ()
   expect(screen.getByAltText("原始：a.png")).toBeVisible();
 });
 
-it("resets a selected comparison on asset change and ignores its late PDF", async () => {
-  let resolve!: (value: AssetPreviewData) => void;
-  ipc.invoke.mockImplementation((_command, { converted }) => converted
-    ? new Promise<AssetPreviewData>((done) => { resolve = done; })
-    : Promise.resolve({ kind: "image", data: "data:image/png;base64,YQ==" }));
+it("preserves comparison mode and divider across image changes and refresh", async () => {
   const view = render(<AssetPreview asset={asset} result={result} revision={1} />);
-  await screen.findByAltText("原始：a.png");
+  await loadOriginal("a.png");
   await userEvent.click(screen.getByRole("radio", { name: "对比" }));
-  view.rerender(<AssetPreview asset={{ ...asset, id: "b", path: "/b.png", relativePath: "b.png" }} result={{ ...result, id: "b", pdfPath: "/b.pdf" }} revision={1} />);
-  await screen.findByAltText("原始：b.png");
-  await act(async () => resolve({ kind: "pdf", data: "stale-pdf-a" }));
-  expect(screen.queryByLabelText("真实 PDF")).not.toBeInTheDocument();
-  expect(screen.getByRole("radio", { name: "原图" })).toHaveAttribute("aria-checked", "true");
+  const preview = screen.getByRole("region", { name: "图片预览" });
+  fireEvent.keyDown(preview, { key: "ArrowRight", shiftKey: true });
+  expect(screen.getByRole("slider")).toHaveAttribute("aria-valuenow", "60");
+  const next = { ...asset, id: "b", path: "/b.png", relativePath: "b.png" };
+  view.rerender(<AssetPreview asset={next} result={{ ...result, id: "b", pdfPath: "/b.pdf" }} revision={2} />);
+  await loadOriginal("b.png");
+  expect(screen.getByRole("radio", { name: "对比" })).toHaveAttribute("aria-checked", "true");
+  expect(screen.getByRole("slider")).toHaveAttribute("aria-valuenow", "60");
+  view.rerender(<AssetPreview asset={{ ...next }} result={{ ...result, id: "b", pdfPath: "/b.pdf" }} revision={3} />);
+  expect(screen.getByRole("slider")).toHaveAttribute("aria-valuenow", "60");
 });
 
 it("toggles comparison with Space only after a successful result", async () => {
   const view = render(<AssetPreview asset={asset} revision={1} />);
-  await screen.findByAltText("原始：a.png");
+  await loadOriginal("a.png");
   expect(fireEvent.keyDown(screen.getByRole("region", { name: "图片预览" }), { key: " ", code: "Space" })).toBe(true);
   expect(screen.getByRole("radio", { name: "原图" })).toHaveAttribute("aria-checked", "true");
   view.rerender(<AssetPreview asset={asset} result={result} revision={1} />);
@@ -102,7 +110,7 @@ it.each([
   ["menu", <div role="menu"><div tabIndex={0} aria-label="protected" /></div>],
 ])("does not consume Space while focused in %s", async (_name, control) => {
   render(<><AssetPreview asset={asset} result={result} revision={1} />{control}</>);
-  await screen.findByAltText("原始：a.png");
+  await loadOriginal("a.png");
   const focus = screen.getByLabelText("protected");
   focus.focus();
   expect(fireEvent.keyDown(focus, { key: " ", code: "Space" })).toBe(true);
@@ -112,7 +120,7 @@ it.each([
 
 it("drags and resets a shared comparison divider and scopes keyboard input to preview", async () => {
   render(<AssetPreview asset={asset} result={result} revision={1} />);
-  await screen.findByAltText("原始：a.png");
+  await loadOriginal("a.png");
   fireEvent.keyDown(document.body, { key: " " });
   expect(screen.queryByRole("slider")).not.toBeInTheDocument();
   const preview = screen.getByRole("region", { name: "图片预览" });
@@ -141,4 +149,45 @@ it("drags and resets a shared comparison divider and scopes keyboard input to pr
   expect(slider).toHaveAttribute("aria-valuenow", "50");
   fireEvent.keyDown(preview, { key: "Escape" });
   expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+});
+
+it("places the original on the left and clips the PDF on the right", async () => {
+  const { container } = render(<AssetPreview asset={asset} result={result} revision={1} />);
+  await loadOriginal("a.png");
+  await userEvent.click(screen.getByRole("radio", { name: "对比" }));
+  expect(container.querySelector(".comparison-label-left")).toHaveTextContent("原图");
+  expect(container.querySelector(".comparison-label-right")).toHaveTextContent("PDF");
+  fireEvent.keyDown(screen.getByRole("slider"), { key: "ArrowRight", shiftKey: true });
+  expect(container.querySelector(".comparison-clip")).toHaveStyle({ clipPath: "inset(0 0 0 60%)" });
+});
+
+it("keeps a dimmed previous image until the next source has loaded", async () => {
+  let resolve!: (value: AssetPreviewData) => void;
+  const view = render(<AssetPreview asset={asset} revision={1} />);
+  await loadOriginal("a.png");
+  ipc.invoke.mockImplementationOnce(() => new Promise<AssetPreviewData>((done) => { resolve = done; }));
+  view.rerender(<AssetPreview asset={{ ...asset, id: "b", path: "/b.png", relativePath: "b.png" }} revision={1} />);
+  expect(screen.getByAltText("原始：a.png").closest(".preview-content-frame")).toHaveAttribute("data-stale", "true");
+  expect(screen.queryByText("正在载入原图…")?.closest(".preview-placeholder")).toBeFalsy();
+  await act(async () => resolve({ kind: "image", data: "data:image/png;base64,Yg==" }));
+  expect(screen.getByAltText("上一张：a.png")).toBeInTheDocument();
+  await loadOriginal("b.png");
+  expect(screen.queryByAltText("上一张：a.png")).not.toBeInTheDocument();
+});
+
+it("shows reference locations in the inspector popover", async () => {
+  render(<AssetPreview asset={{ ...asset, references: [{ file: "/project/chapter1.tex", line: 128, original: "a.png", start: 0, end: 5 }] }} revision={1} />);
+  await userEvent.click(screen.getByRole("button", { name: "被引用 1 次" }));
+  expect(await screen.findByText("chapter1.tex")).toBeInTheDocument();
+  expect(screen.getByText("第 128 行")).toBeInTheDocument();
+});
+
+it("only enters repair after an explicit inspector action", async () => {
+  const locate = vi.fn(); const ignore = vi.fn();
+  render(<AssetPreview asset={{ ...asset, path: null, status: "missing", message: "源文件不存在" }} revision={1} onLocate={locate} onIgnore={ignore} />);
+  expect(locate).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "定位文件" }));
+  expect(locate).toHaveBeenCalledWith("a");
+  await userEvent.click(screen.getByRole("button", { name: "忽略本次" }));
+  expect(ignore).toHaveBeenCalledWith("a", true);
 });

@@ -1,70 +1,114 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { FileImage, LoaderCircle, TriangleAlert } from "lucide-react";
+import { FileImage, TriangleAlert } from "lucide-react";
 import type { AssetPreviewData, ImageAsset, ImageResult } from "./types";
 import { errorMessage, formatBytes } from "./utils";
+import { motionDuration } from "./motion";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import "./inspector-settings.css";
 
-const PdfPreview = lazy(() => import("./PdfPreview").catch(() => ({ default: () => <p className="preview-error" role="alert">PDF 预览组件加载失败，请更新系统浏览器组件并重启应用</p> })));
+function PdfUnavailable({ onError }: { onError?: (message: string) => void }) {
+  useEffect(() => { onError?.("PDF 预览组件加载失败，请更新系统浏览器组件并重启应用"); }, []);
+  return <></>;
+}
+const PdfPreview = lazy(() => import("./PdfPreview").catch(() => ({ default: PdfUnavailable })));
 
 interface Props {
   asset: ImageAsset | null;
   result?: ImageResult;
   revision: number;
+  ignored?: boolean;
+  statusLabel?: string;
+  onLocate?: (id: string) => void;
+  onInspect?: (id: string) => void;
+  onIgnore?: (id: string, ignored?: boolean) => void;
 }
+interface PreviewResponse { key: string; preview: AssetPreviewData; label: string; width: number; height: number }
 
 function PreviewContent({ asset, converted, revision, pdfPath, overlay = false }: { asset: ImageAsset; converted: boolean; revision: number; pdfPath?: string | null; overlay?: boolean }) {
-  const requestKey = JSON.stringify([asset.id, converted, revision, pdfPath]);
-  const [response, setResponse] = useState<{ key: string; preview?: AssetPreviewData; error?: string } | null>(null);
-  const current = response?.key === requestKey ? response : null;
+  const requestKey = JSON.stringify([asset.id, asset.path, converted, revision, pdfPath]);
+  const [response, setResponse] = useState<PreviewResponse | null>(null);
+  const [previous, setPrevious] = useState<PreviewResponse | null>(null);
+  const [readyKey, setReadyKey] = useState<string | null>(null);
+  const [error, setError] = useState<{ key: string; message: string } | null>(null);
+  const currentKey = useRef(requestKey);
+  currentKey.current = requestKey;
+  const displayed = useRef<PreviewResponse | null>(null);
+  const readyResponse = useRef<PreviewResponse | null>(null);
 
   useEffect(() => {
     let disposed = false;
+    setError(null);
     void invoke<AssetPreviewData>("asset_preview", { imageId: asset.id, converted })
       .then((preview) => {
         if (disposed) return;
-        if (converted && preview.kind !== "pdf") {
-          setResponse({ key: requestKey, error: "转换结果不是 PDF，无法对比" });
-        } else { setResponse({ key: requestKey, preview }); }
+        if (converted && preview.kind !== "pdf") { setError({ key: requestKey, message: "转换结果不是 PDF，无法对比" }); return; }
+        const next = { key: requestKey, preview, label: converted ? pdfPath ?? asset.relativePath : asset.relativePath, width: asset.width ?? 1600, height: asset.height ?? 1000 };
+        if (readyResponse.current?.preview.data === preview.data && readyResponse.current.preview.kind === preview.kind) {
+          readyResponse.current = next; setReadyKey(requestKey); setPrevious(null);
+        } else { setPrevious(readyResponse.current); }
+        displayed.current = next; setResponse(next);
       })
-      .catch((reason: unknown) => { if (!disposed) setResponse({ key: requestKey, error: errorMessage(reason, "图片预览失败") }); });
+      .catch((reason: unknown) => { if (!disposed) setError({ key: requestKey, message: errorMessage(reason, "图片预览失败") }); });
     return () => { disposed = true; };
-  }, [asset.id, converted, requestKey]);
+  }, [asset.id, asset.path, asset.relativePath, asset.width, asset.height, converted, pdfPath, requestKey]);
 
-  if (!current) return <div className="preview-placeholder" role="status"><Skeleton className="h-36 w-4/5" /><span>正在载入{converted ? " PDF" : "原图"}…</span></div>;
-  if (current.error) return <div className="preview-placeholder preview-error" role="alert"><TriangleAlert size={24} aria-hidden="true" /><span>{current.error}</span></div>;
-  if (current.preview?.kind === "pdf") return <Suspense fallback={<div className="preview-placeholder" role="status"><LoaderCircle size={23} className="spin" aria-hidden="true" /><span>正在载入 PDF</span></div>}><PdfPreview overlay={overlay} key={requestKey} data={current.preview.data} label={converted ? pdfPath ?? asset.relativePath : asset.relativePath} /></Suspense>;
-  return <div className="image-stage"><img src={current.preview?.data} width={asset.width ?? 1600} height={asset.height ?? 1000} alt={`原始：${asset.relativePath}`} onError={() => setResponse({ key: requestKey, error: "图片无法显示，请重新扫描后重试" })} /></div>;
+  function markReady(key: string) {
+    if (key !== currentKey.current || displayed.current?.key !== key) return;
+    readyResponse.current = displayed.current; setReadyKey(key); setPrevious(null);
+  }
+  function content(item: PreviewResponse, pending: boolean) {
+    if (item.preview.kind === "pdf") return <Suspense fallback={null}><PdfPreview overlay={overlay} data={item.preview.data} label={item.label} onReady={() => markReady(item.key)} onError={(message) => { if (item.key === currentKey.current) setError({ key: item.key, message }); }} /></Suspense>;
+    return <div className="image-stage"><img src={item.preview.data} width={item.width} height={item.height} alt={`${pending ? "原始：" : "上一张："}${item.label}`} onLoad={() => markReady(item.key)} onError={() => { if (item.key === currentKey.current) setError({ key: item.key, message: "图片无法显示，请重新扫描后重试" }); }} /></div>;
+  }
+  const current = response?.key === requestKey;
+  const loaded = current && readyKey === requestKey;
+  const hasFrame = Boolean(response || previous);
+  const visibleError = error?.key === requestKey ? error.message : null;
+  return <div className="preview-content-stack" data-loading={!loaded} aria-busy={!loaded && !visibleError}>
+    {previous && !loaded && <div className="preview-content-frame preview-retained" aria-hidden="true">{content(previous, false)}</div>}
+    {response && <div key={response.key} className="preview-content-frame" data-ready={loaded || (!current && !previous)} data-stale={!current}>
+      {content(response, true)}
+    </div>}
+    {!hasFrame && !visibleError && <div className="preview-placeholder" role="status"><Skeleton className="h-36 w-4/5" /><span>正在载入{converted ? " PDF" : "原图"}…</span></div>}
+    {hasFrame && !loaded && !visibleError && <span className="preview-loading-note" role="status">正在载入{converted ? " PDF" : "原图"}…</span>}
+    {visibleError && <div className="preview-placeholder preview-error preview-load-error" role="alert"><TriangleAlert size={24} aria-hidden="true" /><span>{visibleError}</span></div>}
+  </div>;
 }
 
-function PreviewPanel({ asset, result, revision }: Props) {
+export default function AssetPreview({ asset, result, revision, ignored, statusLabel, onLocate, onInspect, onIgnore }: Props) {
   const [mode, setMode] = useState("original");
   const unavailable = !asset?.path || ["missing", "ambiguous", "unsupported"].includes(asset.status);
   const hasConverted = Boolean(asset && !unavailable && result?.id === asset.id && result.pdfPath && !result.error && !result.cancelled);
   const compare = mode === "compare" && hasConverted;
   const sourceBytes = asset?.bytes;
   const pdfBytes = result?.bytes;
-  const saving = hasConverted && sourceBytes != null && sourceBytes > 0 && pdfBytes != null
-    ? (1 - pdfBytes / sourceBytes) * 100 : null;
-
+  const saving = hasConverted && sourceBytes != null && sourceBytes > 0 && pdfBytes != null ? (1 - pdfBytes / sourceBytes) * 100 : null;
   const [divider, setDivider] = useState(50);
+  const [dragging, setDragging] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const surface = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 480, height: 240 });
   const [naturalAspect, setNaturalAspect] = useState(1.6);
   const aspect = asset?.width && asset.height ? asset.width / asset.height : naturalAspect;
   const width = Math.max(1, Math.min(size.width - 28, (size.height - 28) * aspect));
+  useEffect(() => () => { if (resetTimer.current) clearTimeout(resetTimer.current); }, []);
   useEffect(() => {
     const element = surface.current;
     if (!element) return;
     const update = () => { if (element.clientWidth && element.clientHeight) setSize({ width: element.clientWidth, height: element.clientHeight }); };
     update();
-    if (typeof ResizeObserver === "undefined") return;
+    if (typeof ResizeObserver === "undefined") { window.addEventListener("resize", update); return () => window.removeEventListener("resize", update); }
     const observer = new ResizeObserver(update); observer.observe(element);
     return () => observer.disconnect();
   }, []);
+  function resetDivider() { setResetting(true); setDivider(50); if (resetTimer.current) clearTimeout(resetTimer.current); resetTimer.current = setTimeout(() => setResetting(false), motionDuration("slow")); }
   function keydown(event: React.KeyboardEvent<HTMLElement>) {
     if (!hasConverted || event.defaultPrevented || event.repeat || event.nativeEvent.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
     const target = event.target as HTMLElement;
@@ -73,37 +117,38 @@ function PreviewPanel({ asset, result, revision }: Props) {
     else if (compare && ["ArrowLeft", "ArrowRight", "0", "Escape"].includes(event.key)) {
       event.preventDefault(); event.stopPropagation();
       if (event.key === "Escape") setMode("original");
-      else if (event.key === "0") setDivider(50);
-      else setDivider((value) => Math.max(0, Math.min(100, value + (event.key === "ArrowRight" ? 1 : -1) * (event.shiftKey ? 10 : 1))));
+      else if (event.key === "0") resetDivider();
+      else { setResetting(false); setDivider((value) => Math.max(0, Math.min(100, value + (event.key === "ArrowRight" ? 1 : -1) * (event.shiftKey ? 10 : 1)))); }
     }
   }
   function moveDivider(event: React.PointerEvent<HTMLElement>) {
     const bounds = surface.current?.getBoundingClientRect();
     if (bounds?.width) setDivider(Math.max(0, Math.min(100, (event.clientX - bounds.left) / bounds.width * 100)));
   }
+  const problem = Boolean(asset && (["missing", "ambiguous", "unsupported"].includes(asset.status) || result?.error));
+  const state = statusLabel ?? (ignored ? "已忽略" : problem ? "需要处理" : asset?.updateAvailable ? "有更新" : hasConverted || asset?.status === "pdf" ? "已完成" : "待转换");
 
   return <section className="preview-panel" aria-label="图片预览" tabIndex={0} onKeyDown={keydown}>
     <div className="preview-heading">
       <div className="preview-heading-copy"><h2>图片预览</h2><div className="preview-filename" title={asset?.path ?? ""}>{asset?.relativePath ?? "未选择图片"}</div></div>
       <ToggleGroup type="single" value={compare ? "compare" : "original"} onValueChange={(value) => { if (value) setMode(value); }} variant="outline" size="sm" aria-label="预览版本">
-        <ToggleGroupItem value="original" disabled={!asset}>原图</ToggleGroupItem>
-        <ToggleGroupItem value="compare" disabled={!hasConverted}>对比</ToggleGroupItem>
+        <ToggleGroupItem value="original" disabled={!asset}>原图</ToggleGroupItem><ToggleGroupItem value="compare" disabled={!hasConverted}>对比</ToggleGroupItem>
       </ToggleGroup>
     </div>
-    <div ref={surface} className="preview-surface" onPointerDown={(event) => { if (!(event.target as HTMLElement).closest('button, input, [role="slider"]')) event.currentTarget.closest<HTMLElement>(".preview-panel")?.focus(); }}>
-      {unavailable ? <Empty><EmptyHeader><EmptyMedia variant="icon"><FileImage aria-hidden="true" /></EmptyMedia><EmptyTitle>{asset ? asset.message || "此图片暂不可预览" : "未选择图片"}</EmptyTitle></EmptyHeader></Empty> : <>
+    <div ref={surface} className="preview-surface" data-dragging={dragging} data-resetting={resetting} onPointerDown={(event) => { if (!(event.target as HTMLElement).closest('button, input, [role="slider"]')) event.currentTarget.closest<HTMLElement>(".preview-panel")?.focus(); }}>
+      {unavailable ? <Empty><EmptyHeader><EmptyMedia variant="icon"><FileImage aria-hidden="true" /></EmptyMedia><EmptyTitle>{asset ? asset.status === "missing" ? "文件缺失" : asset.status === "ambiguous" ? "找到多个候选文件" : "此图片暂不可预览" : "选择图片查看预览"}</EmptyTitle></EmptyHeader></Empty> : <>
         <div className="comparison-frame" style={{ width, height: width / aspect }} onLoadCapture={(event) => { const img = event.target; if (img instanceof HTMLImageElement && img.naturalWidth && img.naturalHeight) setNaturalAspect(img.naturalWidth / img.naturalHeight); }}>
           <section className="comparison-layer" aria-label="原图预览"><PreviewContent asset={asset!} converted={false} revision={revision} /></section>
         </div>
         {compare && <>
-          <div className="comparison-clip" style={{ clipPath: `inset(0 ${100 - divider}% 0 0)` }}>
+          <div className="comparison-clip" style={{ clipPath: `inset(0 0 0 ${divider}%)` }}>
             <div className="comparison-frame" style={{ width, height: width / aspect }}><section className="comparison-layer" aria-label="PDF 对比预览"><PreviewContent asset={asset!} converted revision={revision} pdfPath={result?.pdfPath} overlay /></section></div>
           </div>
-          <span className="comparison-label comparison-label-left">PDF</span><span className="comparison-label comparison-label-right">原图</span>
-          <div role="slider" tabIndex={0} aria-label="原图与 PDF 分隔线" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(divider)} aria-orientation="horizontal" className="comparison-divider" style={{ left: `${divider}%` }}
-            onDoubleClick={() => setDivider(50)} onPointerDown={(event) => { event.preventDefault(); event.currentTarget.focus(); event.currentTarget.setPointerCapture?.(event.pointerId); moveDivider(event); }}
+          <span className="comparison-label comparison-label-left">原图</span><span className="comparison-label comparison-label-right">PDF</span>
+          <div role="slider" tabIndex={0} aria-label="原图与 PDF 分隔线" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(divider)} aria-valuetext={`原图 ${Math.round(divider)}%，PDF ${100 - Math.round(divider)}%`} aria-orientation="horizontal" className="comparison-divider" style={{ left: `${divider}%` }}
+            onDoubleClick={resetDivider} onPointerDown={(event) => { event.preventDefault(); setResetting(false); setDragging(true); event.currentTarget.focus(); event.currentTarget.setPointerCapture?.(event.pointerId); moveDivider(event); }}
             onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture?.(event.pointerId)) moveDivider(event); }}
-            onPointerUp={(event) => event.currentTarget.releasePointerCapture?.(event.pointerId)}><span aria-hidden="true">‹ ›</span></div>
+            onPointerUp={(event) => { setDragging(false); event.currentTarget.releasePointerCapture?.(event.pointerId); }} onPointerCancel={() => setDragging(false)} onLostPointerCapture={() => setDragging(false)}><span aria-hidden="true">‹ ›</span></div>
         </>}
       </>}
     </div>
@@ -111,11 +156,9 @@ function PreviewPanel({ asset, result, revision }: Props) {
       <Badge variant="outline">{asset?.format.toUpperCase() ?? "无图片"}</Badge>
       {asset?.width && asset.height ? <span>{asset.width} × {asset.height} px</span> : null}
       <span>{asset ? formatBytes(asset.bytes) : ""}{hasConverted ? ` → ${formatBytes(pdfBytes ?? null)}` : ""}</span>
+      {asset && <Popover><PopoverTrigger asChild><Button type="button" variant="link" size="sm" disabled={asset.references.length === 0} className="preview-reference-trigger">被引用 {asset.references.length} 次</Button></PopoverTrigger><PopoverContent className="preview-references" align="end" aria-label="引用位置"><h3 className="text-sm font-medium">引用位置</h3><ul>{asset.references.map((reference, index) => <li key={`${reference.file}:${reference.line}:${index}`}><span title={reference.file}>{reference.file.split(/[\\/]/).pop()}</span><span>第 {reference.line} 行</span></li>)}</ul></PopoverContent></Popover>}
       {saving !== null && <span className="preview-savings">{saving >= 0 ? `节省 ${Number(saving.toFixed(1))}%` : `增大 ${Number((-saving).toFixed(1))}%`}</span>}
     </div>
+    {asset && <div className="inspector-image-state"><Badge variant={problem && !ignored ? "destructive" : "secondary"}>{state}</Badge>{problem && <><p>{result?.error ?? asset.message}</p>{asset.status === "missing" && <p>LaTeX 引用了：<code>{asset.relativePath}</code></p>}</>}<div className="inspector-image-actions">{problem && onLocate && ["missing", "ambiguous"].includes(asset.status) && <Button type="button" variant="outline" size="sm" onClick={() => onLocate(asset.id)}>定位文件</Button>}{problem && onInspect && !["missing", "ambiguous"].includes(asset.status) && <Button type="button" variant="outline" size="sm" onClick={() => onInspect(asset.id)}>查看详情</Button>}{onIgnore && <Button type="button" variant="ghost" size="sm" onClick={() => onIgnore(asset.id, !ignored)}>{ignored ? "恢复处理" : "忽略本次"}</Button>}</div></div>}
   </section>;
-}
-
-export default function AssetPreview(props: Props) {
-  return <PreviewPanel key={`${props.asset?.id}:${props.asset?.path}`} {...props} />;
 }
