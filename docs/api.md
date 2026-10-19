@@ -299,8 +299,74 @@ retain history and any successful earlier outputs. Undo preflights the entire
 latest write batch, refuses edited/missing outputs without changing any file,
 validates backups, and journals partial undo for retry after interruption.
 Cached-only and failed-without-write batches do not displace meaningful undo.
-`canUndo` is true only for the latest compatible write batch, with no outstanding
-reference undo. State corruption is an error, not permission to overwrite PDFs.
+`canUndo` is true only for the latest compatible meaningful batch, after jointly
+checking every PDF/backup and its associated TeX recovery record. History adds
+`referencesChanged` (reference occurrences) and `filesChanged` (TeX files), both
+defaulting to zero for older journals. A cached-only batch with reference changes
+is meaningful. State corruption is an error, not permission to overwrite PDFs.
+
+### Reviewed References And Batch Integration
+
+Reference changes carry a stable `id` formatted as `absolute-file-path:start-byte`.
+Desktop review submits selected IDs and the **complete** reviewed `ReplacementPlan`.
+An empty selection changes nothing; unknown IDs are rejected. Never recreate a
+preview at apply time and treat it as the user's expected plan: retain the preview
+that was actually displayed. Any difference in file, ID, line, before/after text,
+ordering, or count rejects application and requires review again.
+
+Workspace integration (crate-private Rust interfaces):
+
+1. Acquire `transaction::lock_project(root)` once and retain it through all writes.
+2. Apply: `transaction::prepare_reviewed(project, sources, converted, &selection,
+   &expected_plan)` compares the complete current plan, then selects edits. Call
+   `transaction::apply_linked(project, prepared, Some(batch_id))`; association and
+   counts are journaled before any TeX write. The batch must be the newest batch
+   and not already associated. `Journal::latest_batch_id()` supplies the candidate;
+   retain the intended batch ID across review rather than silently changing it.
+3. Undo: call `transaction::undo_batch_locked(project, batch_id)` under the same
+   single lock. It validates main-file ownership, jointly preflights all PDF/TeX
+   recovery, durably marks the batch undoing, restores TeX, then restores PDFs.
+   Refresh the workspace even on error so partial operation state remains visible.
+
+Lower-level orchestration is also available: `Journal::preflight_undo(root, id)`
+is read-only; `Journal::begin_undo(root, id)` repeats preflight and persists retry
+state; `transaction::undo_locked(project, Some(id))` restores matching TeX only;
+then `Journal::undo(root, id)` completes PDFs. None acquires a lock. PDF undo
+refuses while that batch's reference record still exists. Interruption after TeX
+recovery but before PDF recovery is retryable; already restored files are recognized.
+
+`transaction::prepare_selected(..., Option<&HashSet<String>>)` is the filtering
+primitive; `None` and original `prepare(...)` preserve full-selection CLI behavior.
+Filtering alone is not proof of review: desktop callers must use
+`prepare_reviewed` or compare the complete plan with `verify_review` first.
+
+Recovery records retain version 1 with optional `batch_id`. Missing `batch_id`
+means a legacy standalone operation. Only `undo(project)` / `undo_locked(project,
+None)` may undo that legacy record; they refuse linked records. Use
+`transaction::standalone_undo_available(root) -> Result<bool, String>` for the old
+standalone undo menu, not `undo_available` (which includes all archived batches).
+Malformed legacy recovery is an error, not an absent record.
+
+Linked records live at `.texgo/reference-undo/<sha256(batch-id)>.json`; each record
+also validates its own `batch_id`. Completed A may be followed by B without
+discarding A's recovery. Only the latest meaningful batch can be undone: undo B
+restores B's TeX before its PDFs, leaving A's record available for the next undo.
+Other archived batches do not block preflight or authorize restoring their TeX.
+A legacy standalone record still blocks new conversion and joint undo until
+explicitly handled through the standalone menu.
+
+Older linked `undo.json` records migrate under the project lock: write and sync
+the archived copy first, then unlink and sync the legacy directory. Duplicate
+identical copies after a crash are accepted; conflicting copies are never
+overwritten. Association/counts and `references_applying` are journaled before
+the reference recovery record and before any TeX write. Successful application
+clears `references_applying` only after all writes; interrupted application blocks
+new conversion until batch undo, including a crash before the first TeX write.
+Older conversion-only history remains compatible and needs no TeX recovery.
+
+`ReviewDialog.onApply(selectionIds: string[])` supplies selection only; its parent
+retains the reviewed plan and owns confirmation. `ConversionHistory.onUndo(entry)`
+likewise delegates confirmation and displays the combined batch counts.
 
 ## JSON-RPC 2.0 Stdio
 

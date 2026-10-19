@@ -30,6 +30,8 @@ struct Batch {
     changes: Vec<Change>,
     #[serde(default)]
     undoing: bool,
+    #[serde(default)]
+    references_applying: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -145,19 +147,24 @@ impl Journal {
 
     pub fn begin(&mut self, root: &Path, options: &ConversionOptions) -> Result<usize, String> {
         self.ensure_settled()?;
+        crate::transaction::archive_linked_legacy(root)?;
+        if crate::transaction::legacy_undo_available(root) {
+            return Err("存在旧版独立引用恢复记录，请先单独恢复".into());
+        }
         let created_at = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| e.to_string())?.as_millis() as u64;
         let id = format!("{created_at}-{}", self.batches.len());
         self.batches.push(Batch {
             entry: ConversionHistoryEntry { id, created_at, output_dir: options.output_dir.clone(),
-                dpi: options.dpi, jpeg_quality: options.jpeg_quality, files: Vec::new(), undone: false, can_undo: false, cancelled: false, undo_reason: None },
-            changes: Vec::new(), undoing: false,
+                dpi: options.dpi, jpeg_quality: options.jpeg_quality, files: Vec::new(), undone: false, can_undo: false, cancelled: false, undo_reason: None,
+                references_changed: 0, files_changed: 0 },
+            changes: Vec::new(), undoing: false, references_applying: false,
         });
         self.save(root)?;
         Ok(self.batches.len() - 1)
     }
 
     pub fn ensure_settled(&self) -> Result<(), String> {
-        if self.batches.iter().any(|batch| !batch.entry.undone && (batch.undoing || batch.changes.iter().any(|change| !change.committed))) {
+        if self.batches.iter().any(|batch| !batch.entry.undone && (batch.undoing || batch.references_applying || batch.changes.iter().any(|change| !change.committed))) {
             return Err("请先从转换记录撤销上次中断的文件操作，再开始新操作".into());
         }
         Ok(())
@@ -274,11 +281,11 @@ impl Journal {
     }
 
     fn latest(&self) -> Option<usize> {
-        self.batches.iter().rposition(|batch| !batch.entry.undone && !batch.changes.is_empty())
+        self.batches.iter().rposition(|batch| !batch.entry.undone && (!batch.changes.is_empty() || batch.entry.references_changed > 0))
     }
 
     fn undo_preflight(&self, root: &Path, index: usize) -> Result<(), String> {
-        if crate::transaction::undo_available(root) { return Err("请先撤销引用替换，再撤销图片转换".into()); }
+        crate::transaction::preflight_for_batch(root, &self.batches[index].entry.id)?;
         for change in &self.batches[index].changes {
             let path = root.join(&change.output);
             safe_path(root, &path)?;
@@ -291,6 +298,49 @@ impl Journal {
             }
         }
         Ok(())
+    }
+
+    /// Associate only the newest batch, including a cached-only conversion.
+    /// Call while holding the project lock, before writing references.
+    pub fn associate_references(&mut self, root: &Path, id: &str, references: usize, files: usize) -> Result<(), String> {
+        self.ensure_settled()?;
+        let batch = self.batches.last_mut().ok_or("没有可关联的转换批次")?;
+        if batch.entry.id != id || batch.entry.undone || batch.entry.references_changed > 0 {
+            return Err("引用只能关联最新且尚未应用引用的转换批次".into());
+        }
+        batch.entry.references_changed = references;
+        batch.entry.files_changed = files;
+        batch.references_applying = true;
+        self.save(root)
+    }
+
+    pub fn finish_references(&mut self, root: &Path, id: &str) -> Result<(), String> {
+        let batch = self.batches.iter_mut().find(|batch| batch.entry.id == id).ok_or("找不到引用关联批次")?;
+        batch.references_applying = false;
+        self.save(root)
+    }
+
+    pub fn latest_batch_id(&self) -> Option<&str> {
+        self.batches.last().filter(|batch| !batch.entry.undone).map(|batch| batch.entry.id.as_str())
+    }
+
+    pub fn undo_in_progress(&self, id: &str) -> bool {
+        self.batches.iter().any(|batch| batch.entry.id == id && batch.undoing && !batch.entry.undone)
+    }
+
+    /// Read-only joint PDF + associated TeX validation; no lock acquisition.
+    pub fn preflight_undo(&self, root: &Path, id: &str) -> Result<(), String> {
+        let index = self.latest().ok_or("No conversion writes to undo")?;
+        if self.batches[index].entry.id != id { return Err("Only the latest compatible conversion batch can be undone".into()); }
+        self.undo_preflight(root, index)
+    }
+
+    /// Persist retry state BEFORE restoring TeX. Caller retains the same lock.
+    pub fn begin_undo(&mut self, root: &Path, id: &str) -> Result<(), String> {
+        self.preflight_undo(root, id)?;
+        let index = self.latest().ok_or("No conversion writes to undo")?;
+        self.batches[index].undoing = true;
+        self.save(root)
     }
 
     fn backup(&self, root: &Path, change: &Change) -> Result<Option<Vec<u8>>, String> {
@@ -307,7 +357,7 @@ impl Journal {
         self.batches.iter().enumerate().rev().map(|(index, batch)| {
             let mut entry = batch.entry.clone();
             let status = if entry.undone { Err("此批次已撤销".to_string()) }
-                else if batch.changes.is_empty() { Err("此批次未写入新文件".to_string()) }
+                else if batch.changes.is_empty() && entry.references_changed == 0 { Err("此批次未写入新文件".to_string()) }
                 else if Some(index) != latest { Err("请先撤销更新的转换批次".to_string()) }
                 else { self.undo_preflight(root, index) };
             entry.can_undo = status.is_ok();
@@ -320,6 +370,7 @@ impl Journal {
         let index = self.latest().ok_or("No conversion writes to undo")?;
         if self.batches[index].entry.id != id { return Err("Only the latest compatible conversion batch can be undone".into()); }
         self.undo_preflight(root, index)?;
+        if crate::transaction::batch_undo_available(root, id)? { return Err("批次撤销尚未完成引用恢复".into()); }
         self.batches[index].undoing = true;
         self.save(root)?;
         for change in &self.batches[index].changes {

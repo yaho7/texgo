@@ -70,6 +70,10 @@ pub struct ConversionHistoryEntry {
     pub cancelled: bool,
     #[serde(default)]
     pub undo_reason: Option<String>,
+    #[serde(default)]
+    pub references_changed: usize,
+    #[serde(default)]
+    pub files_changed: usize,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -107,23 +111,24 @@ pub struct Progress {
     pub status: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ReplacementPlan {
     pub files: Vec<FileChanges>,
     pub reference_count: usize,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct FileChanges {
     pub path: String,
     pub changes: Vec<ReferenceChange>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ReferenceChange {
+    pub id: String,
     pub line: usize,
     pub before: String,
     pub after: String,
