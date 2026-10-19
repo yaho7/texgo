@@ -9,6 +9,15 @@ for (const key of ["localStorage", "sessionStorage"] as const) {
   Object.defineProperty(globalThis, key, { configurable: true, value: browser[key] });
 }
 
+// Radix floating controls observe their dimensions even in layout-free jsdom.
+if (typeof ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
 afterEach(() => {
   cleanup();
   clearMocks();
