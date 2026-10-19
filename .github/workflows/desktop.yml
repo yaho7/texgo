@@ -121,7 +121,11 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           APPIMAGE_EXTRACT_AND_RUN: '1'
-          APPLE_SIGNING_IDENTITY: ${{ runner.os == 'macOS' && '-' || '' }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           projectPath: desktop
           tauriScript: npx tauri
@@ -177,7 +181,7 @@ jobs:
           if [[ "$VERSION" == *-* ]]; then LATEST=false; fi
           flags=(--prerelease)
           if [[ "$LATEST" == true ]]; then flags=(); fi
-          printf -v NOTES 'Commit: `%s`\n\nBuild: %s\n\nInstallers include both Texgo and the independent texgo-engine CLI/JSON-RPC API. macOS requires 13.3+. Windows is unsigned; macOS is ad-hoc signed and not notarized. SHA256SUMS covers every installer.' "$SHA" "$RUN_URL"
+          printf -v NOTES 'Commit: `%s`\n\nBuild: %s\n\nInstallers include both Texgo and the independent texgo-engine CLI/JSON-RPC API. macOS requires 13.3+. macOS builds are signed with Developer ID and notarized by Apple. Windows builds are currently unsigned. SHA256SUMS covers every installer.' "$SHA" "$RUN_URL"
           gh release create "$TAG" release/* --target "$SHA" --draft --latest=false \
             --title "$TITLE" --notes "$NOTES" "${flags[@]}"
           gh release edit "$TAG" --draft=false --latest="$LATEST"
