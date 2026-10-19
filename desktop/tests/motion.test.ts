@@ -1,8 +1,6 @@
-// @vitest-environment node
-import { readFileSync } from "node:fs";
+import css from "../src/styles.css?raw";
+import tokens from "../src/theme.css?raw";
 import { expect, it } from "vitest";
-const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
-const tokens = readFileSync(new URL("../src/theme.css", import.meta.url), "utf8");
 it("shares motion tokens across workflow, sidebar, badges and overlay surfaces", () => {
   for (const name of ["--motion-fast", "--motion-normal", "--motion-slow", "--ease-standard", "--ease-out"]) expect(tokens).toContain(name);
   for (const name of ["command-enter", "command-exit", "complete-enter", "surface-enter", "dialog-enter"]) expect(css).toContain(`@keyframes ${name}`);
