@@ -174,6 +174,7 @@ impl Workspace {
         if let Err(error) = transaction::prepare(&self.review_project(), &self.scan.sources, &self.converted) {
             status.blocking_reason.get_or_insert(error);
         }
+        let mut unsafe_output_ids = HashSet::new();
         for asset in &self.scan.project.images {
             if self.ignored.contains(&asset.id) { status.ignored_image_ids.push(asset.id.clone()); continue; }
             let unsafe_output = journal.as_ref().ok().is_some_and(|journal| {
@@ -182,6 +183,7 @@ impl Workspace {
                 })
             });
             if unsafe_output {
+                unsafe_output_ids.insert(asset.id.clone());
                 status.blocking_reason.get_or_insert_with(|| "输出文件已被外部修改，无法安全覆盖，请检查问题图片".into());
             }
             if matches!(asset.status.as_str(), "missing" | "ambiguous" | "unsupported" | "error") || self.failures.contains_key(&asset.id) || unsafe_output {
@@ -192,6 +194,11 @@ impl Workspace {
                 status.completed_images += 1;
                 status.completed_image_ids.push(asset.id.clone());
             }
+        }
+        for asset in &mut self.scan.project.images {
+            if let Some((error, _)) = self.failures.get(&asset.id) { asset.message = Some(error.clone()); }
+            else if unsafe_output_ids.contains(&asset.id) { asset.message = Some("输出 PDF 已被外部修改，Texgo 无法安全覆盖。请检查文件，或忽略本次处理。".into()); }
+            else if asset.status == "ready" && asset.message.as_deref() != Some("已关联原图片，重新转换可更新 PDF") { asset.message = None; }
         }
         self.scan.project.converted_images.retain(|image| image.error.is_none());
         self.scan.project.converted_images.extend(self.failures.iter().map(|(id, (error, _))| ConvertedImage {
