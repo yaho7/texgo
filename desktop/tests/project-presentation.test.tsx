@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import AssetList from "../src/AssetList";
@@ -72,4 +72,17 @@ it("closes a project only through an explicit project menu action", async () => 
   await user.click(screen.getByRole("button", { name: "更多操作" }));
   expect(screen.queryByRole("menuitem", { name: /批量转换|添加图片目录/ })).not.toBeInTheDocument();
   await user.click(screen.getByRole("menuitem", { name: "关闭当前项目" })); expect(close).toHaveBeenCalledOnce();
+});
+
+it("retains a disappearing project image just long enough to fade out", () => {
+  vi.useFakeTimers();
+  try {
+    const props = listProps(); const view = render(<AssetList {...props} />);
+    const row = screen.getByRole("button", { name: "预览 missing.png" }).closest("tr");
+    view.rerender(<AssetList {...props} images={[pending]} allImages={[pending]} problemIds={new Set()} total={1} />);
+    expect(row).toHaveAttribute("data-exiting", "true");
+    expect(row).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(300));
+    expect(row).not.toBeInTheDocument();
+  } finally { vi.useRealTimers(); }
 });

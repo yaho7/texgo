@@ -339,3 +339,7 @@ h1, h2, h3, p { margin: 0; }
 .command-action { width: 180px; }
 .command-success { animation: complete-enter var(--motion-slow) var(--ease-out); }
 @media (prefers-reduced-motion: reduce) { .page-enter, .command-success { animation-name: reduced-opacity !important; } }
+
+.asset-row[data-exiting="true"] { pointer-events: none; animation: row-exit var(--motion-fast) var(--ease-out) forwards; }
+@keyframes row-exit { from { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .asset-row[data-exiting="true"] { animation-name: row-exit !important; } }

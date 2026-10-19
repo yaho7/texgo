@@ -11,6 +11,7 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import type { AssetStatus, ImageAsset, ImageResult } from "./types";
 import { formatBytes } from "./utils";
+import { motionDuration } from "./motion";
 
 export const statusLabels: Record<AssetStatus, string> = {
   ready: "待转换",
@@ -57,6 +58,24 @@ export default function AssetList(props: Props) {
   const checkedCount = readyIds.filter((id) => props.selected.has(id)).length;
   const allChecked = readyIds.length > 0 && checkedCount === readyIds.length;
   const sourceImages = props.allImages ?? props.images;
+  const pageImageKey = pageImages.map((image) => image.id).join("\0");
+  const presenceKey = `${pageKey}\0${page}`;
+  const [presence, setPresence] = useState({ key: presenceKey, ids: pageImageKey, previous: pageImages, exiting: [] as { asset: ImageAsset; index: number }[] });
+  let exiting = presence.exiting;
+  if (presence.key !== presenceKey || presence.ids !== pageImageKey) {
+    const removed = presence.key === presenceKey ? presence.previous.flatMap((asset, index) => sourceImages.some((current) => current.id === asset.id) ? [] : [{ asset, index }]) : [];
+    exiting = presence.key === presenceKey ? [...presence.exiting, ...removed].filter((image, index, items) => items.findIndex((other) => other.asset.id === image.asset.id) === index) : [];
+    setPresence({ key: presenceKey, ids: pageImageKey, previous: pageImages, exiting });
+  }
+  const displayImages = [...pageImages];
+  for (const { asset, index } of exiting) {
+    if (!displayImages.some((current) => current.id === asset.id)) displayImages.splice(Math.min(index, displayImages.length), 0, asset);
+  }
+  useEffect(() => {
+    if (!presence.exiting.length) return;
+    const timer = window.setTimeout(() => setPresence((previous) => ({ ...previous, exiting: [] })), motionDuration("fast"));
+    return () => window.clearTimeout(timer);
+  }, [presence.exiting]);
   const ignoredCount = sourceImages.filter((image) => props.ignored?.has(image.id)).length;
   const summary = [
     { value: "pending", label: "待处理", count: props.pendingIds.size },
@@ -88,8 +107,7 @@ export default function AssetList(props: Props) {
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
     const node = scrollArea.current;
     if (!node?.animate) return;
-    const duration = getComputedStyle(document.documentElement).getPropertyValue("--motion-fast").trim() || "120ms";
-    const animation = node.animate([{ opacity: .7 }, { opacity: 1 }], { duration: Number.parseFloat(duration), easing: "ease-out" });
+    const animation = node.animate([{ opacity: .7 }, { opacity: 1 }], { duration: motionDuration("fast"), easing: "ease-out" });
     return () => animation.cancel();
   }, [props.filter]);
   return (
@@ -122,7 +140,8 @@ export default function AssetList(props: Props) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {pageImages.map((asset) => {
+            {displayImages.map((asset) => {
+              const isExiting = exiting.some((image) => image.asset.id === asset.id);
               const result = props.results[asset.id];
               const converted = props.completedIds.has(asset.id);
               const updatable = Boolean(asset.updateAvailable && props.pendingIds.has(asset.id));
@@ -134,13 +153,13 @@ export default function AssetList(props: Props) {
               const filename = normalizedPath.slice(slash + 1);
               const folder = slash < 0 ? "." : normalizedPath.slice(0, slash);
               return (
-                <TableRow key={asset.id} data-state={props.activeId === asset.id ? "selected" : undefined} data-disabled={Boolean(props.previewDisabled)} data-highlight={highlights[asset.id]} className="asset-row h-[60px]">
+                <TableRow key={asset.id} data-state={props.activeId === asset.id ? "selected" : undefined} data-exiting={isExiting || undefined} aria-hidden={isExiting || undefined} data-disabled={Boolean(props.previewDisabled) || isExiting} data-highlight={highlights[asset.id]} className="asset-row h-[60px]">
                   {props.selectionMode && <TableCell className="asset-selection-cell">
-                    <label className="asset-selection-target"><Checkbox aria-label={`选择 ${asset.relativePath}`} checked={props.selected.has(asset.id)} disabled={props.busy || ignored || !props.pendingIds.has(asset.id)} onCheckedChange={() => props.onSelect(asset.id)} /></label>
+                    <label className="asset-selection-target"><Checkbox aria-label={`选择 ${asset.relativePath}`} checked={props.selected.has(asset.id)} disabled={props.busy || isExiting || ignored || !props.pendingIds.has(asset.id)} onCheckedChange={() => props.onSelect(asset.id)} /></label>
                   </TableCell>}
                   <TableCell className="min-w-0 whitespace-normal">
                     <div className="flex min-w-0 flex-col gap-1">
-                      <Button variant="ghost" className="asset-preview-trigger h-auto min-w-0 justify-start px-0 py-0" disabled={props.previewDisabled} aria-label={`预览 ${asset.relativePath}`} aria-pressed={props.activeId === asset.id} onClick={() => props.onActivate(asset.id)} title={asset.relativePath}>
+                      <Button variant="ghost" className="asset-preview-trigger h-auto min-w-0 justify-start px-0 py-0" disabled={props.previewDisabled || isExiting} aria-label={`预览 ${asset.relativePath}`} aria-pressed={props.activeId === asset.id} onClick={() => props.onActivate(asset.id)} title={asset.relativePath}>
                         {warning ? <FileWarning data-icon="inline-start" aria-hidden="true" /> : <FileImage data-icon="inline-start" aria-hidden="true" />}
                         <span className="truncate">{filename}</span>
                       </Button>
@@ -154,7 +173,7 @@ export default function AssetList(props: Props) {
                     <Badge key={label} className={updatable && !result?.error ? "status-badge update-badge" : "status-badge"} variant={result?.error && !result.cancelled ? "destructive" : converted ? "success" : warning ? "warning" : "secondary"} title={updatable ? "源图片或 SVG 依赖已变化，可重新转换" : result?.pdfPath ?? undefined}>
                       {converted && <CircleCheck data-icon="inline-start" aria-hidden="true" />}{updatable && !result?.error && <RefreshCw data-icon="inline-start" aria-hidden="true" />}{label}
                     </Badge>
-                    {(warning || result?.error || ignored) && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" className="asset-more" aria-label={`更多操作 ${asset.relativePath}`} disabled={props.busy}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuGroup>
+                    {(warning || result?.error || ignored) && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" className="asset-more" aria-label={`更多操作 ${asset.relativePath}`} disabled={props.busy || isExiting}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuGroup>
                       <DropdownMenuItem onSelect={() => props.onInspect?.(asset.id)}>{asset.status === "unsupported" || result?.error ? "查看详情" : "查看并修复"}</DropdownMenuItem>
                       {["missing", "ambiguous"].includes(asset.status) && <DropdownMenuItem onSelect={() => props.onLocate?.(asset.id)}>定位文件</DropdownMenuItem>}
                       <DropdownMenuItem onSelect={() => props.onIgnore?.(asset.id, !ignored)}>{ignored ? "恢复处理" : "忽略本次"}</DropdownMenuItem>
