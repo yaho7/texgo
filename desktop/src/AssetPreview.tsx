@@ -50,6 +50,21 @@ function PreviewPanel({ asset, result, revision }: Props) {
   const saving = hasConverted && sourceBytes != null && sourceBytes > 0 && pdfBytes != null
     ? (1 - pdfBytes / sourceBytes) * 100 : null;
 
+  useEffect(() => {
+    if (!hasConverted) return;
+    function toggleWithSpace(event: KeyboardEvent) {
+      if (event.key !== " " || event.defaultPrevented || event.repeat || event.isComposing
+        || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      const protectedFocus = 'input, textarea, select, button, a[href], summary, [contenteditable]:not([contenteditable="false"]), dialog, [role="dialog"], [role="alertdialog"], [role="menu"], [role="menubar"], [role^="menuitem"], [role="button"], [role="textbox"], [role="combobox"], [role="slider"], [role="spinbutton"], [role="radio"], [role="checkbox"], [role="switch"], [role="tab"]';
+      if ((event.target instanceof Element && event.target.closest(protectedFocus))
+        || document.activeElement?.closest(protectedFocus)) return;
+      event.preventDefault();
+      setMode((previous) => previous === "compare" ? "original" : "compare");
+    }
+    window.addEventListener("keydown", toggleWithSpace);
+    return () => window.removeEventListener("keydown", toggleWithSpace);
+  }, [hasConverted]);
+
   return <section className="preview-panel" aria-label="图片预览">
     <div className="preview-heading">
       <div className="preview-heading-copy"><h2>图片预览</h2><div className="preview-filename" title={asset?.path ?? ""}>{asset?.relativePath ?? "未选择图片"}</div></div>

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import AssetPreview from "../src/AssetPreview";
@@ -75,5 +75,36 @@ it("resets a selected comparison on asset change and ignores its late PDF", asyn
   await screen.findByAltText("原始：b.png");
   await act(async () => resolve({ kind: "pdf", data: "stale-pdf-a" }));
   expect(screen.queryByLabelText("真实 PDF")).not.toBeInTheDocument();
+  expect(screen.getByRole("radio", { name: "原图" })).toHaveAttribute("aria-checked", "true");
+});
+
+it("toggles comparison with Space only after a successful result", async () => {
+  const view = render(<AssetPreview asset={asset} revision={1} />);
+  await screen.findByAltText("原始：a.png");
+  expect(fireEvent.keyDown(document.body, { key: " ", code: "Space" })).toBe(true);
+  expect(screen.getByRole("radio", { name: "原图" })).toHaveAttribute("aria-checked", "true");
+  view.rerender(<AssetPreview asset={asset} result={result} revision={1} />);
+  expect(fireEvent.keyDown(document.body, { key: " ", code: "Space" })).toBe(false);
+  expect(await screen.findByLabelText("真实 PDF")).toBeInTheDocument();
+  fireEvent.keyDown(document.body, { key: " ", code: "Space", repeat: true });
+  expect(screen.getByRole("radio", { name: "对比" })).toHaveAttribute("aria-checked", "true");
+  fireEvent.keyDown(document.body, { key: " ", code: "Space" });
+  expect(screen.queryByLabelText("真实 PDF")).not.toBeInTheDocument();
+});
+
+it.each([
+  ["input", <input aria-label="protected" />],
+  ["textarea", <textarea aria-label="protected" />],
+  ["select", <select aria-label="protected"><option>A</option></select>],
+  ["button", <button aria-label="protected">A</button>],
+  ["editable descendant", <div contentEditable suppressContentEditableWarning><span tabIndex={0} aria-label="protected">A</span></div>],
+  ["dialog", <div role="dialog"><div tabIndex={0} aria-label="protected" /></div>],
+  ["menu", <div role="menu"><div tabIndex={0} aria-label="protected" /></div>],
+])("does not consume Space while focused in %s", async (_name, control) => {
+  render(<><AssetPreview asset={asset} result={result} revision={1} />{control}</>);
+  await screen.findByAltText("原始：a.png");
+  const focus = screen.getByLabelText("protected");
+  focus.focus();
+  expect(fireEvent.keyDown(focus, { key: " ", code: "Space" })).toBe(true);
   expect(screen.getByRole("radio", { name: "原图" })).toHaveAttribute("aria-checked", "true");
 });
