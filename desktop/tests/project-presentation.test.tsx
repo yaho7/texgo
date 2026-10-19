@@ -86,3 +86,15 @@ it("retains a disappearing project image just long enough to fade out", () => {
     expect(row).not.toBeInTheDocument();
   } finally { vi.useRealTimers(); }
 });
+
+it("projects backend problems for ready assets even without an error result", () => {
+  const props = listProps();
+  const blocked = { ...pending, message: "输出文件已被外部修改，无法安全覆盖" };
+  render(<AssetList {...props} images={[blocked]} allImages={[blocked]} pendingIds={new Set()} problemIds={new Set([blocked.id])} total={1} />);
+  const row = screen.getByRole("button", { name: "预览 plot.png" }).closest("tr")!;
+  const badge = within(row).getByText("需要处理");
+  expect(badge).toHaveAttribute("data-variant", "destructive");
+  expect(within(row).queryByText("待转换")).not.toBeInTheDocument();
+  expect(within(row).getByText(blocked.message)).toBeInTheDocument();
+  expect(within(row).getByRole("button", { name: "更多操作 plot.png" })).toBeInTheDocument();
+});

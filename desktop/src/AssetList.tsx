@@ -145,9 +145,10 @@ export default function AssetList(props: Props) {
               const result = props.results[asset.id];
               const converted = props.completedIds.has(asset.id);
               const updatable = Boolean(asset.updateAvailable && props.pendingIds.has(asset.id));
-              const warning = ["missing", "unsupported", "ambiguous"].includes(asset.status);
+              const referenceProblem = ["missing", "unsupported", "ambiguous"].includes(asset.status);
+              const problem = props.problemIds.has(asset.id);
               const ignored = props.ignored?.has(asset.id);
-              const label = ignored ? "已忽略" : result?.cancelled ? "已取消" : result?.error ? "转换失败" : converted ? "已完成" : updatable ? "有更新" : statusLabels[asset.status];
+              const label = ignored ? "已忽略" : problem ? referenceProblem ? statusLabels[asset.status] : "需要处理" : result?.cancelled ? "已取消" : converted ? "已完成" : updatable ? "有更新" : statusLabels[asset.status];
               const normalizedPath = asset.relativePath.replaceAll("\\", "/");
               const slash = normalizedPath.lastIndexOf("/");
               const filename = normalizedPath.slice(slash + 1);
@@ -160,21 +161,21 @@ export default function AssetList(props: Props) {
                   <TableCell className="min-w-0 whitespace-normal">
                     <div className="flex min-w-0 flex-col gap-1">
                       <Button variant="ghost" className="asset-preview-trigger h-auto min-w-0 justify-start px-0 py-0" disabled={props.previewDisabled || isExiting} aria-label={`预览 ${asset.relativePath}`} aria-pressed={props.activeId === asset.id} onClick={() => props.onActivate(asset.id)} title={asset.relativePath}>
-                        {warning ? <FileWarning data-icon="inline-start" aria-hidden="true" /> : <FileImage data-icon="inline-start" aria-hidden="true" />}
+                        {problem ? <FileWarning data-icon="inline-start" aria-hidden="true" /> : <FileImage data-icon="inline-start" aria-hidden="true" />}
                         <span className="truncate">{filename}</span>
                       </Button>
                       <p className="truncate text-xs text-muted-foreground" title={asset.relativePath}>{folder} · {asset.format.toUpperCase()}{asset.width && asset.height ? ` · ${asset.width} × ${asset.height}` : ""}</p>
                       {result?.error && !result.cancelled && <p className="break-words text-xs text-destructive">{result.error}</p>}
-                      {asset.message && <p className="break-words text-xs text-muted-foreground">{asset.message}</p>}
+                      {asset.message && <p className={problem && !referenceProblem ? "break-words text-xs text-destructive" : "break-words text-xs text-muted-foreground"}>{asset.message}</p>}
                     </div>
                   </TableCell>
                   <TableCell className="text-right"><span className="text-xs tabular-nums text-muted-foreground">{formatBytes(asset.bytes)}</span></TableCell>
                   <TableCell className="pr-4 text-right">
-                    <Badge key={label} className={updatable && !result?.error ? "status-badge update-badge" : "status-badge"} variant={result?.error && !result.cancelled ? "destructive" : converted ? "success" : warning ? "warning" : "secondary"} title={updatable ? "源图片或 SVG 依赖已变化，可重新转换" : result?.pdfPath ?? undefined}>
-                      {converted && <CircleCheck data-icon="inline-start" aria-hidden="true" />}{updatable && !result?.error && <RefreshCw data-icon="inline-start" aria-hidden="true" />}{label}
+                    <Badge key={label} className={updatable && !problem ? "status-badge update-badge" : "status-badge"} variant={ignored ? "secondary" : problem ? referenceProblem ? "warning" : "destructive" : converted ? "success" : "secondary"} title={updatable ? "源图片或 SVG 依赖已变化，可重新转换" : result?.pdfPath ?? undefined}>
+                      {converted && !problem && !ignored && <CircleCheck data-icon="inline-start" aria-hidden="true" />}{updatable && !problem && !ignored && <RefreshCw data-icon="inline-start" aria-hidden="true" />}{label}
                     </Badge>
-                    {(warning || result?.error || ignored) && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" className="asset-more" aria-label={`更多操作 ${asset.relativePath}`} disabled={props.busy || isExiting}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuGroup>
-                      <DropdownMenuItem onSelect={() => props.onInspect?.(asset.id)}>{asset.status === "unsupported" || result?.error ? "查看详情" : "查看并修复"}</DropdownMenuItem>
+                    {(problem || ignored) && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" className="asset-more" aria-label={`更多操作 ${asset.relativePath}`} disabled={props.busy || isExiting}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuGroup>
+                      <DropdownMenuItem onSelect={() => props.onInspect?.(asset.id)}>{["missing", "ambiguous"].includes(asset.status) ? "查看并修复" : "查看详情"}</DropdownMenuItem>
                       {["missing", "ambiguous"].includes(asset.status) && <DropdownMenuItem onSelect={() => props.onLocate?.(asset.id)}>定位文件</DropdownMenuItem>}
                       <DropdownMenuItem onSelect={() => props.onIgnore?.(asset.id, !ignored)}>{ignored ? "恢复处理" : "忽略本次"}</DropdownMenuItem>
                     </DropdownMenuGroup></DropdownMenuContent></DropdownMenu>}
