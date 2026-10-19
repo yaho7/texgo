@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { ArrowRight, FileWarning, LoaderCircle, X } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -15,11 +15,26 @@ interface Props {
   busy: boolean;
   error: string | null;
   onClose: () => void;
-  onApply: () => void;
+  onApply: (selectionIds: string[]) => void;
 }
 
 export default function ReviewDialog(props: Props) {
   const returnFocus = useRef<HTMLElement | null>(null);
+  // Missing IDs are not selectable: an older preview must never submit new edits.
+  const idOf = (change: ChangePreview["files"][number]["changes"][number]) => "id" in change && typeof change.id === "string" ? change.id : "";
+  const ids = props.preview.files.flatMap((file) => file.changes.map(idOf)).filter(Boolean);
+  const [selection, setSelection] = useState(() => new Set(ids));
+  const selected = ids.filter((id) => selection.has(id));
+  const toggle = (values: string[], checked: boolean) => setSelection((previous) => {
+    const next = new Set(previous);
+    for (const id of values.filter(Boolean)) { if (checked) next.add(id); else next.delete(id); }
+    return next;
+  });
+  const checkbox = (values: string[], label: string) => {
+    const valid = values.filter(Boolean);
+    const count = valid.filter((id) => selection.has(id)).length;
+    return <label className="flex items-center gap-2 text-sm"><input type="checkbox" disabled={props.busy || valid.length === 0} checked={valid.length > 0 && count === valid.length} ref={(element) => { if (element) element.indeterminate = count > 0 && count < valid.length; }} onChange={(event) => toggle(valid, event.target.checked)} />{label}</label>;
+  };
   return (
     <Dialog open onOpenChange={(open) => { if (!open && !props.busy) props.onClose(); }}>
       <DialogContent
@@ -32,7 +47,7 @@ export default function ReviewDialog(props: Props) {
       >
         <div className="flex shrink-0 items-start justify-between gap-4 p-5">
           <DialogHeader>
-            <DialogTitle>确认引用替换</DialogTitle>
+            <DialogTitle>检查引用变更</DialogTitle>
             <DialogDescription>{props.preview.files.length} 个文件，{props.preview.referenceCount} 处引用</DialogDescription>
           </DialogHeader>
           <DialogClose asChild>
@@ -41,17 +56,19 @@ export default function ReviewDialog(props: Props) {
         </div>
         <Separator />
         <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-5">
+          {checkbox(ids, "全选")}
           {props.preview.files.length === 0 && <Empty><EmptyHeader><EmptyTitle>没有可替换的引用</EmptyTitle></EmptyHeader></Empty>}
           {props.preview.files.map((file) => (
             <section className="flex min-w-0 flex-col gap-3" key={file.path}>
               <div className="flex min-w-0 items-center gap-2">
+                {checkbox(file.changes.map(idOf), "选择文件")}
                 <h3 className="truncate text-sm font-medium" title={file.path}>{relativeFile(file.path, props.root)}</h3>
                 <Badge variant="secondary">{file.changes.length}</Badge>
               </div>
               <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground"><span>替换前</span><span>替换后</span></div>
               {file.changes.map((change, index) => (
-                <div className="flex min-w-0 flex-col gap-2" key={`${change.line}:${index}`}>
-                  <span className="text-xs tabular-nums text-muted-foreground">第 {change.line} 行</span>
+                <div className="flex min-w-0 flex-col gap-2" key={idOf(change) || `${change.line}:${index}`}>
+                  {checkbox([idOf(change)], `第 ${change.line} 行`)}
                   <div className="grid min-w-0 grid-cols-2 gap-3">
                     <pre className="min-w-0 overflow-x-auto rounded-md border bg-muted/40 p-3 text-xs leading-relaxed" aria-label={`第 ${change.line} 行替换前`}><code>{change.before}</code></pre>
                     <pre className="min-w-0 overflow-x-auto rounded-md border bg-muted p-3 text-xs leading-relaxed" aria-label={`第 ${change.line} 行替换后`}><code>{change.after}</code></pre>
@@ -65,8 +82,8 @@ export default function ReviewDialog(props: Props) {
         <Separator />
         <DialogFooter className="shrink-0 p-5">
           <DialogClose asChild><Button variant="outline" disabled={props.busy}>返回</Button></DialogClose>
-          <Button disabled={props.busy || props.preview.referenceCount === 0 || props.preview.files.length === 0} onClick={props.onApply}>
-            {props.busy ? <LoaderCircle data-icon="inline-start" className="animate-spin" aria-hidden="true" /> : <ArrowRight data-icon="inline-start" aria-hidden="true" />}应用替换
+          <Button disabled={props.busy || selected.length === 0} onClick={() => props.onApply(selected)}>
+            {props.busy ? <LoaderCircle data-icon="inline-start" className="animate-spin" aria-hidden="true" /> : <ArrowRight data-icon="inline-start" aria-hidden="true" />}更新 {selected.length} 处引用
           </Button>
         </DialogFooter>
       </DialogContent>
