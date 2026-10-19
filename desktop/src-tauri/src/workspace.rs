@@ -268,6 +268,46 @@ impl Workspace {
         Ok(ConversionResult { images, cancelled })
     }
 
+    pub fn smart_convert(&mut self, preferences: &crate::preferences::Preferences, cancel: &AtomicBool,
+        progress: impl Fn(Progress), on_image: impl Fn(ConvertedImage)) -> Result<SmartReport, String> {
+        self.refresh()?;
+        let root = PathBuf::from(&self.project().root);
+        let journal = Journal::load(&root)?;
+        journal.ensure_settled()?;
+        let pending = self.pending_references();
+        let problems: Vec<String> = self.project().images.iter().filter(|asset| !self.ignored.contains(&asset.id) && (
+            matches!(asset.status.as_str(), "missing" | "ambiguous" | "unsupported")
+            || (asset.status == "ready" && !asset.update_available && !self.converted.contains_key(&asset.id)
+                && journal.outputs.values().any(|managed| managed.source == asset.relative_path))
+        )).map(|a| a.id.clone()).collect();
+        let mut report = SmartReport { project: self.project().clone(), result: ConversionResult { images: vec![], cancelled: false },
+            batch_ids: vec![], problem_ids: problems, pending_references: pending };
+        if pending > 0 && !preferences.allow_unreviewed { return Ok(report); }
+        let mut groups: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for asset in self.project().images.iter().filter(|a| a.status == "ready" && a.update_available && !self.ignored.contains(&a.id)) {
+            // A source can have several managed outputs. Update the same preferred output that rehydrate uses.
+            let output = journal.preferred_outputs(&asset.relative_path).into_iter().find(|output| {
+                journal.outputs.get(output).is_some_and(|managed| managed.source == asset.relative_path && journal.valid_output(&root, output, managed))
+            }).ok_or("已管理的 PDF 不可更新，请检查输出文件")?;
+            let source_pdf = Path::new(&asset.relative_path).with_extension("pdf").to_string_lossy().replace('\\', "/");
+            let directory = output.strip_suffix(&source_pdf).and_then(|prefix| prefix.strip_suffix('/')).filter(|s| !s.is_empty()).ok_or("无法安全定位原输出目录")?;
+            journal::output_directory(&root, directory)?;
+            groups.entry(directory.into()).or_default().push(asset.id.clone());
+        }
+        self.ensure_can_convert(preferences.allow_unreviewed)?;
+        for (output_dir, ids) in groups {
+            if cancel.load(Ordering::Relaxed) { report.result.cancelled = true; break; }
+            let mut options = preferences.options(ids); options.output_dir = output_dir;
+            let result = self.convert_with_results(&options, cancel, &progress, &on_image)?;
+            report.result.images.extend(result.images);
+            report.result.cancelled |= result.cancelled;
+            if let Some(id) = Journal::load(&root)?.latest_batch_id() { report.batch_ids.push(id.into()); }
+        }
+        report.project = self.project().clone();
+        report.pending_references = self.pending_references();
+        Ok(report)
+    }
+
     pub fn plan(&self) -> Result<ReplacementPlan, String> {
         Journal::load(Path::new(&self.scan.project.root))?.ensure_settled()?;
         Ok(transaction::prepare(&self.scan.project, &self.scan.sources, &self.converted)?.plan)

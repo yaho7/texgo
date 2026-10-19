@@ -8,6 +8,7 @@ mod workspace;
 mod observation;
 mod repair;
 pub mod preferences;
+pub mod background;
 pub mod automation;
 
 pub use models::*;

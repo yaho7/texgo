@@ -95,3 +95,19 @@ export interface ConversionProgress {
 export interface ImageResult extends ConvertedImage {
   cancelled?: boolean;
 }
+
+export interface SmartReport {
+  project: Project;
+  result: ConversionResult;
+  batchIds: string[];
+  problemIds: string[];
+  pendingReferences: number;
+}
+export interface NotificationTarget {
+  mode: "tex" | "directory";
+  path: string;
+  recursive: boolean;
+  view: "history" | "problems" | "review";
+  batchId: string | null;
+  imageId: string | null;
+}

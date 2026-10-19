@@ -22,3 +22,6 @@ afterEach(() => {
   cleanup();
   clearMocks();
 });
+
+// jsdom does not provide pointer coordinates without a PointerEvent constructor.
+if (typeof PointerEvent === "undefined") globalThis.PointerEvent = MouseEvent as typeof PointerEvent;

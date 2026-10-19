@@ -62,6 +62,7 @@ beforeEach(async () => {
   calls = [];
   backendProject = structuredClone(project);
   handlers = {
+    desktop_status: () => ({ error: null }),
     get_preferences: () => ({ ...defaultPreferences, autoUpdate: false }),
     close_workspace: () => undefined,
     "plugin:dialog|open": () => "/paper/main.tex",
@@ -660,4 +661,29 @@ it("opens settings with the app shortcut and focuses search with Ctrl F", async 
   expect(screen.getByRole("main", { name: "设置" })).toBeInTheDocument();
   await user.keyboard("{Escape}");
   expect(screen.getByRole("searchbox", { name: "搜索图片" })).toBeInTheDocument();
+});
+
+
+it("updates background results without stealing browsing and routes a notification to its exact batch", async () => {
+  handlers.conversion_history = () => [batch];
+  await openProject();
+  await act(async () => { await emit("background-start", backendProject); });
+  expect(screen.getByRole("button", { name: "预览 figures/beta.jpg" })).toBeEnabled();
+  await act(async () => { await emit("conversion-result", success.images[0]); });
+  expect(screen.getByRole("radio", { name: "对比" })).toBeEnabled();
+  await act(async () => {
+    await emit("background-finished", { project: { ...backendProject, convertedImages: success.images }, result: success, batchIds: [batch.id], problemIds: [], pendingReferences: 1 });
+    await emit("background-idle", null);
+  });
+  await screen.findByRole("button", { name: "检查引用变更" });
+  expect(screen.getByRole("tab", { name: "图片" })).toHaveAttribute("data-state", "active");
+  await act(async () => { await emit("notification-navigate", { project: backendProject, target: { mode: "tex", path: backendProject.mainFile, recursive: true, view: "history", batchId: batch.id, imageId: null } }); });
+  await waitFor(() => expect(screen.getByRole("tab", { name: /转换记录/ })).toHaveAttribute("data-state", "active"));
+  expect(document.getElementById(`batch-${batch.id}`)).toHaveAttribute("data-highlighted", "true");
+});
+
+it("routes a problem notification to its problem dialog", async () => {
+  await openProject();
+  await act(async () => { await emit("notification-navigate", { project: backendProject, target: { mode: "tex", path: backendProject.mainFile, recursive: true, view: "problems", batchId: null, imageId: "missing" } }); });
+  expect(await screen.findByRole("dialog", { name: "图片引用问题" })).toBeInTheDocument();
 });

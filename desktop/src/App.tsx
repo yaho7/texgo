@@ -31,7 +31,7 @@ import { conversionOptions, defaultSettings, settingsIssues } from "./settings";
 import type { ConversionSettings } from "./settings";
 import { readRecents, readSettings, rememberWorkspace, removeRecent, storeSettings, workspaceKey } from "./recents";
 import type { RecentWorkspace } from "./recents";
-import type { ChangePreview, ConversionHistoryEntry, ConversionProgress, ConversionResult, ImageResult, Project, ReplacementResult } from "./types";
+import type { SmartReport, NotificationTarget, ChangePreview, ConversionHistoryEntry, ConversionProgress, ConversionResult, ImageResult, Project, ReplacementResult } from "./types";
 import { errorMessage, fileName, relativeFile } from "./utils";
 
 type Operation = "opening" | "converting" | "reviewing" | "applying" | "undoing";
@@ -53,6 +53,11 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [settings, setSettings] = useState<ConversionSettings>(defaultSettings);
+  const [highlightBatch, setHighlightBatch] = useState<string | null>(null);
+  const backgroundActive = useRef(false);
+  const backgroundStart = useRef<(project: Project) => void>(() => {});
+  const backgroundFinished = useRef<(report: SmartReport) => void>(() => {});
+  const notificationNavigate = useRef<(payload: { project: Project; target: NotificationTarget }) => void>(() => {});
   const [history, setHistory] = useState<ConversionHistoryEntry[]>([]);
   const [view, setView] = useState("assets");
   const [undoEntry, setUndoEntry] = useState<ConversionHistoryEntry | null>(null);
@@ -126,6 +131,14 @@ export default function App() {
     function keep(promise: Promise<() => void>) {
       void promise.then((stop) => { if (active) stops.push(stop); else void Promise.resolve(stop()).catch(() => {}); }).catch(() => {});
     }
+    keep(listen<Project>("background-start", ({ payload }) => backgroundStart.current(payload)));
+    keep(listen<SmartReport>("background-finished", ({ payload }) => backgroundFinished.current(payload)));
+    keep(listen("background-idle", () => { if (backgroundActive.current) { backgroundActive.current = false; operationRef.current = null; setOperation(null); void loadHistory(); } }));
+    keep(listen<ConversionProgress>("conversion-progress", ({ payload }) => { if (backgroundActive.current) setProgress(payload); }));
+    keep(listen<ImageResult>("conversion-result", ({ payload }) => { if (backgroundActive.current) setResults((previous) => ({ ...previous, [payload.id]: payload })); }));
+    keep(listen<string>("desktop-error", ({ payload }) => setError(payload)));
+    keep(listen<{ project: Project; target: NotificationTarget }>("notification-navigate", ({ payload }) => notificationNavigate.current(payload)));
+    void invoke<{ error: string | null }>("desktop_status").then((status) => { if (active && status?.error) setError(status.error); }).catch(() => {});
     keep(listen<string>("menu-action", ({ payload }) => desktopAction.current(payload)));
     keep(listen<{ paths: string[] }>("tauri://drag-drop", ({ payload }) => { setDragging(false); dropFiles.current(payload.paths); }));
     keep(listen("tauri://drag-enter", () => setDragging(true)));
@@ -408,6 +421,37 @@ export default function App() {
     const output = results[image.id]?.pdfPath;
     return output && !results[image.id]?.error && image.references.some((reference) => reference.original !== relativeFile(output, project.root));
   });
+  backgroundStart.current = (nativeProject) => {
+    if (!project || project.root !== nativeProject.root || project.mainFile !== nativeProject.mainFile) return;
+    backgroundActive.current = true;
+    operationRef.current = "converting"; setOperation("converting"); setProgress(null); setError(null);
+  };
+  backgroundFinished.current = (report) => {
+    if (!project || project.root !== report.project.root || project.mainFile !== report.project.mainFile) return;
+    setProject(report.project);
+    setResults((previous) => ({ ...previous, ...Object.fromEntries(report.project.convertedImages.map((image) => [image.id, image])), ...Object.fromEntries(report.result.images.map((image) => [image.id, image])) }));
+    setSelected((previous) => new Set([...previous].filter((id) => !report.result.images.some((image) => image.id === id))));
+    setRevision((value) => value + 1);
+    const failed = report.result.images.filter((image) => image.error).length;
+    setNotice(report.result.images.length ? `转换完成：${report.result.images.length - failed} 成功，${failed} 失败` : report.pendingReferences && !preferences.allowUnreviewed ? `${report.pendingReferences} 处引用等待确认` : report.problemIds.length ? `${report.problemIds.length} 个问题需要处理` : "当前工作区没有需要更新的图片");
+    void loadHistory();
+  };
+  notificationNavigate.current = ({ project: next, target }) => {
+    void (async () => {
+      setReview(null); setProblemId(null); setUndoEntry(null); setUpdateOpen(false); setSettingsPage(false);
+      const same = project?.root === next.root && project.mainFile === next.mainFile;
+      await acceptProject(next, same);
+      setHighlightBatch(target.batchId);
+      if (target.view === "review" && next.mode === "tex") {
+        setReviewKind("conversion");
+        try { const plan = await invoke<ChangePreview>("preview_changes"); if (plan.referenceCount) setReview(plan); else setView("history"); }
+        catch (reason) { setError(errorMessage(reason)); setView("history"); }
+      } else if (target.view === "problems") {
+        setView("assets"); setFilter("attention"); setActiveId(target.imageId);
+        if (target.imageId && next.images.some((image) => image.id === target.imageId)) { setProblemId(target.imageId); setRepairCandidates([]); }
+      } else { setView("history"); if (target.imageId) setActiveId(target.imageId); }
+    })();
+  };
   desktopAction.current = (action) => {
     if (action === "settings") { setSettingsPage(true); setDrawerOpen(false); return; }
     if (action === "check-updates") { setUpdateOpen(true); return; }
@@ -486,7 +530,7 @@ export default function App() {
             <div className="workspace-library"><TabsContent value="assets" className="library-content"><AssetList images={visibleImages} allImages={project.images} ignored={ignored} onIgnore={(id, value) => { void ignoreAsset(id, value); }} onInspect={inspectProblem} onLocate={locateRepair} total={project.images.length} selected={selected} activeId={activeId} results={results} busy={busy} previewDisabled={busy && operation !== "converting"} search={search} filter={filter} onSearch={setSearch} onFilter={setFilter} onActivate={(id) => { setActiveId(id); const asset = project.images.find((image) => image.id === id); if (!busy && asset && ["missing", "ambiguous"].includes(asset.status)) inspectProblem(id); }}
               onSelect={(id) => { if (!busy) setSelected((previous) => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }}
               onSelectAll={(ids, select) => { if (!busy) setSelected((previous) => { const next = new Set(previous); ids.forEach((id) => { if (select) next.add(id); else next.delete(id); }); return next; }); }} /></TabsContent>
-              <TabsContent value="history" className="library-content"><ConversionHistory entries={history} busy={busy} referencesPending={project.undoAvailable} onUndo={(entry) => { rememberFocus(); setError(null); setUndoEntry(entry); }} /></TabsContent></div>
+              <TabsContent value="history" className="library-content"><ConversionHistory highlightId={highlightBatch} entries={history} busy={busy} referencesPending={project.undoAvailable} onUndo={(entry) => { rememberFocus(); setError(null); setUndoEntry(entry); }} /></TabsContent></div>
             <Splitter label="调整图片列表宽度" value={assetsWidth} min={380} max={1100} onChange={setAssetsWidth} />
             <div className="asset-inspector" key={workspaceKey(projectEntry(project))}><AssetPreview asset={activeAsset} result={activeAsset ? results[activeAsset.id] : undefined} revision={revision} />
               <ConversionPanel settings={settings} selectedCount={selected.size} busy={busy} converting={operation === "converting"} canReview={Boolean(canReview)} allowUnreviewed={preferences.allowUnreviewed} pendingReferences={project.images.reduce((n, image) => n + (results[image.id]?.pdfPath && !results[image.id]?.error ? image.references.filter((reference) => reference.original !== relativeFile(results[image.id].pdfPath!, project.root)).length : 0), 0)} undoAvailable={project.undoAvailable || history.some((entry) => !entry.undone && Boolean(entry.referencesChanged))} activeAsset={activeAsset} root={project.root} directoryMode={project.mode === "directory"} onSettings={updateSettings} onConvert={convert} onReview={reviewChanges} onUndo={() => replace(true)} />

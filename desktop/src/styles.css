@@ -269,3 +269,5 @@ details[open] > .conversion-summary::after { transform: rotate(225deg); }
 .settings-page { flex: 1; min-height: 0; overflow: auto; padding: 20px max(24px, calc((100% - 720px) / 2)); }
 .settings-page > header { margin-bottom: 24px; }
 .settings-page form { padding-bottom: 30px; }
+
+.history-entry[data-highlighted="true"] { background: var(--muted); border-radius: 8px; padding-inline: 12px; }

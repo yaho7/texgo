@@ -146,3 +146,13 @@ pub struct AssetPreview {
     pub data: String,
     pub kind: String,
 }
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SmartReport {
+    pub project: Project,
+    pub result: ConversionResult,
+    pub batch_ids: Vec<String>,
+    pub problem_ids: Vec<String>,
+    pub pending_references: usize,
+}

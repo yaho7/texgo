@@ -12,8 +12,39 @@ concurrency:
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
+  verify:
+    name: Verify frontend and engine
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run test:pdf
+      - name: Resolve desktop plugin dependencies
+        run: cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resolved-cargo-lock
+          path: desktop/src-tauri/Cargo.lock
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features --features automation
+
   package:
     name: Package ${{ matrix.platform }}-${{ matrix.arch }}
+    needs: verify
     if: github.event_name != 'push' || !github.event.deleted
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -68,6 +99,10 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils libfuse2
       - name: Install frontend dependencies
         run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: resolved-cargo-lock
+          path: desktop/src-tauri
       - name: Build bundled engine and prepare icons
         env:
           TARGET: ${{ matrix.target }}
@@ -78,6 +113,8 @@ jobs:
           mkdir -p src-tauri/binaries
           cp "src-tauri/target/$TARGET/release/texgo-engine$extension" "src-tauri/binaries/texgo-engine-$TARGET$extension"
           npx tauri icon app-icon.svg
+      - name: Test desktop integration on native platform
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --target ${{ matrix.target }}
       - name: Build desktop installer with bundled engine
         uses: tauri-apps/tauri-action@v1
         env:
@@ -99,6 +136,7 @@ jobs:
 
   release:
     name: Publish Release
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
     needs: package
     runs-on: ubuntu-22.04
     permissions:
