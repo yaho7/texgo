@@ -622,3 +622,29 @@ describe("LaTeX 图片工作流", () => {
     expect(screen.queryByRole("button", { name: "检查引用变更" })).not.toBeInTheDocument();
   });
 });
+
+it("keeps ignored assets visible, filters them, restores them and never applies TeX", async () => {
+  handlers.ignore_asset = () => undefined;
+  const user = await openProject();
+  await user.click(screen.getByRole("button", { name: "更多操作 figures/lost.png" }));
+  await user.click(screen.getByRole("menuitem", { name: "忽略本次" }));
+  const row = screen.getByRole("button", { name: "预览 figures/lost.png" }).closest("tr")!;
+  expect(within(row).getByText("已忽略")).toBeInTheDocument();
+  expect(screen.getByText(/1 张已忽略 · 共 5 张/)).toBeInTheDocument();
+  await user.selectOptions(screen.getByRole("combobox", { name: "筛选状态" }), "ignored");
+  expect(screen.queryByRole("button", { name: "预览 figures/alpha.png" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "更多操作 figures/lost.png" }));
+  await user.click(screen.getByRole("menuitem", { name: "恢复处理" }));
+  expect(screen.queryByRole("button", { name: "预览 figures/lost.png" })).not.toBeInTheDocument();
+  expect(calls.filter(({ command }) => command === "apply_replacements")).toHaveLength(0);
+});
+
+it("prioritizes review over a new selected batch and the convert accelerator", async () => {
+  const user = await openProject();
+  await convertFirst(user);
+  await user.click(screen.getByRole("checkbox", { name: "选择 figures/beta.jpg" }));
+  expect(screen.getByRole("button", { name: "检查引用变更" })).toBeEnabled();
+  await user.keyboard("{Control>}{Enter}{/Control}");
+  await screen.findByRole("dialog", { name: "检查引用变更" });
+  expect(calls.filter(({ command }) => command === "convert_images")).toHaveLength(1);
+});

@@ -30,12 +30,12 @@ it("keeps settings collapsed with a compact summary and expands invalid settings
 it("uses one state-driven primary action without a permanent undo action", async () => {
   const p = props();
   const view = render(<ConversionPanel {...p} canReview />);
-  await userEvent.click(screen.getByRole("button", { name: "转换 2 张" }));
-  expect(p.onConvert).toHaveBeenCalledOnce();
-  expect(screen.queryByRole("button", { name: "检查引用变更" })).not.toBeInTheDocument();
-  view.rerender(<ConversionPanel {...p} selectedCount={0} canReview />);
   await userEvent.click(screen.getByRole("button", { name: "检查引用变更" }));
   expect(p.onReview).toHaveBeenCalledOnce();
+  expect(p.onConvert).not.toHaveBeenCalled();
+  view.rerender(<ConversionPanel {...p} selectedCount={0} canReview />);
+  await userEvent.click(screen.getByRole("button", { name: "检查引用变更" }));
+  expect(p.onReview).toHaveBeenCalledTimes(2);
   view.rerender(<ConversionPanel {...p} selectedCount={0} undoAvailable />);
   expect(screen.getByRole("button", { name: "已完成" })).toBeDisabled();
   expect(screen.queryByRole("button", { name: "撤销替换" })).not.toBeInTheDocument();

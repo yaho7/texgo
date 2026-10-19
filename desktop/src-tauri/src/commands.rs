@@ -110,7 +110,10 @@ async fn convert_images(options: ConversionOptions, app: tauri::AppHandle, state
     completed.lock().map_err(|_| "预览状态不可用")?.clear();
     work(state.inner().clone(), move |workspace| {
         let _guard = guard;
-        current(workspace)?.convert_with_results(&options, &cancel,
+        let ws = current(workspace)?;
+        ws.refresh()?;
+        ws.ensure_can_convert(false)?;
+        ws.convert_with_results(&options, &cancel,
             |progress| { let _ = app.emit("conversion-progress", progress); },
             |image| {
                 if image.error.is_none() {
@@ -138,6 +141,11 @@ async fn asset_preview(image_id: String, converted: bool, state: State<'_, AppSt
         }
         workspace.preview(&image_id, converted)
     }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn ignore_asset(image_id: String, ignored: bool, state: State<'_, AppState>) -> Result<(), String> {
+    work(state.inner().clone(), move |workspace| current(workspace)?.ignore(&image_id, ignored)).await
 }
 
 #[tauri::command]
@@ -170,7 +178,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         .setup(|app| { crate::desktop_menu::install(app)?; Ok(()) })
-        .invoke_handler(tauri::generate_handler![open_project, open_directory, add_image_directory, refresh_workspace, poll_workspace, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, preview_changes, apply_replacements, undo_replacements])
+        .invoke_handler(tauri::generate_handler![ignore_asset, open_project, open_directory, add_image_directory, refresh_workspace, poll_workspace, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, preview_changes, apply_replacements, undo_replacements])
         .run(tauri::generate_context!())
         .expect("failed to start texgo desktop");
 }

@@ -18,6 +18,8 @@ interface Props {
   busy: boolean;
   converting: boolean;
   canReview: boolean;
+  allowUnreviewed?: boolean;
+  pendingReferences?: number;
   undoAvailable: boolean;
   activeAsset: ImageAsset | null;
   root: string;
@@ -40,7 +42,7 @@ export default function ConversionPanel(props: Props) {
   const [custom, setCustom] = useState(false);
   const preset = custom ? "custom" : Object.entries(presets).find(([, value]) => value.dpi === props.settings.dpi && value.jpegQuality === props.settings.jpegQuality)?.[0] ?? "custom";
   const showAdvanced = preset === "custom" || Object.keys(issues).length > 0;
-  const review = props.selectedCount === 0 && props.canReview && !props.directoryMode;
+  const review = (!props.allowUnreviewed || props.selectedCount === 0) && props.canReview && !props.directoryMode;
   const locked = props.busy || props.converting;
   function submit() {
     if (locked || props.selectedCount === 0) return;
@@ -106,9 +108,10 @@ export default function ConversionPanel(props: Props) {
     </div>
     <Separator />
     <div className="conversion-actions flex shrink-0 flex-col gap-3 px-4 py-3">
+      {review && <p className="text-xs text-muted-foreground">{props.pendingReferences ?? "多"} 处引用等待确认</p>}
       <Button type="button" className="w-full" disabled={locked || (props.selectedCount === 0 && !review)} onClick={review ? props.onReview : submit}>
         {props.converting ? <LoaderCircle data-icon="inline-start" className="animate-spin" aria-hidden="true" /> : review ? <FileCheck2 data-icon="inline-start" aria-hidden="true" /> : props.selectedCount > 0 ? <ArrowRight data-icon="inline-start" aria-hidden="true" /> : <Check data-icon="inline-start" aria-hidden="true" />}
-        {props.converting ? "正在转换…" : props.selectedCount > 0 ? `转换 ${props.selectedCount} 张` : review ? "检查引用变更" : props.undoAvailable ? "已完成" : "请选择图片"}
+        {props.converting ? "正在转换…" : review ? "检查引用变更" : props.selectedCount > 0 ? `转换 ${props.selectedCount} 张` : props.undoAvailable ? "已完成" : "请选择图片"}
       </Button>
     </div>
   </aside>;

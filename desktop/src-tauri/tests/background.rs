@@ -22,3 +22,23 @@ fn unchanged_poll_is_cheap_and_changed_sources_are_rehydrated() {
     fs::remove_file(path).unwrap();
     assert_eq!(workspace.poll_changes().unwrap().unwrap().images.len(), 1);
 }
+
+#[test]
+fn ignored_session_survives_refresh_without_editing_tex_and_review_blocks_next_batch() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("main.tex"), r"\includegraphics{plot.png}\includegraphics{missing}").unwrap();
+    image::RgbImage::new(20, 10).save(dir.path().join("plot.png")).unwrap();
+    let before = fs::read(dir.path().join("main.tex")).unwrap();
+    let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    let missing = ws.project().images.iter().find(|a| a.status == "missing").unwrap().id.clone();
+    ws.ignore(&missing, true).unwrap();
+    ws.refresh().unwrap();
+    assert!(ws.ignored().contains(&missing));
+    let id = ws.project().images.iter().find(|a| a.status == "ready").unwrap().id.clone();
+    ws.convert(&ConversionOptions { image_ids: vec![id], quality: "custom".into(), dpi: 300, jpeg_quality: 90, output_dir: "pdf".into() }, &AtomicBool::new(false), |_| {}).unwrap();
+    assert!(ws.ensure_can_convert(false).is_err());
+    assert!(ws.ensure_can_convert(true).is_ok());
+    assert_eq!(fs::read(dir.path().join("main.tex")).unwrap(), before);
+    ws.ignore(&missing, false).unwrap();
+    assert!(ws.ignored().is_empty());
+}

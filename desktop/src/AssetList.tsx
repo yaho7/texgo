@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronLeft, ChevronRight, CircleCheck, FileImage, FileWarning, RefreshCw, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, CircleCheck, FileImage, FileWarning, RefreshCw, Search, MoreHorizontal } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -9,6 +9,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import type { AssetStatus, ImageAsset, ImageResult } from "./types";
 import { formatBytes } from "./utils";
 
@@ -23,6 +24,10 @@ export const statusLabels: Record<AssetStatus, string> = {
 interface Props {
   images: ImageAsset[];
   allImages?: ImageAsset[];
+  ignored?: Set<string>;
+  onIgnore?: (id: string, ignored: boolean) => void;
+  onInspect?: (id: string) => void;
+  onLocate?: (id: string) => void;
   total: number;
   selected: Set<string>;
   activeId: string | null;
@@ -45,16 +50,18 @@ export default function AssetList(props: Props) {
   const pageCount = Math.max(1, Math.ceil(props.images.length / pageSize));
   const page = pagination.key === pageKey ? Math.min(pagination.page, pageCount - 1) : 0;
   const pageImages = props.images.slice(page * pageSize, (page + 1) * pageSize);
-  const readyIds = props.images.filter((image) => image.status === "ready").map((image) => image.id);
+  const readyIds = props.images.filter((image) => image.status === "ready" && !props.ignored?.has(image.id)).map((image) => image.id);
   const checkedCount = readyIds.filter((id) => props.selected.has(id)).length;
   const allChecked = readyIds.length > 0 && checkedCount === readyIds.length;
   const sourceImages = props.allImages ?? props.images;
+  const actionable = sourceImages.filter((image) => !props.ignored?.has(image.id));
   const summary = [
     { value: "all", label: "全部", count: sourceImages.length },
-    { value: "pending", label: "待处理", count: sourceImages.filter((image) => image.status === "ready" && !(props.results[image.id]?.pdfPath && !props.results[image.id]?.error)).length },
-    { value: "attention", label: "需注意", count: sourceImages.filter((image) => ["missing", "ambiguous", "unsupported"].includes(image.status) || props.results[image.id]?.error).length },
-    { value: "converted", label: "已完成", count: sourceImages.filter((image) => props.results[image.id]?.pdfPath && !props.results[image.id]?.error).length },
-    { value: "updatable", label: "可更新", count: sourceImages.filter((image) => image.updateAvailable && !(props.results[image.id]?.pdfPath && !props.results[image.id]?.error)).length },
+    { value: "pending", label: "待处理", count: actionable.filter((image) => image.status === "ready" && !(props.results[image.id]?.pdfPath && !props.results[image.id]?.error)).length },
+    { value: "attention", label: "需注意", count: actionable.filter((image) => ["missing", "ambiguous", "unsupported"].includes(image.status) || props.results[image.id]?.error).length },
+    { value: "ignored", label: "已忽略", count: sourceImages.filter((image) => props.ignored?.has(image.id)).length },
+    { value: "converted", label: "已完成", count: actionable.filter((image) => props.results[image.id]?.pdfPath && !props.results[image.id]?.error).length },
+    { value: "updatable", label: "可更新", count: actionable.filter((image) => image.updateAvailable && !(props.results[image.id]?.pdfPath && !props.results[image.id]?.error)).length },
   ];
   return (
     <section className="asset-panel @container flex min-h-0 min-w-0 flex-1 flex-col bg-background" aria-label="项目图片">
@@ -69,6 +76,7 @@ export default function AssetList(props: Props) {
             <NativeSelectOption value="all">全部状态</NativeSelectOption>
             <NativeSelectOption value="pending">待处理</NativeSelectOption>
             <NativeSelectOption value="attention">需注意</NativeSelectOption>
+            <NativeSelectOption value="ignored">已忽略</NativeSelectOption>
             <NativeSelectOption value="ready">可转换</NativeSelectOption>
             <NativeSelectOption value="updatable">可更新</NativeSelectOption>
             <NativeSelectOption value="converted">已转换</NativeSelectOption>
@@ -103,7 +111,8 @@ export default function AssetList(props: Props) {
               const converted = Boolean(result?.pdfPath && !result.error);
               const updatable = Boolean(asset.updateAvailable && !converted);
               const warning = ["missing", "unsupported", "ambiguous"].includes(asset.status);
-              const label = result?.cancelled ? "已取消" : result?.error ? "转换失败" : converted ? (result?.cached ? "已缓存" : "已转换") : updatable ? "可更新" : statusLabels[asset.status];
+              const ignored = props.ignored?.has(asset.id);
+              const label = ignored ? "已忽略" : result?.cancelled ? "已取消" : result?.error ? "转换失败" : converted ? (result?.cached ? "已缓存" : "已转换") : updatable ? "可更新" : statusLabels[asset.status];
               const normalizedPath = asset.relativePath.replaceAll("\\", "/");
               const slash = normalizedPath.lastIndexOf("/");
               const filename = normalizedPath.slice(slash + 1);
@@ -111,7 +120,7 @@ export default function AssetList(props: Props) {
               return (
                 <TableRow key={asset.id} data-state={props.activeId === asset.id ? "selected" : undefined} data-disabled={Boolean(props.previewDisabled)} className="asset-row h-[60px]">
                   <TableCell className="asset-selection-cell">
-                    <label className="asset-selection-target"><Checkbox aria-label={`选择 ${asset.relativePath}`} checked={props.selected.has(asset.id)} disabled={props.busy || asset.status !== "ready"} onCheckedChange={() => props.onSelect(asset.id)} /></label>
+                    <label className="asset-selection-target"><Checkbox aria-label={`选择 ${asset.relativePath}`} checked={props.selected.has(asset.id)} disabled={props.busy || ignored || asset.status !== "ready"} onCheckedChange={() => props.onSelect(asset.id)} /></label>
                   </TableCell>
                   <TableCell className="min-w-0 whitespace-normal">
                     <div className="flex min-w-0 flex-col gap-1">
@@ -129,6 +138,11 @@ export default function AssetList(props: Props) {
                     <Badge className={updatable && !result?.error ? "update-badge" : undefined} variant={result?.error && !result.cancelled ? "destructive" : converted ? "success" : warning ? "warning" : "secondary"} title={updatable ? "源图片或 SVG 依赖已变化，可重新转换" : result?.pdfPath ?? undefined}>
                       {converted && <CircleCheck data-icon="inline-start" aria-hidden="true" />}{updatable && !result?.error && <RefreshCw data-icon="inline-start" aria-hidden="true" />}{label}
                     </Badge>
+                    {(warning || result?.error || ignored) && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" className="asset-more" aria-label={`更多操作 ${asset.relativePath}`} disabled={props.busy}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuGroup>
+                      <DropdownMenuItem onSelect={() => props.onInspect?.(asset.id)}>{asset.status === "unsupported" || result?.error ? "查看详情" : "查看并修复"}</DropdownMenuItem>
+                      {["missing", "ambiguous"].includes(asset.status) && <DropdownMenuItem onSelect={() => props.onLocate?.(asset.id)}>定位文件</DropdownMenuItem>}
+                      <DropdownMenuItem onSelect={() => props.onIgnore?.(asset.id, !ignored)}>{ignored ? "恢复处理" : "忽略本次"}</DropdownMenuItem>
+                    </DropdownMenuGroup></DropdownMenuContent></DropdownMenu>}
                   </TableCell>
                 </TableRow>
               );
@@ -139,7 +153,7 @@ export default function AssetList(props: Props) {
       </div>
       <Separator />
       <footer className="flex shrink-0 items-center justify-between gap-3 px-4 py-2 text-xs text-muted-foreground">
-        <span>{props.images.length} / {props.total} 张图片</span>
+        <span>{props.images.length} 张可见 · {sourceImages.filter((image) => props.ignored?.has(image.id)).length} 张已忽略 · 共 {props.total} 张</span>
         <div className="flex items-center gap-2"><Button variant="ghost" size="icon-sm" aria-label="上一页图片" disabled={page === 0} onClick={() => setPagination({ key: pageKey, page: page - 1 })}><ChevronLeft aria-hidden="true" /></Button><span className="tabular-nums">{page + 1} / {pageCount}</span><Button variant="ghost" size="icon-sm" aria-label="下一页图片" disabled={page + 1 >= pageCount} onClick={() => setPagination({ key: pageKey, page: page + 1 })}><ChevronRight aria-hidden="true" /></Button></div>
       </footer>
     </section>

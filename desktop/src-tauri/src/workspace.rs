@@ -18,6 +18,7 @@ pub struct Workspace {
     observed: Option<crate::observation::Snapshot>,
     pending_repair: Option<(String, PathBuf, ReplacementPlan)>,
     invalidated: HashSet<String>,
+    ignored: HashSet<String>,
 }
 
 #[derive(Clone)]
@@ -52,7 +53,7 @@ impl Workspace {
                 scan.project.warnings.push(format!("附加图片目录暂不可用：{}：{error}", directory.display()));
             }
         }
-        let mut workspace = Self { scan, converted: BTreeMap::new(), extra_directories, observed: None, pending_repair: None, invalidated: HashSet::new() };
+        let mut workspace = Self { scan, converted: BTreeMap::new(), extra_directories, observed: None, pending_repair: None, invalidated: HashSet::new(), ignored: HashSet::new() };
         workspace.rehydrate(&journal);
         workspace.observed = crate::observation::snapshot(Path::new(&workspace.scan.project.root)).ok();
         Ok(workspace)
@@ -116,6 +117,7 @@ impl Workspace {
             scanner::scan_directory(root, self.scan.project.recursive, &journal.excluded(root))?
         } else { scanner::scan(Path::new(&self.scan.project.main_file))? };
         let mut refreshed = Self::from_scan(scan, directories)?;
+        refreshed.ignored = self.ignored.clone();
         refreshed.invalidated = self.invalidated.clone();
         refreshed.converted.retain(|id, _| !refreshed.invalidated.contains(id));
         refreshed.scan.project.converted_images.retain(|image| !refreshed.invalidated.contains(&image.id));
@@ -152,6 +154,30 @@ impl Workspace {
     }
 
     pub fn project(&self) -> &Project { &self.scan.project }
+
+    pub fn ignored(&self) -> &HashSet<String> { &self.ignored }
+
+    pub fn ignore(&mut self, id: &str, ignored: bool) -> Result<(), String> {
+        if !self.project().images.iter().any(|a| a.id == id) { return Err("找不到图片".into()); }
+        if ignored { self.ignored.insert(id.into()); } else { self.ignored.remove(id); }
+        Ok(())
+    }
+
+    pub fn pending_references(&self) -> usize {
+        self.project().images.iter().map(|asset| {
+            let Some(output) = self.converted.get(&asset.id) else { return 0; };
+            let relative = pathdiff::diff_paths(&output.path, &self.project().root).map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+            asset.references.iter().filter(|r| r.original != relative).count()
+        }).sum()
+    }
+
+    pub fn ensure_can_convert(&self, allow_unreviewed: bool) -> Result<(), String> {
+        Journal::load(Path::new(&self.project().root))?.ensure_settled()?;
+        if !allow_unreviewed && self.pending_references() > 0 {
+            return Err("存在未审核引用，请先检查引用变更".into());
+        }
+        Ok(())
+    }
 
     pub fn convert(&mut self, options: &ConversionOptions, cancel: &AtomicBool, progress: impl Fn(Progress)) -> Result<ConversionResult, String> {
         self.convert_with_results(options, cancel, progress, |_| {})
@@ -269,7 +295,8 @@ impl Workspace {
                 crate::repair::prepare_reviewed(&self.scan, id, target, expected, &selection)?
             } else { transaction::prepare_reviewed(&self.scan.project, &self.scan.sources, &self.converted, &selection, expected)? };
             let candidate = journal.latest_batch_id().map(str::to_owned).filter(|id|
-                journal.history(root).iter().any(|entry| entry.id == *id && entry.references_changed == 0));
+                journal.history(root).iter().any(|entry| entry.id == *id && entry.references_changed == 0
+                    && prepared.plan.files.iter().flat_map(|file| &file.changes).all(|change| entry.files.iter().any(|file| file.output == change.after && file.error.is_none()))));
             let batch_id = if repair || candidate.is_none() {
                 let options = ConversionOptions { image_ids: Vec::new(), quality: "custom".into(), dpi: 300, jpeg_quality: 100, output_dir: "texgo-pdf".into() };
                 let index = journal.begin(root, &options)?;

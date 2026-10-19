@@ -247,3 +247,5 @@ details[open] > .conversion-summary::after { transform: rotate(225deg); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+.asset-more { position: relative; z-index: 1; margin-left: 4px; }

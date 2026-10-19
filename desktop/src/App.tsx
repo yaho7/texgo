@@ -234,6 +234,15 @@ export default function App() {
     void execute("reviewing", async () => setReview(await invoke<ChangePreview>("preview_changes")));
   }
 
+  async function ignoreAsset(id: string, value = true) {
+    try {
+      await invoke("ignore_asset", { imageId: id, ignored: value });
+      setIgnored((previous) => { const next = new Set(previous); if (value) next.add(id); else next.delete(id); return next; });
+      setSelected((previous) => new Set([...previous].filter((item) => item !== id)));
+      setProblemId(null); setError(null); setNotice(value ? "已忽略本次引用问题，源文件未修改" : "已恢复处理");
+    } catch (reason) { setError(errorMessage(reason)); }
+  }
+
   function inspectProblem(imageId: string) {
     if (!project || busy) return;
     setView("assets"); setActiveId(imageId); setProblemId(imageId); setRepairCandidates([]); rememberFocus();
@@ -258,6 +267,7 @@ export default function App() {
 
   function convert() {
     if (!project || selected.size === 0 || operationRef.current) return;
+    if (canReview) { reviewChanges(); return; }
     const issues = settingsIssues(settings);
     const first = (["dpi", "jpegQuality", "outputDir"] as const).find((key) => issues[key]);
     if (first) {
@@ -362,7 +372,8 @@ export default function App() {
 
   const activeAsset = project?.images.find((image) => image.id === activeId) ?? null;
   const visibleImages = (project?.images ?? []).filter((image) => {
-    if (ignored.has(image.id)) return false;
+    if (filter === "ignored") return ignored.has(image.id);
+    if (ignored.has(image.id) && filter !== "all") return false;
     const textMatch = `${image.relativePath} ${image.format}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
     const result = results[image.id];
     const converted = Boolean(result?.pdfPath && !result.error);
@@ -442,7 +453,7 @@ export default function App() {
           <div className="workspace-nav"><TabsList variant="line" aria-label="工作区视图"><TabsTrigger value="assets"><Images aria-hidden="true" />图片</TabsTrigger><TabsTrigger value="history"><History aria-hidden="true" />转换记录<Badge variant="secondary">{history.length}</Badge></TabsTrigger></TabsList>
           </div>
           <main id="main-content" tabIndex={-1} className="workspace-grid" data-view={view} style={layoutStyle}>
-            <div className="workspace-library"><TabsContent value="assets" className="library-content"><AssetList images={visibleImages} allImages={project.images.filter((image) => !ignored.has(image.id))} total={project.images.length} selected={selected} activeId={activeId} results={results} busy={busy} previewDisabled={busy && operation !== "converting"} search={search} filter={filter} onSearch={setSearch} onFilter={setFilter} onActivate={(id) => { setActiveId(id); const asset = project.images.find((image) => image.id === id); if (!busy && asset && ["missing", "ambiguous"].includes(asset.status)) inspectProblem(id); }}
+            <div className="workspace-library"><TabsContent value="assets" className="library-content"><AssetList images={visibleImages} allImages={project.images} ignored={ignored} onIgnore={(id, value) => { void ignoreAsset(id, value); }} onInspect={inspectProblem} onLocate={locateRepair} total={project.images.length} selected={selected} activeId={activeId} results={results} busy={busy} previewDisabled={busy && operation !== "converting"} search={search} filter={filter} onSearch={setSearch} onFilter={setFilter} onActivate={(id) => { setActiveId(id); const asset = project.images.find((image) => image.id === id); if (!busy && asset && ["missing", "ambiguous"].includes(asset.status)) inspectProblem(id); }}
               onSelect={(id) => { if (!busy) setSelected((previous) => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }}
               onSelectAll={(ids, select) => { if (!busy) setSelected((previous) => { const next = new Set(previous); ids.forEach((id) => { if (select) next.add(id); else next.delete(id); }); return next; }); }} /></TabsContent>
               <TabsContent value="history" className="library-content"><ConversionHistory entries={history} busy={busy} referencesPending={project.undoAvailable} onUndo={(entry) => { rememberFocus(); setError(null); setUndoEntry(entry); }} /></TabsContent></div>
@@ -463,7 +474,7 @@ export default function App() {
         {sidebar}
       </DialogContent>
     </Dialog>
-    {problemId && project && <AssetProblems asset={project.images.find((image) => image.id === problemId) ?? null} projectRoot={project.root} busy={busy} candidates={repairCandidates} candidatesLoading={operation === "reviewing"} error={error} onClose={() => { setProblemId(null); setError(null); restoreFocus(); }} onLocate={locateRepair} onChoose={chooseRepair} onIgnore={(id) => { setIgnored((previous) => new Set([...previous, id])); setProblemId(null); setError(null); setNotice("已忽略本次引用问题，源文件未修改"); restoreFocus(); }} />}
+    {problemId && project && <AssetProblems asset={project.images.find((image) => image.id === problemId) ?? null} projectRoot={project.root} busy={busy} candidates={repairCandidates} candidatesLoading={operation === "reviewing"} error={error} onClose={() => { setProblemId(null); setError(null); restoreFocus(); }} onLocate={locateRepair} onChoose={chooseRepair} onIgnore={(id) => { void ignoreAsset(id); }} />}
     {review && project && <ReviewDialog key={JSON.stringify(review)} preview={review} root={project.root} busy={busy} error={error} onClose={() => { if (!operationRef.current) { setReview(null); setError(null); restoreFocus(); } }} onApply={(selection) => replace(false, selection)} />}
     <Dialog open={undoEntry !== null} onOpenChange={(value) => { if (!value && !operationRef.current) { setUndoEntry(null); setError(null); } }}>
       <DialogContent showCloseButton={false} onCloseAutoFocus={(event) => { event.preventDefault(); restoreFocus(); }} onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }} onInteractOutside={(event) => { if (busy) event.preventDefault(); }}>
