@@ -13,6 +13,7 @@ pub(crate) struct AppState {
     completed_previews: Arc<Mutex<BTreeMap<String, String>>>,
     cancel: Arc<AtomicBool>,
     converting: Arc<AtomicBool>,
+    shortcut_recording: Arc<AtomicBool>,
     preferences: Arc<Mutex<Preferences>>,
     shortcut: Arc<Mutex<Option<String>>>,
     startup_error: Arc<Mutex<Option<String>>>,
@@ -64,6 +65,13 @@ async fn save_preferences(preferences: Preferences, app: tauri::AppHandle, state
 #[tauri::command]
 fn desktop_status(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({ "converting": state.converting.load(Ordering::Relaxed), "error": state.startup_error.lock().map_err(|_| "状态不可用")?.clone() }))
+}
+
+// Transient guard: recording a shortcut must not invoke the previously registered
+// global shortcut. Registration and persisted preferences remain untouched.
+#[tauri::command]
+fn set_shortcut_recording(recording: bool, state: State<'_, AppState>) {
+    state.shortcut_recording.store(recording, Ordering::SeqCst);
 }
 
 #[tauri::command]
@@ -245,7 +253,7 @@ pub fn run() {
             install_background(app)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![desktop_status, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, open_project, refresh_workspace, poll_workspace, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, preview_changes, apply_replacements, undo_replacements])
+        .invoke_handler(tauri::generate_handler![desktop_status, set_shortcut_recording, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, open_project, refresh_workspace, poll_workspace, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, preview_changes, apply_replacements, undo_replacements])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let background = window.state::<AppState>().preferences.lock().is_ok_and(|p| p.close_action == "background");
@@ -343,6 +351,7 @@ async fn smart_convert(app: tauri::AppHandle, state: State<'_, AppState>) -> Res
     run_smart(app, state.inner().clone()).await
 }
 async fn run_smart(app: tauri::AppHandle, state: AppState) -> Result<(), String> {
+    if state.shortcut_recording.load(Ordering::SeqCst) { return Err("请先完成快捷键录制".into()); }
     if state.converting.swap(true, Ordering::Relaxed) { return Err("已有转换任务正在运行".into()); }
     let guard = ConversionGuard(state.converting.clone());
     state.cancel.store(false, Ordering::Relaxed);
@@ -403,6 +412,7 @@ async fn run_smart(app: tauri::AppHandle, state: AppState) -> Result<(), String>
 
 fn trigger_smart(app: &tauri::AppHandle) {
     let app = app.clone(); let state = app.state::<AppState>().inner().clone();
+    if state.shortcut_recording.load(Ordering::SeqCst) { return; }
     tauri::async_runtime::spawn(async move {
         if let Err(error) = run_smart(app.clone(), state.clone()).await {
             let _ = app.emit("desktop-error", &error);
