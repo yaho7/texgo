@@ -22,9 +22,26 @@ export interface ImageAsset {
   references: Reference[];
 }
 
+export type NextAction = "reviewReferences" | "convertImages" | "resolveProblems" | "upToDate";
+
+// Rust owns the classification and action priority. React only presents this snapshot.
+export interface WorkspaceStatus {
+  pendingImages: number;
+  pendingReferences: number;
+  problemCount: number;
+  ignoredCount: number;
+  completedImages: number;
+  totalImages: number;
+  pendingImageIds: string[];
+  problemIds: string[];
+  ignoredImageIds: string[];
+  completedImageIds: string[];
+  nextAction: NextAction;
+  blockingReason: string | null;
+}
+
 export interface Project {
-  mode: "tex" | "directory";
-  recursive: boolean;
+  status: WorkspaceStatus;
   convertedImages: ConvertedImage[];
   mainFile: string;
   root: string;
@@ -104,10 +121,8 @@ export interface SmartReport {
   pendingReferences: number;
 }
 export interface NotificationTarget {
-  mode: "tex" | "directory";
   path: string;
-  recursive: boolean;
-  view: "history" | "problems" | "review";
+  view: "images" | "history" | "problems" | "review";
   batchId: string | null;
   imageId: string | null;
 }
