@@ -496,11 +496,16 @@ export default function App() {
     function keydown(event: KeyboardEvent) {
       const element = event.target as HTMLElement | null;
       const editing = Boolean(element?.closest("input,textarea,select,[contenteditable]:not([contenteditable=false])"));
-      if (event.defaultPrevented || event.isComposing || event.repeat || event.altKey) return;
-      if ((event.metaKey || event.ctrlKey) && event.key === ",") { event.preventDefault(); setSettingsPage(true); return; }
-      if (settingsPage) return;
-      if (review || undoEntry || updateOpen || drawerOpen || problemId || document.querySelector('[data-slot="dropdown-menu-content"]')) return;
+      if (event.isComposing || event.repeat || event.altKey) return;
       const mod = event.metaKey || event.ctrlKey;
+      // Checkbox primitives consume Enter; reserved app accelerators still take priority.
+      if (event.defaultPrevented && !(mod && [",", "f", "Enter"].includes(event.key))) return;
+      if ((event.metaKey || event.ctrlKey) && event.key === ",") { event.preventDefault(); setSettingsPage(true); return; }
+      if (settingsPage) {
+        if (event.key === "Escape") { event.preventDefault(); setSettingsPage(false); requestAnimationFrame(() => document.getElementById("main-content")?.focus()); }
+        return;
+      }
+      if (review || undoEntry || updateOpen || drawerOpen || problemId || document.querySelector('[data-slot="dropdown-menu-content"]')) return;
       if (mod && event.key.toLowerCase() === "o") { event.preventDefault(); desktopAction.current(event.shiftKey ? "open-directory" : "open-project"); }
       else if (mod && event.key.toLowerCase() === "r") { event.preventDefault(); desktopAction.current("refresh"); }
       else if (mod && event.key === "Enter") { event.preventDefault(); desktopAction.current(event.shiftKey ? "review" : "convert"); }

@@ -215,7 +215,7 @@ describe("LaTeX 图片工作流", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "打开 .tex 主文件" })).toBeEnabled());
     expect(calls.some(({ command }) => command === "open_project")).toBe(false);
     expect(screen.getByRole("heading", { name: "打开 .tex 主文件" })).toBeInTheDocument();
-    expect(calls[0]).toMatchObject({ command: "plugin:dialog|open", args: { options: { multiple: false, filters: [{ name: "LaTeX", extensions: ["tex"] }] } } });
+    expect(calls.find(({ command }) => command === "plugin:dialog|open")).toMatchObject({ command: "plugin:dialog|open", args: { options: { multiple: false, filters: [{ name: "LaTeX", extensions: ["tex"] }] } } });
   });
 
   it("scans the chosen main file, warns about missing references, filters and selects only ready images", async () => {

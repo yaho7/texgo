@@ -5,7 +5,7 @@ import SettingsPage from "../src/SettingsPage";
 import { defaultPreferences } from "../src/preferences";
 const ipc = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: ipc.invoke }));
-beforeEach(() => ipc.invoke.mockReset());
+beforeEach(() => { ipc.invoke.mockReset(); });
 it("saves native preferences only on explicit submission", async () => {
   const saved = vi.fn(); const user = userEvent.setup();
   ipc.invoke.mockImplementation((_command, { preferences }) => Promise.resolve(preferences));
