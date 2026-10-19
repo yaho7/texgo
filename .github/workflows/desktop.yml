@@ -30,6 +30,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop/src-tauri
+          cache-on-failure: true
       - name: Validate desktop dependency lock
         run: cargo metadata --manifest-path src-tauri/Cargo.toml --locked --format-version 1 > /dev/null
       - uses: actions/upload-artifact@v4
@@ -40,7 +41,7 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run test:pdf
-      - run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features --features automation
+      - run: cargo test --no-fail-fast --manifest-path src-tauri/Cargo.toml --locked --no-default-features --features automation
 
   package:
     name: Package ${{ matrix.platform }}-${{ matrix.arch }}
@@ -91,6 +92,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop/src-tauri
+          cache-on-failure: true
           key: package-${{ matrix.target }}
       - name: Install Linux bundle dependencies
         if: runner.os == 'Linux'
@@ -114,7 +116,7 @@ jobs:
           cp "src-tauri/target/$TARGET/release/texgo-engine$extension" "src-tauri/binaries/texgo-engine-$TARGET$extension"
           npx tauri icon app-icon.svg
       - name: Test desktop integration on native platform
-        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --target ${{ matrix.target }}
+        run: cargo test --no-fail-fast --manifest-path src-tauri/Cargo.toml --locked --target ${{ matrix.target }}
       - name: Build desktop installer with bundled engine
         uses: tauri-apps/tauri-action@v1
         env:

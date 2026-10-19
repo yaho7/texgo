@@ -330,7 +330,7 @@ pub fn run_pipeline(config: &ResolvedConfig) -> Result<PipelineResult, String> {
     let ids = workspace.project().images.iter().filter(|asset| asset.status == "ready")
         .map(|asset| asset.id.clone()).collect::<Vec<_>>();
     if config.config.images.enabled && !ids.is_empty() {
-        let result = workspace.convert(&config.config.images.options(ids), &AtomicBool::new(false), |_| {})?;
+        let result = workspace.convert_for_pipeline(&config.config.images.options(ids))?;
         let failures = result.images.iter().filter_map(|image| image.error.as_ref()).cloned().collect::<Vec<_>>();
         if result.cancelled || !failures.is_empty() {
             return Err(format!("Image conversion failed; compilation was not started: {}", failures.join("; ")));

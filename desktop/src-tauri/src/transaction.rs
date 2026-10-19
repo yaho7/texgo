@@ -169,6 +169,26 @@ fn read_record(path: &Path) -> Result<Undo, String> {
 
 fn read_undo(root: &Path) -> Result<Undo, String> { read_record(&undo_path(root)?) }
 
+// A pipeline may refresh an already-referenced managed PDF while retaining its
+// standalone TeX recovery record. Partially restored or edited TeX is never eligible.
+pub(crate) fn validate_standalone_refresh(project: &Project) -> Result<(), String> {
+    let root = Path::new(&project.root);
+    let record = read_undo(root)?;
+    if record.batch_id.is_some() || record.main_file != project.main_file {
+        return Err("独立引用恢复记录不属于当前项目".into());
+    }
+    restore_files(root, &record)?;
+    for entry in &record.files {
+        let path = root.join(&entry.path);
+        crate::journal::safe_path(root, &path)?;
+        if path.canonicalize().map_err(|e| e.to_string())? != path
+            || digest(&fs::read(&path).map_err(|e| e.to_string())?) != entry.after_hash {
+            return Err("TeX 文件已被编辑或部分恢复，请先处理独立引用撤销".into());
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn legacy_undo_available(root: &Path) -> bool {
     fs::symlink_metadata(root.join(".texgo/undo.json")).is_ok()
 }

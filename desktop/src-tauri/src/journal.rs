@@ -158,10 +158,32 @@ impl Journal {
     }
 
     pub fn begin(&mut self, root: &Path, options: &ConversionOptions) -> Result<usize, String> {
+        self.begin_validated(root, options, false)
+    }
+
+    // CLI-only: all writes must keep the exact destinations already referenced by TeX.
+    pub fn begin_managed_refresh(&mut self, root: &Path, options: &ConversionOptions, project: &crate::Project) -> Result<usize, String> {
+        if !crate::transaction::standalone_undo_available(root)? { return self.begin(root, options); }
+        crate::transaction::validate_standalone_refresh(project)?;
+        let directory = output_directory(root, &options.output_dir)?;
+        if project.mode != "tex" || options.image_ids.is_empty() { return Err("独立引用记录存在时只允许原位置更新".into()); }
+        for id in &options.image_ids {
+            let asset = project.images.iter().find(|asset| &asset.id == id).ok_or("找不到图片")?;
+            let output = relative(root, &directory.join(&asset.relative_path).with_extension("pdf"))?;
+            let managed = self.outputs.get(&output).ok_or("独立引用记录存在时不能创建新 PDF 路径")?;
+            if managed.source != asset.relative_path || !self.valid_output(root, &output, managed)
+                || asset.references.is_empty() || asset.references.iter().any(|reference| reference.original != output) {
+                return Err("独立引用记录存在时只能更新已引用的托管 PDF".into());
+            }
+        }
+        self.begin_validated(root, options, true)
+    }
+
+    fn begin_validated(&mut self, root: &Path, options: &ConversionOptions, preserving_standalone: bool) -> Result<usize, String> {
         self.ensure_settled()?;
         crate::transaction::archive_linked_legacy(root)?;
         self.cleanup_finished_references(root)?;
-        if crate::transaction::legacy_undo_available(root) {
+        if crate::transaction::legacy_undo_available(root) && !preserving_standalone {
             return Err("存在旧版独立引用恢复记录，请先单独恢复".into());
         }
         let created_at = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| e.to_string())?.as_millis() as u64;

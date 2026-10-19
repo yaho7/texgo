@@ -501,3 +501,47 @@ exit 0
         assert!(events.iter().any(|v| v["event"] == "build-result" && v["result"]["build"]["success"] == false));
     }
 }
+
+#[cfg(all(unix, feature = "automation"))]
+#[test]
+fn pipeline_managed_refresh_refuses_changed_destinations_and_edited_tex_with_standalone_recovery() {
+    let dir = fixture();
+    write(dir.path(), "main.tex", "\\includegraphics{a.png}\n");
+    image::RgbImage::new(4, 2).save(dir.path().join("a.png")).unwrap();
+    let config = load_config(&dir.path().join(".texgo/project.json")).unwrap();
+    // build may fail without latexmk, but successful image/reference work is durable.
+    let _ = texgo_desktop::automation::run_pipeline(&config);
+    let undo = fs::read(dir.path().join(".texgo/undo.json")).unwrap();
+    let tex = fs::read(dir.path().join("main.tex")).unwrap();
+    let mut changed: Value = serde_json::from_slice(&fs::read(&config.config_path).unwrap()).unwrap();
+    changed["images"]["outputDir"] = "different-output".into();
+    fs::write(&config.config_path, serde_json::to_vec(&changed).unwrap()).unwrap();
+    assert!(texgo_desktop::automation::run_pipeline(&config).is_err());
+    assert!(!dir.path().join("different-output").exists());
+    assert_eq!(fs::read(dir.path().join("main.tex")).unwrap(), tex);
+    assert_eq!(fs::read(dir.path().join(".texgo/undo.json")).unwrap(), undo);
+    changed["images"]["outputDir"] = "texgo-pdf".into();
+    fs::write(&config.config_path, serde_json::to_vec(&changed).unwrap()).unwrap();
+    fs::write(dir.path().join("main.tex"), [tex.clone(), b"% user edit".to_vec()].concat()).unwrap();
+    assert!(texgo_desktop::automation::run_pipeline(&config).is_err());
+    assert_eq!(fs::read(dir.path().join(".texgo/undo.json")).unwrap(), undo);
+}
+
+
+#[cfg(all(unix, feature = "automation"))]
+#[test]
+fn pipeline_managed_refresh_rejects_damaged_standalone_recovery_payload() {
+    let dir = fixture();
+    write(dir.path(), "main.tex", "\\includegraphics{a.png}\n");
+    image::RgbImage::new(4, 2).save(dir.path().join("a.png")).unwrap();
+    let config = load_config(&dir.path().join(".texgo/project.json")).unwrap();
+    let _ = texgo_desktop::automation::run_pipeline(&config);
+    let before_pdf = fs::read(dir.path().join("texgo-pdf/a.pdf")).unwrap();
+    let path = dir.path().join(".texgo/undo.json");
+    let mut record: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    record["files"][0]["before"] = "not-base64!".into();
+    fs::write(path, serde_json::to_vec(&record).unwrap()).unwrap();
+    image::RgbImage::from_pixel(4, 2, image::Rgb([9, 8, 7])).save(dir.path().join("a.png")).unwrap();
+    assert!(texgo_desktop::automation::run_pipeline(&config).is_err());
+    assert_eq!(fs::read(dir.path().join("texgo-pdf/a.pdf")).unwrap(), before_pdf);
+}

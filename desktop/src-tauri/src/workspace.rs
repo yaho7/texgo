@@ -186,6 +186,14 @@ impl Workspace {
     }
 
     pub fn convert_with_results(&mut self, options: &ConversionOptions, cancel: &AtomicBool, progress: impl Fn(Progress), on_image: impl Fn(ConvertedImage)) -> Result<ConversionResult, String> {
+        self.convert_internal(options, cancel, progress, on_image, false)
+    }
+
+    pub(crate) fn convert_for_pipeline(&mut self, options: &ConversionOptions) -> Result<ConversionResult, String> {
+        self.convert_internal(options, &AtomicBool::new(false), |_| {}, |_| {}, true)
+    }
+
+    fn convert_internal(&mut self, options: &ConversionOptions, cancel: &AtomicBool, progress: impl Fn(Progress), on_image: impl Fn(ConvertedImage), pipeline: bool) -> Result<ConversionResult, String> {
         conversion::validate(options)?;
         let selected: HashSet<&str> = options.image_ids.iter().map(String::as_str).collect();
         if selected.is_empty() { return Err("请先选择图片".into()); }
@@ -199,7 +207,8 @@ impl Workspace {
         let root = PathBuf::from(&self.scan.project.root);
         let _lock = transaction::lock_project(&root)?;
         let mut journal = Journal::load(&root)?;
-        let batch = journal.begin(&root, options)?;
+        let preserving_standalone = pipeline && transaction::standalone_undo_available(&root)?;
+        let batch = if pipeline { journal.begin_managed_refresh(&root, options, &self.scan.project)? } else { journal.begin(&root, options)? };
         // Check the entire source tree, including images not referenced by TeX or selected in the UI.
         let preflight = (|| {
             let output_dir = journal::output_directory(&root, &options.output_dir)?;
@@ -238,6 +247,7 @@ impl Workspace {
             progress(Progress { current: images.len(), total: selected.len(), name: asset.relative_path.clone(), status: "converting".into() });
             let result = (|| {
                 let output = output.map_err(Clone::clone)?;
+                if preserving_standalone { transaction::validate_standalone_refresh(&self.scan.project)?; }
                 let path = Path::new(asset.path.as_deref().ok_or("图片路径不存在")?);
                 journal::safe_path(&root, path)?;
                 let output_relative = journal::relative(&root, &output)?;
@@ -248,7 +258,10 @@ impl Workspace {
                     dependencies: rendered.dependencies.iter().map(|(p, h)| Ok((journal::relative(&root, p)?, h.clone()))).collect::<Result<_, String>>()? };
                 journal.valid_sources(&root, &managed)?;
                 let cached = journal.outputs.get(&output_relative).is_some_and(|old| old.key == managed.key && journal.valid(&root, &output_relative, old));
-                if !cached { journal.write(&root, batch, &output_relative, managed, &rendered.pdf)?; }
+                if !cached {
+                    if preserving_standalone { transaction::validate_standalone_refresh(&self.scan.project)?; }
+                    journal.write(&root, batch, &output_relative, managed, &rendered.pdf)?;
+                }
                 Ok(ConvertedImage { id: asset.id.clone(), pdf_path: Some(output.to_string_lossy().into()),
                     bytes: fs::metadata(output).ok().map(|m| m.len()), cached, error: None })
             })();
