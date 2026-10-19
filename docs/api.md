@@ -26,8 +26,6 @@ cargo test --manifest-path desktop/src-tauri/Cargo.toml --no-default-features --
 
 ```sh
 texgo-engine scan --main /project/main.tex --json
-texgo-engine directory --directory /project --recursive --json
-texgo-engine directory --directory /project --recursive --convert --dpi 300 --jpeg-quality 100 --output-dir output --json
 texgo-engine build --config /project/.texgo/project.json --json
 texgo-engine run --config /project/.texgo/project.json --json
 texgo-engine watch --config /project/.texgo/project.json
@@ -42,7 +40,6 @@ inspect asset statuses and warnings before deciding whether to proceed.
 | Command | Behavior |
 | --- | --- |
 | `scan --main PATH` | Scan reachable TeX sources and image references without editing them. |
-| `directory --directory PATH [--recursive] [--convert]` | Open images without TeX references; optionally convert through the shared workspace engine. Without `--convert`, JSON is `Project`; with it, JSON is `{project,conversion}`. No TeX compilation. |
 | `build --config PATH` | Compile only; never convert images or replace TeX references. |
 | `run --config PATH` | Scan, validate, optionally convert/replace, then compile. |
 | `watch --config PATH` | Run the pipeline immediately, then repeat after relevant edits. |
@@ -217,7 +214,7 @@ command. User/system latexmk configuration still applies.
 
 ```text
 Project {
-  mode: "tex"|"directory", recursive: boolean, convertedImages: ConvertedImage[],
+  status: WorkspaceStatus, convertedImages: ConvertedImage[],
   mainFile: string, root: string, texFiles: string[],
   images: ImageAsset[], warnings: string[], undoAvailable: boolean
 }
@@ -234,12 +231,19 @@ Use opaque image IDs from the current scan. Status `ready` means convertible,
 and `unsupported` require attention. `line` is one-based; `start` and `end` are
 UTF-8 byte offsets within the scanned source. `original` is the current path
 text in TeX, which can already be a managed PDF path.
-Directory mode has `mainFile:""`, no TeX sources or references, and selectable
-recursive scanning. Added image directories must be inside the workspace root;
-they persist across refresh and reopen in either mode. Folder scans skip
-`texgo-pdf`, `.texgo`, `.git`, `node_modules`, all configured conversion
-output directories, and symlinks. `convertedImages` always exists and includes
-only outputs whose PDF, source and dependency hashes remain valid on reopen.
+All workspaces require a LaTeX main file. Independent directory commands and RPC methods have been removed. The internal recursive image scanner remains available for safety checks and project resolution. `convertedImages` includes only outputs whose PDF, source and dependency hashes remain valid.
+
+```text
+WorkspaceStatus {
+  pendingImages, pendingReferences, problemCount, ignoredCount,
+  completedImages, totalImages: integer,
+  pendingImageIds, problemIds, ignoredImageIds, completedImageIds: string[],
+  nextAction: "reviewReferences"|"convertImages"|"resolveProblems"|"upToDate",
+  blockingReason: string|null
+}
+```
+
+Workspace refresh owns these counts and IDs. Reference review has priority over image updates, then problems, then completion. Ignored assets remain visible in All but are excluded from tasks and reference plans. `blockingReason` represents a safety blocker, including externally modified outputs or inconsistent recovery state. Clients must not infer the project action from format/status flags alone.
 
 `updateAvailable` is true when a convertible source or its SVG dependencies have
 changed since a managed, intact PDF was generated. It is recomputed when opening,
@@ -389,10 +393,8 @@ notification and receives an error with a null ID where no valid ID exists.
 | Method | Params | Result |
 | --- | --- | --- |
 | `tools.info` | `{}` | Engine version, config version, transport, methods, engines, compiler, request bound. |
-| `project.open` | `{"mainFile":"/project/main.tex"}` | `Project`; reopen and rehydrate valid conversions and added directories. |
-| `project.openDirectory` | `{"directory":"/project","recursive":true}` | `Project` in directory mode. |
-| `project.addDirectory` | `{"directory":"/project/figures","recursive":true}` | `Project`; persist an extra image directory within root, preserving mode. |
-| `project.scan` | `{"mainFile":"/project/main.tex"}` or `{}` | Rescan/select project; omitted main retains current mode and extra directories. |
+| `project.open` | `{"mainFile":"/project/main.tex"}` | `Project`; open a LaTeX main file and rehydrate valid conversions. |
+| `project.scan` | `{"mainFile":"/project/main.tex"}` or `{}` | Rescan/select a LaTeX project; omitted main retains the current main file. |
 | `images.convert` | `{"options":{"imageIds":["ID"],"quality":"custom","dpi":300,"jpegQuality":100,"outputDir":"texgo-pdf"}}` | `ConversionResult`; quality and outputDir are optional. |
 | `images.history` | `{}` | `ConversionHistoryEntry[]`, latest first. |
 | `images.undo` | `{"confirm":true,"entryId":"BATCH-ID"}` | `Project`; undo the latest compatible write batch and refresh. |

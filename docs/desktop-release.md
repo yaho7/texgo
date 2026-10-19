@@ -112,7 +112,4 @@ no webview shell permission or HTTP API listener is introduced.
 
 Release filenames include version, OS and architecture. Compare the SHA-256
 of the download against its matching line in `SHA256SUMS`. Windows packages
-are unsigned. macOS packages are ad-hoc signed, not Developer ID signed or
-notarized; security policies may warn or block them. Do not disable system-wide
-protections. Trusted signing requires a separately configured certificate and
-notarization setup. There is no automatic updater or updater signing feed.
+are unsigned. macOS packages use a Developer ID Application certificate and Apple notarization through Tauri’s supported environment variables. The workflow references the five Apple repository Secrets without printing their values. Both macOS architectures share the same signing step. There is no automatic updater or updater signing feed.

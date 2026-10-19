@@ -2,7 +2,7 @@
 
 [中文](README.zh.md)
 
-A local LaTeX image workbench for Windows, macOS and Linux, built with
+A local LaTeX project image assistant for Windows, macOS and Linux, built with
 Tauri 2, Rust, React and shadcn/ui. Every installer includes both the desktop
 application and the independent `texgo-engine` CLI/JSON-RPC API.
 
@@ -10,16 +10,15 @@ application and the independent `texgo-engine` CLI/JSON-RPC API.
 
 Get the installer for your platform from [GitHub Releases](https://github.com/yaho7/texgo/releases/latest).
 macOS requires 13.3+ and an updated Safari 18+ WebKit for PDF previews.
-Windows packages are unsigned; macOS packages are
-ad-hoc signed and not notarized. See [platform requirements and signing](docs/desktop-release.md).
+Windows packages are unsigned; macOS packages use Developer ID signing and Apple notarization. See [platform requirements and signing](docs/desktop-release.md).
 
 ## Workflow
 
-1. Open a `.tex` main file, or choose an image directory without TeX references.
-2. Select images; expand output settings for presets, DPI, quality and destination.
-3. Convert to same-stem PDFs while preserving source images and subdirectories.
-4. Compare the original and PDF side by side, then review and select reference changes.
-5. Undo a complete task, including its references and PDFs, from conversion history.
+1. Open or drop a LaTeX main file. Texgo discovers the project's image references.
+2. Follow the single recommended action: review references, update pending images, or resolve problems.
+3. Update all pending images by default. Use “Select some images” only when needed; output parameters live in the bottom command bar.
+4. Compare the original on the left and PDF on the right with an overlay divider. Reference changes open for review automatically and are applied only after confirmation.
+5. Browse images and operation records from the sidebar. Undo restores the operation's references and PDFs together.
 
 Image changes are detected in the background. The application menu contains
 GitHub release checks, manual rescanning and other less frequent actions.
