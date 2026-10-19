@@ -7,6 +7,29 @@ fn png(root: &Path, name: &str, color: u8) {
     image::RgbImage::from_pixel(24, 12, image::Rgb([color, 50, 80])).save(path).unwrap();
 }
 
+// Every conversion safety fixture is a real LaTeX project. Only explicitly
+// referenced sources enter Workspace; output/state trees are never added.
+fn referenced_workspace(root: &Path) -> Workspace {
+    fn collect(root: &Path, directory: &Path, images: &mut Vec<String>) {
+        let mut entries = fs::read_dir(directory).unwrap().map(Result::unwrap).collect::<Vec<_>>();
+        entries.sort_by_key(|entry| entry.path());
+        for entry in entries {
+            let path = entry.path();
+            let kind = entry.file_type().unwrap();
+            if kind.is_symlink() { continue; }
+            if kind.is_dir() {
+                if !matches!(entry.file_name().to_str(), Some("output" | "texgo-pdf" | ".texgo" | ".git" | "node_modules")) { collect(root, &path, images); }
+            } else if matches!(path.extension().and_then(|extension| extension.to_str()), Some("png" | "jpg" | "jpeg" | "svg" | "webp" | "tif" | "tiff" | "bmp" | "gif")) {
+                images.push(format!("\\includegraphics{{{}}}", path.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/")));
+            }
+        }
+    }
+    let mut images = Vec::new();
+    collect(root, root, &mut images);
+    fs::write(root.join("main.tex"), images.join("\n")).unwrap();
+    Workspace::open(&root.join("main.tex")).unwrap()
+}
+
 fn options(ws: &Workspace) -> ConversionOptions {
     ConversionOptions {
         image_ids: ws.project().images.iter().filter(|a| a.status == "ready").map(|a| a.id.clone()).collect(),
@@ -18,7 +41,7 @@ fn options(ws: &Workspace) -> ConversionOptions {
 fn source_content_changes_are_reported_until_reconverted() {
     let dir = tempfile::tempdir().unwrap();
     png(dir.path(), "plot.png", 1);
-    let mut ws = Workspace::open_directory(dir.path(), true).unwrap();
+    let mut ws = referenced_workspace(dir.path());
     assert!(!ws.project().images[0].update_available);
     let opts = options(&ws);
     ws.convert(&opts, &AtomicBool::new(false), |_| {}).unwrap();
@@ -47,7 +70,7 @@ fn source_content_changes_are_reported_until_reconverted() {
 fn changed_or_missing_output_is_not_offered_as_a_safe_update() {
     let dir = tempfile::tempdir().unwrap();
     png(dir.path(), "plot.png", 1);
-    let mut ws = Workspace::open_directory(dir.path(), true).unwrap();
+    let mut ws = referenced_workspace(dir.path());
     ws.convert(&options(&ws), &AtomicBool::new(false), |_| {}).unwrap();
     png(dir.path(), "plot.png", 200);
     fs::write(dir.path().join("output/plot.pdf"), b"external edit").unwrap();
@@ -63,7 +86,7 @@ fn svg_dependency_changes_are_reported_as_updates() {
     let dir = tempfile::tempdir().unwrap();
     png(dir.path(), "embedded.png", 1);
     fs::write(dir.path().join("plot.svg"), r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="12"><image href="embedded.png" width="24" height="12"/></svg>"#).unwrap();
-    let mut ws = Workspace::open_directory(dir.path(), true).unwrap();
+    let mut ws = referenced_workspace(dir.path());
     let mut opts = options(&ws);
     opts.image_ids = ws.project().images.iter().filter(|asset| asset.format == "svg").map(|asset| asset.id.clone()).collect();
     assert_eq!(opts.image_ids.len(), 1);
@@ -75,35 +98,30 @@ fn svg_dependency_changes_are_reported_as_updates() {
 }
 
 #[test]
-fn directory_modes_exclusions_and_extra_directories_survive_refresh() {
+fn project_scans_only_referenced_images_and_keeps_them_on_refresh() {
     let dir = tempfile::tempdir().unwrap();
     png(dir.path(), "top.png", 1);
-    for name in ["figures/实验 图.png", "output/ignored.png", "texgo-pdf/ignored.png", ".texgo/ignored.png", ".git/ignored.png", "node_modules/ignored.png"] { png(dir.path(), name, 2); }
-    let mut ws = Workspace::open_directory(dir.path(), false).unwrap();
-    assert_eq!(ws.project().mode, "directory");
-    assert_eq!(ws.project().main_file, "");
-    assert_eq!(ws.project().images.len(), 1);
-    ws.add_image_directory(&dir.path().join("figures"), true).unwrap();
+    png(dir.path(), "figures/实验 图.png", 2);
+    png(dir.path(), "unreferenced.png", 3);
+    fs::write(dir.path().join("main.tex"), "\\includegraphics{top.png}\n\\includegraphics{figures/实验 图.png}").unwrap();
+    let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    assert_eq!(ws.project().images.len(), 2);
     ws.refresh().unwrap();
     assert_eq!(ws.project().images.len(), 2);
-    assert!(!ws.project().recursive);
-    let reopened = Workspace::open_directory(dir.path(), false).unwrap();
-    assert_eq!(reopened.project().images.len(), 2);
-    let outside = tempfile::tempdir().unwrap();
-    assert!(ws.add_image_directory(outside.path(), true).is_err());
+    assert_eq!(Workspace::open(&dir.path().join("main.tex")).unwrap().project().images.len(), 2);
 }
 
 #[test]
 fn stable_unicode_paths_rehydrate_and_undo_restores_previous_pdf() {
     let dir = tempfile::tempdir().unwrap();
     png(dir.path(), "figures/实验 图.png", 1);
-    let mut ws = Workspace::open_directory(dir.path(), true).unwrap();
+    let mut ws = referenced_workspace(dir.path());
     let opts = options(&ws);
     let first = ws.convert(&opts, &AtomicBool::new(false), |_| {}).unwrap();
     let output = dir.path().canonicalize().unwrap().join("output/figures/实验 图.pdf");
     assert_eq!(Path::new(first.images[0].pdf_path.as_ref().unwrap()), output);
     let original = fs::read(&output).unwrap();
-    let mut ws = Workspace::open_directory(dir.path(), true).unwrap();
+    let mut ws = referenced_workspace(dir.path());
     assert_eq!(ws.project().converted_images.len(), 1);
     assert!(ws.convert(&opts, &AtomicBool::new(false), |_| {}).unwrap().images[0].cached);
     png(dir.path(), "figures/实验 图.png", 200);
@@ -137,7 +155,7 @@ fn collision_with_unselected_unreferenced_source_prevents_all_writes() {
 fn unrelated_or_edited_outputs_are_never_overwritten_or_undone() {
     let dir = tempfile::tempdir().unwrap();
     png(dir.path(), "a.png", 1);
-    let mut ws = Workspace::open_directory(dir.path(), true).unwrap();
+    let mut ws = referenced_workspace(dir.path());
     let opts = options(&ws);
     fs::create_dir(dir.path().join("output")).unwrap();
     let output = dir.path().join("output/a.pdf");
@@ -151,7 +169,7 @@ fn unrelated_or_edited_outputs_are_never_overwritten_or_undone() {
     assert!(ws.undo_conversion(&id).is_err());
     assert!(ws.convert(&opts, &AtomicBool::new(false), |_| {}).unwrap().images[0].error.is_some());
     assert_eq!(fs::read(&output).unwrap(), b"edited");
-    assert!(Workspace::open_directory(dir.path(), true).unwrap().project().converted_images.is_empty());
+    assert!(referenced_workspace(dir.path()).project().converted_images.iter().all(|image| image.pdf_path.is_none()));
 }
 
 #[test]
@@ -159,9 +177,8 @@ fn cancellation_and_failures_persist_and_reference_undo_blocks_conversion_undo()
     let dir = tempfile::tempdir().unwrap();
     png(dir.path(), "a.png", 1);
     png(dir.path(), "b.png", 2);
-    fs::write(dir.path().join("main.tex"), "\\includegraphics{a.png}").unwrap();
+    fs::write(dir.path().join("main.tex"), "\\includegraphics{a.png}\n\\includegraphics{b.png}").unwrap();
     let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
-    ws.add_image_directory(dir.path(), true).unwrap();
     let opts = options(&ws);
     let cancel = AtomicBool::new(false);
     let result = ws.convert(&opts, &cancel, |p| { if p.current == 1 { cancel.store(true, Ordering::Relaxed); } }).unwrap();
@@ -182,7 +199,7 @@ fn cancellation_and_failures_persist_and_reference_undo_blocks_conversion_undo()
 fn changed_source_during_render_is_not_committed() {
     let dir = tempfile::tempdir().unwrap();
     png(dir.path(), "a.png", 1);
-    let mut ws = Workspace::open_directory(dir.path(), true).unwrap();
+    let mut ws = referenced_workspace(dir.path());
     let opts = options(&ws);
     let result = ws.convert(&opts, &AtomicBool::new(false), |p| {
         if p.status == "converting" { fs::remove_file(dir.path().join("a.png")).unwrap(); }
@@ -199,7 +216,7 @@ fn scans_skip_links_and_nested_output_symlinks_are_rejected() {
     let outside = tempfile::tempdir().unwrap();
     png(dir.path(), "figures/a.png", 1);
     std::os::unix::fs::symlink(dir.path().join("figures"), dir.path().join("linked")).unwrap();
-    let mut ws = Workspace::open_directory(dir.path(), true).unwrap();
+    let mut ws = referenced_workspace(dir.path());
     assert_eq!(ws.project().images.len(), 1);
     fs::create_dir(dir.path().join("output")).unwrap();
     std::os::unix::fs::symlink(outside.path(), dir.path().join("output/figures")).unwrap();
@@ -213,7 +230,7 @@ fn undo_preflights_every_file_and_only_latest_meaningful_batch() {
     let dir = tempfile::tempdir().unwrap();
     png(dir.path(), "a.png", 1);
     png(dir.path(), "b.png", 2);
-    let mut ws = Workspace::open_directory(dir.path(), true).unwrap();
+    let mut ws = referenced_workspace(dir.path());
     let opts = options(&ws);
     ws.convert(&opts, &AtomicBool::new(false), |_| {}).unwrap();
     let first_id = ws.conversion_history().unwrap()[0].id.clone();
@@ -235,11 +252,11 @@ fn failed_image_and_successful_image_share_persisted_history() {
     let dir = tempfile::tempdir().unwrap();
     png(dir.path(), "a.png", 1);
     fs::write(dir.path().join("b.png"), b"not an image").unwrap();
-    let mut ws = Workspace::open_directory(dir.path(), true).unwrap();
+    let mut ws = referenced_workspace(dir.path());
     let result = ws.convert(&options(&ws), &AtomicBool::new(false), |_| {}).unwrap();
     assert!(result.images[0].error.is_none());
     assert!(result.images[1].error.is_some());
-    let mut ws = Workspace::open_directory(dir.path(), true).unwrap();
+    let mut ws = referenced_workspace(dir.path());
     let history = ws.conversion_history().unwrap();
     assert_eq!(history[0].files.len(), 2);
     assert!(history[0].files[1].error.is_some());
@@ -259,7 +276,7 @@ fn sampling_uses_intrinsic_density_and_quality_100_is_lossless() {
     let mut writer = encoder.write_header().unwrap();
     writer.write_image_data(&vec![120; 200 * 100 * 3]).unwrap();
     writer.finish().unwrap();
-    let mut ws = Workspace::open_directory(dir.path(), true).unwrap();
+    let mut ws = referenced_workspace(dir.path());
     let mut opts = options(&ws);
     for (dpi, expected) in [(150, 100), (600, 200)] {
         opts.dpi = dpi;
@@ -270,7 +287,7 @@ fn sampling_uses_intrinsic_density_and_quality_100_is_lossless() {
         assert!(!stream.dict.get(b"Filter").is_ok_and(|filter| filter.as_name().ok() == Some(b"DCTDecode")));
     }
     png(dir.path(), "fallback.png", 3);
-    let mut ws = Workspace::open_directory(dir.path(), true).unwrap();
+    let mut ws = referenced_workspace(dir.path());
     let result = ws.convert(&options(&ws), &AtomicBool::new(false), |_| {}).unwrap();
     let fallback = result.images.iter().find(|image| image.pdf_path.as_ref().is_some_and(|path| path.ends_with("fallback.pdf"))).unwrap();
     let doc = lopdf::Document::load(fallback.pdf_path.as_ref().unwrap()).unwrap();
@@ -298,16 +315,15 @@ fn latest_output_directory_is_used_for_preview_and_reference_plans_after_reopen(
 }
 
 #[test]
-fn missing_saved_directory_warns_without_blocking_the_main_file() {
+fn removed_referenced_image_remains_visible_as_a_problem() {
     let dir = tempfile::tempdir().unwrap();
     png(dir.path(), "extra/a.png", 1);
-    fs::write(dir.path().join("main.tex"), "").unwrap();
+    fs::write(dir.path().join("main.tex"), "\\includegraphics{extra/a.png}").unwrap();
     let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
-    ws.add_image_directory(&dir.path().join("extra"), true).unwrap();
     fs::remove_dir_all(dir.path().join("extra")).unwrap();
-    let ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
-    assert!(!ws.project().warnings.is_empty());
-    assert!(ws.project().images.is_empty());
+    ws.refresh().unwrap();
+    assert_eq!(ws.project().images[0].status, "missing");
+    assert_eq!(ws.project().status.problem_count, 1);
 }
 
 #[test]
@@ -326,7 +342,7 @@ fn collisions_elsewhere_do_not_block_unrelated_selected_targets() {
 fn output_paths_reject_cross_platform_reserved_and_tex_special_names() {
     let dir = tempfile::tempdir().unwrap();
     png(dir.path(), "a.png", 1);
-    let mut ws = Workspace::open_directory(dir.path(), false).unwrap();
+    let mut ws = referenced_workspace(dir.path());
     for output in ["../out", ".texgo/out", ".GIT/out", "C:\\out", "out#files", "CON", "out/..", "out.", "out$draft", "out&draft", "out^draft", "out~draft"] {
         let mut opts = options(&ws);
         opts.output_dir = output.into();
@@ -339,11 +355,11 @@ fn output_paths_reject_cross_platform_reserved_and_tex_special_names() {
 fn failed_output_selection_does_not_hide_source_directories() {
     let dir = tempfile::tempdir().unwrap();
     png(dir.path(), "figures/a.png", 1);
-    let mut ws = Workspace::open_directory(dir.path(), true).unwrap();
+    let mut ws = referenced_workspace(dir.path());
     let mut opts = options(&ws);
     opts.output_dir = "figures".into();
     assert!(ws.convert(&opts, &AtomicBool::new(false), |_| {}).unwrap().images[0].error.is_some());
-    let ws = Workspace::open_directory(dir.path(), true).unwrap();
+    let ws = referenced_workspace(dir.path());
     assert_eq!(ws.project().images.len(), 1);
 }
 
@@ -352,7 +368,7 @@ fn recovery_rehydrates_a_committed_pdf_and_retries_an_interrupted_undo() {
     let dir = tempfile::tempdir().unwrap();
     png(dir.path(), "a.png", 1);
     png(dir.path(), "b.png", 2);
-    let mut ws = Workspace::open_directory(dir.path(), true).unwrap();
+    let mut ws = referenced_workspace(dir.path());
     ws.convert(&options(&ws), &AtomicBool::new(false), |_| {}).unwrap();
     let path = dir.path().join(".texgo/conversions.json");
     let mut journal: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
@@ -360,13 +376,13 @@ fn recovery_rehydrates_a_committed_pdf_and_retries_an_interrupted_undo() {
     journal["batches"][0]["entry"]["files"][0]["error"] = "interrupted".into();
     journal["outputs"].as_object_mut().unwrap().remove("output/a.pdf");
     fs::write(&path, serde_json::to_vec(&journal).unwrap()).unwrap();
-    let ws = Workspace::open_directory(dir.path(), true).unwrap();
+    let ws = referenced_workspace(dir.path());
     assert_eq!(ws.project().converted_images.len(), 2);
     assert!(ws.conversion_history().unwrap()[0].files[0].error.is_none());
     journal["batches"][0]["undoing"] = true.into();
     fs::remove_file(dir.path().join("output/a.pdf")).unwrap();
     fs::write(&path, serde_json::to_vec(&journal).unwrap()).unwrap();
-    let mut ws = Workspace::open_directory(dir.path(), true).unwrap();
+    let mut ws = referenced_workspace(dir.path());
     assert!(ws.convert(&options(&ws), &AtomicBool::new(false), |_| {}).is_err());
     let entry = ws.conversion_history().unwrap().remove(0);
     assert!(entry.can_undo);
@@ -425,7 +441,6 @@ fn unrelated_changed_images_do_not_block_reference_replacement() {
     png(dir.path(), "unused.png", 2);
     fs::write(dir.path().join("main.tex"), "\\includegraphics{a.png}").unwrap();
     let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
-    ws.add_image_directory(dir.path(), true).unwrap();
     ws.convert(&options(&ws), &AtomicBool::new(false), |_| {}).unwrap();
     png(dir.path(), "unused.png", 3);
     assert_eq!(ws.plan().unwrap().reference_count, 1);
@@ -436,7 +451,7 @@ fn unrelated_changed_images_do_not_block_reference_replacement() {
 fn undo_recreated_output_restores_absence_instead_of_stale_ownership() {
     let dir = tempfile::tempdir().unwrap();
     png(dir.path(), "a.png", 1);
-    let mut ws = Workspace::open_directory(dir.path(), false).unwrap();
+    let mut ws = referenced_workspace(dir.path());
     let opts = options(&ws);
     ws.convert(&opts, &AtomicBool::new(false), |_| {}).unwrap();
     fs::remove_file(dir.path().join("output/a.pdf")).unwrap();

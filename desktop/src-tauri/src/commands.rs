@@ -31,7 +31,7 @@ async fn work<T: Send + 'static>(state: AppState, action: impl FnOnce(&mut Optio
 }
 
 fn current(workspace: &mut Option<Workspace>) -> Result<&mut Workspace, String> {
-    workspace.as_mut().ok_or_else(|| "请先打开 .tex 主文件或图片目录".into())
+    workspace.as_mut().ok_or_else(|| "请先打开 LaTeX 项目".into())
 }
 
 #[tauri::command]
@@ -72,43 +72,34 @@ async fn close_workspace(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn open_project(main_file: String, state: State<'_, AppState>) -> Result<Project, String> {
-    work(state.inner().clone(), move |workspace| {
+async fn open_project(main_file: String, app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Project, String> {
+    let project = work(state.inner().clone(), move |workspace| {
         let opened = Workspace::open(Path::new(&main_file))?;
         let project = opened.project().clone();
         *workspace = Some(opened);
         Ok(project)
-    }).await
+    }).await?;
+    update_tray_status(&app, &project);
+    Ok(project)
 }
 
 #[tauri::command]
-async fn open_directory(directory: String, recursive: bool, state: State<'_, AppState>) -> Result<Project, String> {
-    work(state.inner().clone(), move |workspace| {
-        let opened = Workspace::open_directory(Path::new(&directory), recursive)?;
-        let project = opened.project().clone();
-        *workspace = Some(opened);
-        Ok(project)
-    }).await
+async fn refresh_workspace(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Project, String> {
+    let project = work(state.inner().clone(), |workspace| current(workspace)?.refresh()).await?;
+    update_tray_status(&app, &project);
+    Ok(project)
 }
 
 #[tauri::command]
-async fn add_image_directory(directory: String, recursive: bool, state: State<'_, AppState>) -> Result<Project, String> {
-    work(state.inner().clone(), move |workspace| current(workspace)?.add_image_directory(Path::new(&directory), recursive)).await
-}
-
-#[tauri::command]
-async fn refresh_workspace(state: State<'_, AppState>) -> Result<Project, String> {
-    work(state.inner().clone(), |workspace| current(workspace)?.refresh()).await
-}
-
-#[tauri::command]
-async fn poll_workspace(root: String, state: State<'_, AppState>) -> Result<Option<Project>, String> {
+async fn poll_workspace(root: String, app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Option<Project>, String> {
     if state.converting.load(Ordering::Relaxed) { return Ok(None); }
-    work(state.inner().clone(), move |workspace| {
+    let project = work(state.inner().clone(), move |workspace| {
         let ws = current(workspace)?;
         if ws.project().root != root { return Ok(None); }
         ws.poll_changes()
-    }).await
+    }).await?;
+    if let Some(project) = &project { update_tray_status(&app, project); }
+    Ok(project)
 }
 
 #[tauri::command]
@@ -159,7 +150,7 @@ async fn convert_images(options: ConversionOptions, app: tauri::AppHandle, state
         let result = (|| {
         ws.refresh()?;
         ws.ensure_can_convert(allow_unreviewed)?;
-        ws.convert_with_results(&options, &cancel,
+        ws.update_pending_with_results(&options, &cancel,
             |progress| { let _ = app.emit("conversion-progress", progress); },
             |image| {
                 if image.error.is_none() {
@@ -170,10 +161,11 @@ async fn convert_images(options: ConversionOptions, app: tauri::AppHandle, state
         })();
         match &result {
             Ok(result) => {
+                update_tray_status(&native_app, ws.project());
                 let target = conversion_target(ws, result, ws.conversion_history().ok().and_then(|h| h.first().map(|e| e.id.clone())));
-                if let Some(notice) = crate::background::result_notice(result, &preferences) { deliver_notice(&native_app, notice, target); }
+                if let Some(notice) = crate::background::workspace_notice(&ws.project().status, result, &preferences) { deliver_notice(&native_app, notice, target); }
             }
-            Err(error) if preferences.notify_failure => deliver_notice(&native_app, crate::background::Notice { title: "Texgo · 转换失败".into(), body: error.clone() }, workspace_target(ws, "history", None, None)),
+            Err(error) if preferences.notify_failure => deliver_notice(&native_app, crate::background::Notice { title: "Texgo · 更新失败".into(), body: error.clone() }, workspace_target(ws, "history", None, None)),
             _ => (),
         }
         result
@@ -200,8 +192,14 @@ async fn asset_preview(image_id: String, converted: bool, state: State<'_, AppSt
 }
 
 #[tauri::command]
-async fn ignore_asset(image_id: String, ignored: bool, state: State<'_, AppState>) -> Result<(), String> {
-    work(state.inner().clone(), move |workspace| current(workspace)?.ignore(&image_id, ignored)).await
+async fn ignore_asset(image_id: String, ignored: bool, app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Project, String> {
+    let project = work(state.inner().clone(), move |workspace| {
+        let ws = current(workspace)?;
+        ws.ignore(&image_id, ignored)?;
+        Ok(ws.project().clone())
+    }).await?;
+    update_tray_status(&app, &project);
+    Ok(project)
 }
 
 #[tauri::command]
@@ -247,7 +245,7 @@ pub fn run() {
             install_background(app)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![desktop_status, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, open_project, open_directory, add_image_directory, refresh_workspace, poll_workspace, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, preview_changes, apply_replacements, undo_replacements])
+        .invoke_handler(tauri::generate_handler![desktop_status, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, open_project, refresh_workspace, poll_workspace, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, preview_changes, apply_replacements, undo_replacements])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let background = window.state::<AppState>().preferences.lock().is_ok_and(|p| p.close_action == "background");
@@ -292,11 +290,19 @@ fn normalized_shortcut(prefs: &Preferences) -> Result<Option<String>, String> {
 
 fn workspace_target(ws: &Workspace, view: &str, batch_id: Option<String>, image_id: Option<String>) -> NotificationTarget {
     let p = ws.project();
-    NotificationTarget { mode: p.mode.clone(), path: if p.mode == "directory" { p.root.clone() } else { p.main_file.clone() }, recursive: p.recursive, view: view.into(), batch_id, image_id }
+    NotificationTarget { path: p.main_file.clone(), view: view.into(), batch_id, image_id }
 }
 fn conversion_target(ws: &Workspace, result: &ConversionResult, batch_id: Option<String>) -> NotificationTarget {
-    workspace_target(ws, "history", batch_id, result.images.iter().find(|i| i.error.is_some()).map(|i| i.id.clone()))
+    let view = if result.images.iter().any(|image| image.error.is_some()) || ws.project().status.blocking_reason.is_some() { "problems" }
+        else { match ws.project().status.next_action { NextAction::ReviewReferences => "review", NextAction::ResolveProblems => "problems", NextAction::ConvertImages => "images", NextAction::UpToDate => "history" } };
+    workspace_target(ws, view, batch_id, result.images.iter().find(|image| image.error.is_some()).map(|image| image.id.clone()))
 }
+fn update_tray_status(app: &tauri::AppHandle, project: &Project) {
+    if let Some(tray) = app.tray_by_id("texgo") {
+        let _ = tray.set_tooltip(Some(format!("Texgo · {}", crate::background::status_label(&project.status))));
+    }
+}
+
 fn deliver_notice(app: &tauri::AppHandle, notice: Notice, target: NotificationTarget) {
     // Register on_action once at setup, BEFORE any notification can be sent.
     // extra travels with the specific notification, including old workspaces/batches.
@@ -318,10 +324,10 @@ fn notification_clicked(app: tauri::AppHandle, target: NotificationTarget) {
         let wanted = target.clone();
         let result = work(state, move |workspace| {
             let same = workspace.as_ref().is_some_and(|ws| {
-                let p = ws.project(); p.mode == wanted.mode && (if p.mode == "directory" { &p.root } else { &p.main_file }) == &wanted.path
+                ws.project().main_file == wanted.path
             });
             if !same {
-                *workspace = Some(if wanted.mode == "directory" { Workspace::open_directory(Path::new(&wanted.path), wanted.recursive)? } else { Workspace::open(Path::new(&wanted.path))? });
+                *workspace = Some(Workspace::open(Path::new(&wanted.path))?);
             }
             current(workspace)?.refresh()
         }).await;
@@ -348,7 +354,7 @@ async fn run_smart(app: tauri::AppHandle, state: AppState) -> Result<(), String>
         let _guard = guard;
         let ws = current(workspace)?;
         if let Err(error) = ws.refresh() {
-            if preferences.notify_failure { deliver_notice(&events, Notice { title: "Texgo · 转换失败".into(), body: error.clone() }, workspace_target(ws, "problems", None, None)); }
+            if preferences.notify_failure { deliver_notice(&events, Notice { title: "Texgo · 更新失败".into(), body: error.clone() }, workspace_target(ws, "problems", None, None)); }
             let _ = events.emit("desktop-error", &error);
             return Err(error);
         }
@@ -363,16 +369,18 @@ async fn run_smart(app: tauri::AppHandle, state: AppState) -> Result<(), String>
             });
         match &report {
             Ok(report) => {
+                update_tray_status(&events, &report.project);
                 // Pending references block the whole operation by default; fresh successful
                 // conversions also remain for manual review, never auto-apply TeX.
                 let blocked_review = report.result.images.is_empty() && report.pending_references > 0 && !preferences.allow_unreviewed;
-                if preferences.notify_failure && (blocked_review || !report.problem_ids.is_empty()) {
-                    let count = report.problem_ids.len() + usize::from(blocked_review);
-                    deliver_notice(&events, Notice { title: format!("Texgo · 发现 {count} 个问题需要处理"), body: if blocked_review { format!("{} 处引用等待确认", report.pending_references) } else { "点击查看图片问题".into() } },
+                let blocking = report.project.status.blocking_reason.as_ref();
+                if preferences.notify_failure && (blocked_review || !report.problem_ids.is_empty() || blocking.is_some()) {
+                    let count = (report.problem_ids.len() + usize::from(blocked_review)).max(1);
+                    deliver_notice(&events, Notice { title: format!("Texgo · 发现 {count} 个问题需要处理"), body: if let Some(reason) = blocking { reason.clone() } else if blocked_review { format!("{} 处引用等待确认", report.pending_references) } else { "点击查看图片问题".into() } },
                         workspace_target(ws, if blocked_review { "review" } else { "problems" }, report.batch_ids.last().cloned(), report.problem_ids.first().cloned()));
                 }
                 if !report.result.images.is_empty() || (!blocked_review && report.problem_ids.is_empty()) {
-                    if let Some(notice) = crate::background::result_notice(&report.result, &preferences) {
+                    if let Some(notice) = crate::background::workspace_notice(&report.project.status, &report.result, &preferences) {
                         let failed_source = report.result.images.iter().find(|i| i.error.is_some()).and_then(|i| ws.project().images.iter().find(|a| a.id == i.id)).map(|a| a.relative_path.as_str());
                         let batch_id = failed_source.and_then(|source| ws.conversion_history().ok()?.into_iter().find(|entry| report.batch_ids.contains(&entry.id) && entry.files.iter().any(|file| file.source == source && file.error.is_some())).map(|entry| entry.id))
                             .or_else(|| report.batch_ids.last().cloned());
@@ -383,7 +391,7 @@ async fn run_smart(app: tauri::AppHandle, state: AppState) -> Result<(), String>
                 let _ = events.emit("background-finished", report);
             }
             Err(error) => {
-                if preferences.notify_failure { deliver_notice(&events, Notice { title: "Texgo · 转换失败".into(), body: error.clone() }, workspace_target(ws, "history", None, None)); }
+                if preferences.notify_failure { deliver_notice(&events, Notice { title: "Texgo · 更新失败".into(), body: error.clone() }, workspace_target(ws, "history", None, None)); }
                 let _ = events.emit("desktop-error", error);
             }
         }
@@ -400,7 +408,7 @@ fn trigger_smart(app: &tauri::AppHandle) {
             let _ = app.emit("desktop-error", &error);
             // No workspace: inform without showing or activating the main window.
             if error.contains("请先打开") && state.preferences.lock().is_ok_and(|p| p.notify_failure) {
-                if let Err(e) = app.notification().builder().title("Texgo · 尚未打开工作区").body("请从托盘打开 Texgo 并选择项目").show() { eprintln!("{e}"); }
+                if let Err(e) = app.notification().builder().title("Texgo · 尚未打开项目").body("请从托盘打开 Texgo 并选择项目").show() { eprintln!("{e}"); }
             }
         }
     });
@@ -419,7 +427,7 @@ fn install_background(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>
     let registration = normalized_shortcut(&prefs).and_then(|next| crate::background::replace_shortcut(&NativeRegistrar(app.handle().clone()), &mut state.shortcut.lock().unwrap(), next));
     if let Err(error) = registration { *state.startup_error.lock().unwrap() = Some(error); }
     use tauri::{menu::{Menu, MenuItem}, tray::TrayIconBuilder};
-    let convert = MenuItem::with_id(app, "smart-convert", "快速转换", true, None::<&str>)?;
+    let convert = MenuItem::with_id(app, "smart-convert", "快速更新项目图片", true, None::<&str>)?;
     let open = MenuItem::with_id(app, "show-texgo", "打开 Texgo", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit-texgo", "退出", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&convert, &open, &quit])?;

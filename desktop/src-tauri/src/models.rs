@@ -3,8 +3,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
-    pub mode: String,
-    pub recursive: bool,
+    pub status: WorkspaceStatus,
     pub converted_images: Vec<ConvertedImage>,
     pub main_file: String,
     pub root: String,
@@ -12,6 +11,47 @@ pub struct Project {
     pub images: Vec<ImageAsset>,
     pub warnings: Vec<String>,
     pub undo_available: bool,
+}
+
+/// The single project-level decision used by the window and background adapters.
+#[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceStatus {
+    pub pending_images: usize,
+    pub pending_references: usize,
+    pub problem_count: usize,
+    pub ignored_count: usize,
+    pub completed_images: usize,
+    pub completed_image_ids: Vec<String>,
+    pub total_images: usize,
+    pub next_action: NextAction,
+    pub pending_image_ids: Vec<String>,
+    pub problem_ids: Vec<String>,
+    pub ignored_image_ids: Vec<String>,
+    pub blocking_reason: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum NextAction {
+    ReviewReferences,
+    ConvertImages,
+    ResolveProblems,
+    #[default]
+    UpToDate,
+}
+
+impl WorkspaceStatus {
+    fn decide(&mut self) {
+        self.pending_images = self.pending_image_ids.len();
+        self.problem_count = self.problem_ids.len();
+        self.ignored_count = self.ignored_image_ids.len();
+        self.next_action = if self.pending_references > 0 { NextAction::ReviewReferences }
+            else if self.pending_images > 0 { NextAction::ConvertImages }
+            else if self.problem_count > 0 || self.blocking_reason.is_some() { NextAction::ResolveProblems }
+            else { NextAction::UpToDate };
+    }
+    pub(crate) fn finish(mut self) -> Self { self.decide(); self }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -80,6 +120,8 @@ pub struct ConversionHistoryEntry {
 #[serde(rename_all = "camelCase")]
 pub struct ConversionHistoryFile {
     pub source: String,
+    #[serde(default)]
+    pub source_hash: Option<String>,
     pub output: String,
     pub cached: bool,
     pub error: Option<String>,

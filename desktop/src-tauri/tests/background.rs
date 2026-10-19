@@ -6,7 +6,8 @@ fn unchanged_poll_is_cheap_and_changed_sources_are_rehydrated() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("plot.png");
     image::RgbImage::from_pixel(20, 10, image::Rgb([1, 2, 3])).save(&path).unwrap();
-    let mut workspace = Workspace::open_directory(dir.path(), true).unwrap();
+    fs::write(dir.path().join("main.tex"), r"\includegraphics{plot.png}").unwrap();
+    let mut workspace = Workspace::open(&dir.path().join("main.tex")).unwrap();
     assert!(workspace.poll_changes().unwrap().is_none());
     let options = ConversionOptions { image_ids: vec![workspace.project().images[0].id.clone()], quality: "custom".into(), dpi: 300, jpeg_quality: 90, output_dir: "pdf".into() };
     workspace.convert(&options, &AtomicBool::new(false), |_| {}).unwrap();
@@ -18,9 +19,12 @@ fn unchanged_poll_is_cheap_and_changed_sources_are_rehydrated() {
     assert!(project.converted_images.is_empty());
     assert!(workspace.poll_changes().unwrap().is_none());
     image::RgbImage::from_pixel(10, 10, image::Rgb([1, 2, 3])).save(dir.path().join("new.png")).unwrap();
+    fs::write(dir.path().join("main.tex"), r"\includegraphics{plot.png}\includegraphics{new.png}").unwrap();
     assert_eq!(workspace.poll_changes().unwrap().unwrap().images.len(), 2);
     fs::remove_file(path).unwrap();
-    assert_eq!(workspace.poll_changes().unwrap().unwrap().images.len(), 1);
+    let project = workspace.poll_changes().unwrap().unwrap();
+    assert_eq!(project.images.len(), 2);
+    assert_eq!(project.status.problem_count, 1);
 }
 
 #[test]
@@ -49,9 +53,13 @@ fn make_png(root: &std::path::Path, name: &str, color: u8) {
 fn managed_pair() -> (tempfile::TempDir, Workspace) {
     let dir = tempfile::tempdir().unwrap();
     make_png(dir.path(), "a.png", 1); make_png(dir.path(), "b.png", 1);
-    let mut ws = Workspace::open_directory(dir.path(), true).unwrap();
+    fs::write(dir.path().join("main.tex"), r"\includegraphics{a.png}\includegraphics{b.png}").unwrap();
+    let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
     let ids = ws.project().images.iter().map(|a| a.id.clone()).collect();
     ws.convert(&ConversionOptions { image_ids: ids, quality: "custom".into(), dpi: 300, jpeg_quality: 90, output_dir: "original-output".into() }, &AtomicBool::new(false), |_| {}).unwrap();
+    let plan = ws.plan().unwrap();
+    let selection = plan.files.iter().flat_map(|file| file.changes.iter().map(|change| change.id.clone())).collect();
+    ws.apply_reviewed(selection, &plan, false).unwrap();
     (dir, ws)
 }
 #[test]
@@ -126,4 +134,148 @@ fn repaired_source_is_retried_after_a_failed_smart_conversion() {
     assert!(recovered.result.images[0].pdf_path.is_some());
     assert!(recovered.result.images[0].error.is_none());
     assert!(!ws.project().images.iter().any(|a| a.update_available));
+}
+
+#[test]
+fn workspace_status_prioritizes_review_then_pending_then_problems_and_ignores() {
+    use texgo_desktop::NextAction;
+    let dir = tempfile::tempdir().unwrap();
+    make_png(dir.path(), "first.png", 1);
+    make_png(dir.path(), "second.png", 2);
+    fs::write(dir.path().join("main.tex"), r"\includegraphics{first.png}\includegraphics{second.png}\includegraphics{missing.png}").unwrap();
+    let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    assert_eq!(ws.project().status.next_action, NextAction::ConvertImages);
+    assert_eq!(ws.project().status.pending_images, 2);
+    assert_eq!(ws.project().status.problem_count, 1);
+    assert!(ws.project().status.blocking_reason.is_none());
+    let first = ws.project().images.iter().find(|asset| asset.relative_path == "first.png").unwrap().id.clone();
+    ws.convert(&ConversionOptions { image_ids: vec![first.clone()], quality: "custom".into(), dpi: 300, jpeg_quality: 90, output_dir: "pdf".into() }, &AtomicBool::new(false), |_| {}).unwrap();
+    assert_eq!(ws.project().status.next_action, NextAction::ReviewReferences);
+    assert_eq!(ws.project().status.pending_references, ws.plan().unwrap().reference_count);
+    assert_eq!(ws.project().status.completed_image_ids, vec![first.clone()]);
+    ws.ignore(&first, true).unwrap();
+    assert_eq!(ws.project().status.pending_references, 0);
+    assert_eq!(ws.plan().unwrap().reference_count, 0);
+    assert_eq!(ws.project().status.next_action, NextAction::ConvertImages);
+    let second = ws.project().images.iter().find(|asset| asset.relative_path == "second.png").unwrap().id.clone();
+    ws.ignore(&second, true).unwrap();
+    assert_eq!(ws.project().status.next_action, NextAction::ResolveProblems);
+    let missing = ws.project().status.problem_ids[0].clone();
+    ws.ignore(&missing, true).unwrap();
+    assert_eq!(ws.project().status.next_action, NextAction::UpToDate);
+    assert_eq!(ws.project().status.ignored_count, 3);
+    ws.refresh().unwrap();
+    assert_eq!(ws.project().status.ignored_count, 3);
+    assert_eq!(ws.project().status.next_action, NextAction::UpToDate);
+}
+
+#[test]
+fn smart_first_conversion_uses_all_pending_and_reports_the_same_status_as_gui() {
+    use texgo_desktop::NextAction;
+    let dir = tempfile::tempdir().unwrap();
+    make_png(dir.path(), "a.png", 1);
+    make_png(dir.path(), "b.png", 2);
+    fs::write(dir.path().join("main.tex"), r"\includegraphics{a.png}\includegraphics{b.png}").unwrap();
+    let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    let report = ws.smart_convert(&texgo_desktop::preferences::Preferences::default(), &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+    assert_eq!(report.result.images.len(), 2);
+    assert_eq!(report.project.status, ws.project().status);
+    assert_eq!(report.project.status.next_action, NextAction::ReviewReferences);
+    assert_eq!(report.pending_references, 2);
+    let plan = ws.plan().unwrap();
+    let selection = plan.files.iter().flat_map(|file| file.changes.iter().map(|change| change.id.clone())).collect();
+    ws.apply_reviewed(selection, &plan, false).unwrap();
+    assert_eq!(ws.project().status.next_action, NextAction::UpToDate);
+    make_png(dir.path(), "a.png", 7);
+    let update = ws.smart_convert(&texgo_desktop::preferences::Preferences::default(), &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+    assert_eq!(update.result.images.len(), 1);
+    assert_eq!(update.project.status.next_action, NextAction::UpToDate);
+    assert_eq!(update.pending_references, 0);
+    assert_eq!(ws.plan().unwrap().reference_count, 0);
+}
+
+#[test]
+fn conversion_failure_stays_a_problem_on_refresh_and_reopen_until_source_changes() {
+    use texgo_desktop::NextAction;
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("main.tex"), r"\includegraphics{broken.png}").unwrap();
+    fs::write(dir.path().join("broken.png"), b"invalid raster bytes").unwrap();
+    let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    let report = ws.smart_convert(&texgo_desktop::preferences::Preferences::default(), &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+    assert_eq!(report.project.status.next_action, NextAction::ResolveProblems);
+    assert_eq!(report.project.status.problem_count, 1);
+    ws.refresh().unwrap();
+    assert_eq!(ws.project().status.problem_count, 1);
+    let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    assert_eq!(ws.project().status.problem_count, 1);
+    make_png(dir.path(), "broken.png", 4);
+    ws.refresh().unwrap();
+    assert_eq!(ws.project().status.next_action, NextAction::ConvertImages);
+    assert_eq!(ws.project().status.problem_count, 0);
+}
+
+#[test]
+fn existing_pdf_is_completed_and_cancelled_unprocessed_images_stay_pending() {
+    use texgo_desktop::NextAction;
+    let dir = tempfile::tempdir().unwrap();
+    make_png(dir.path(), "a.png", 1);
+    fs::write(dir.path().join("existing.pdf"), b"%PDF-1.4\n").unwrap();
+    fs::write(dir.path().join("main.tex"), r"\includegraphics{a.png}\includegraphics{existing.pdf}").unwrap();
+    let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    assert_eq!(ws.project().status.completed_images, 1);
+    let options = texgo_desktop::preferences::Preferences::default().options(ws.project().status.pending_image_ids.clone());
+    ws.convert(&options, &AtomicBool::new(true), |_| {}).unwrap();
+    ws.refresh().unwrap();
+    assert_eq!(ws.project().status.problem_count, 0);
+    assert_eq!(ws.project().status.pending_images, 1);
+    assert_eq!(ws.project().status.next_action, NextAction::ConvertImages);
+}
+
+#[test]
+fn explicit_selection_and_default_pending_update_keep_managed_paths_and_global_progress() {
+    use std::cell::RefCell;
+    let (dir, mut ws) = managed_pair();
+    make_png(dir.path(), "new.png", 10);
+    let main = dir.path().join("main.tex");
+    let content = fs::read_to_string(&main).unwrap();
+    fs::write(&main, format!("{content}\\includegraphics{{new.png}}")).unwrap();
+    make_png(dir.path(), "a.png", 200);
+    ws.refresh().unwrap();
+    let mut options = texgo_desktop::preferences::Preferences::default().options(vec![]);
+    options.output_dir = "new-output".into();
+    let progress = RefCell::new(Vec::new());
+    let result = ws.update_pending_with_results(&options, &AtomicBool::new(false), |event| progress.borrow_mut().push((event.current, event.total)), |_| {}).unwrap();
+    assert_eq!(result.images.len(), 2);
+    assert!(result.images.iter().any(|image| image.pdf_path.as_ref().is_some_and(|path| path.ends_with("original-output/a.pdf"))));
+    assert!(result.images.iter().any(|image| image.pdf_path.as_ref().is_some_and(|path| path.ends_with("new-output/new.pdf"))));
+    assert!(!dir.path().join("new-output/a.pdf").exists());
+    assert!(progress.borrow().iter().all(|(_, total)| *total == 2));
+    assert_eq!(progress.borrow().last(), Some(&(2, 2)));
+
+    let dir = tempfile::tempdir().unwrap();
+    make_png(dir.path(), "a.png", 1);
+    make_png(dir.path(), "b.png", 2);
+    fs::write(dir.path().join("main.tex"), r"\includegraphics{a.png}\includegraphics{b.png}").unwrap();
+    let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    let id = ws.project().status.pending_image_ids[0].clone();
+    let options = texgo_desktop::preferences::Preferences::default().options(vec![id.clone()]);
+    let result = ws.update_pending_with_results(&options, &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+    assert_eq!(result.images.len(), 1);
+    assert_eq!(result.images[0].id, id);
+    assert_eq!(ws.project().status.pending_images, 1);
+    assert_eq!(ws.project().status.pending_references, 1);
+}
+
+#[test]
+fn damaged_journal_is_a_visible_blocking_status_and_never_allows_writes() {
+    let dir = tempfile::tempdir().unwrap();
+    make_png(dir.path(), "a.png", 1);
+    fs::write(dir.path().join("main.tex"), r"\includegraphics{a.png}").unwrap();
+    fs::create_dir(dir.path().join(".texgo")).unwrap();
+    fs::write(dir.path().join(".texgo/conversions.json"), "damaged").unwrap();
+    let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    assert!(ws.project().status.blocking_reason.is_some());
+    let options = texgo_desktop::preferences::Preferences::default().options(vec![]);
+    assert!(ws.update_pending_with_results(&options, &AtomicBool::new(false), |_| {}, |_| {}).is_err());
+    assert!(!dir.path().join("texgo-pdf").exists());
 }

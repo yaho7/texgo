@@ -23,7 +23,6 @@ pub(crate) struct Candidate {
 }
 
 fn problem<'a>(project: &'a Project, id: &str) -> Result<&'a ImageAsset, String> {
-    if project.mode != "tex" { return Err("只有 TeX 项目的引用可以修复".into()); }
     let asset = project.images.iter().find(|asset| asset.id == id).ok_or("图片不在扫描记录中")?;
     if !matches!(asset.status.as_str(), "missing" | "ambiguous") || asset.references.is_empty() {
         return Err("只能修复缺失或歧义的静态图片引用".into());

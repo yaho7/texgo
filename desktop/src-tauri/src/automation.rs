@@ -376,10 +376,6 @@ struct OpenParams { main_file: PathBuf }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct DirectoryParams { directory: PathBuf, recursive: bool }
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct UndoConversionParams { confirm: bool, entry_id: String }
 
 #[derive(Deserialize)]
@@ -451,7 +447,7 @@ impl RpcSession {
                 let _: EmptyParams = params(value)?;
                 Ok(json!({"name":"texgo-engine", "version":env!("CARGO_PKG_VERSION"),
                     "configVersion":1, "transport":"ndjson-stdio", "maxRequestBytes":MAX_REQUEST_BYTES,
-                    "methods":["tools.info","project.open","project.openDirectory","project.addDirectory","project.scan","images.history","images.undo","images.convert","references.preview",
+                    "methods":["tools.info","project.open","project.scan","images.history","images.undo","images.convert","references.preview",
                         "references.apply","references.undo","document.build","pipeline.run"],
                     "engines":["xelatex","lualatex","pdflatex"], "compiler":"latexmk"}))
             }
@@ -470,17 +466,6 @@ impl RpcSession {
                     self.workspace = Some(workspace);
                     Ok(result)
                 } else { serialize(self.workspace()?.refresh().map_err(RpcError::runtime)?) }
-            }
-            "project.openDirectory" => {
-                let input: DirectoryParams = params(value)?;
-                let workspace = Workspace::open_directory(&input.directory, input.recursive).map_err(RpcError::runtime)?;
-                let result = serialize(workspace.project())?;
-                self.workspace = Some(workspace);
-                Ok(result)
-            }
-            "project.addDirectory" => {
-                let input: DirectoryParams = params(value)?;
-                serialize(self.workspace()?.add_image_directory(&input.directory, input.recursive).map_err(RpcError::runtime)?)
             }
             "images.history" => {
                 let _: EmptyParams = params(value)?;
@@ -696,38 +681,17 @@ pub fn watch(config_path: &Path, json_output: bool, mut output: impl Write) -> R
     }
 }
 
-const USAGE: &str = "texgo-engine run --config PATH [--json]\ntexgo-engine build --config PATH [--json]\ntexgo-engine watch --config PATH [--json]\ntexgo-engine scan --main PATH [--json]\ntexgo-engine directory --directory PATH [--recursive] [--convert] [--dpi N] [--jpeg-quality N] [--output-dir PATH] [--json]\ntexgo-engine rpc";
+const USAGE: &str = "texgo-engine run --config PATH [--json]\ntexgo-engine build --config PATH [--json]\ntexgo-engine watch --config PATH [--json]\ntexgo-engine scan --main PATH [--json]\ntexgo-engine rpc";
 
 fn cli_request(args: &[String], output: &mut impl Write) -> Result<bool, String> {
     let action = args.first().map(String::as_str).ok_or(USAGE)?;
     let mut config_path = None;
     let mut main_file = None;
-    let mut directory = None;
-    let mut recursive = false;
-    let mut convert = false;
-    let mut dpi = 300;
-    let mut jpeg_quality = 90;
-    let mut output_dir = "texgo-pdf".to_string();
     let mut json_output = false;
     let mut index = 1;
     while index < args.len() {
         match args[index].as_str() {
             "--json" if !json_output => json_output = true,
-            "--recursive" if action == "directory" && !recursive => recursive = true,
-            "--convert" if action == "directory" && !convert => convert = true,
-            "--directory" if action == "directory" && directory.is_none() => {
-                index += 1;
-                directory = Some(PathBuf::from(args.get(index).filter(|p| !p.starts_with("--")).ok_or("--directory requires a path")?));
-            }
-            flag @ ("--dpi" | "--jpeg-quality" | "--output-dir") if action == "directory" => {
-                index += 1;
-                let value = args.get(index).ok_or("Missing option value")?;
-                match flag {
-                    "--dpi" => dpi = value.parse::<u32>().map_err(|_| "Invalid dpi")?,
-                    "--jpeg-quality" => jpeg_quality = value.parse::<u8>().map_err(|_| "Invalid JPEG quality")?,
-                    _ => output_dir = value.clone(),
-                }
-            }
             "--config" if config_path.is_none() => {
                 index += 1;
                 let path = args.get(index).filter(|path| !path.starts_with("--")).ok_or("--config requires a path")?;
@@ -743,27 +707,6 @@ fn cli_request(args: &[String], output: &mut impl Write) -> Result<bool, String>
         index += 1;
     }
     match action {
-        "directory" if config_path.is_none() && main_file.is_none() => {
-            let directory = directory.ok_or("directory requires --directory PATH")?;
-            let mut workspace = Workspace::open_directory(&directory, recursive)?;
-            let conversion = if convert {
-                let image_ids = workspace.project().images.iter().filter(|a| a.status == "ready").map(|a| a.id.clone()).collect::<Vec<_>>();
-                if image_ids.is_empty() { None } else {
-                    Some(workspace.convert(&ConversionOptions { image_ids, quality: "custom".into(), dpi, jpeg_quality, output_dir }, &AtomicBool::new(false), |_| {})?)
-                }
-            } else { None };
-            let success = conversion.as_ref().is_none_or(|result| !result.cancelled && result.images.iter().all(|image| image.error.is_none()));
-            if json_output {
-                if convert { write_json(output, &json!({"project":workspace.project(), "conversion":conversion})).map_err(|e| e.to_string())?; }
-                else { write_json(output, workspace.project()).map_err(|e| e.to_string())?; }
-            } else {
-                writeln!(output, "[texgo] {} | {} image(s)", workspace.project().root, workspace.project().images.len()).map_err(|e| e.to_string())?;
-                if let Some(result) = conversion {
-                    for image in result.images { writeln!(output, "{}: {}", image.id, image.error.as_deref().unwrap_or("done")).map_err(|e| e.to_string())?; }
-                }
-            }
-            Ok(success)
-        }
         "scan" if config_path.is_none() => {
             let main = main_file.ok_or("scan requires --main PATH")?;
             let workspace = Workspace::open(&main)?;

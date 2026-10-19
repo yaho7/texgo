@@ -8,11 +8,9 @@ pub struct Preferences {
     pub startup: String,
     pub auto_watch: bool,
     pub auto_update: bool,
-    pub recursive: bool,
     pub dpi: u32,
     pub jpeg_quality: u8,
     pub output_dir: String,
-    pub after_conversion: String,
     pub allow_unreviewed: bool,
     pub notify_success: bool,
     pub notify_failure: bool,
@@ -24,8 +22,8 @@ pub struct Preferences {
 
 impl Default for Preferences {
     fn default() -> Self {
-        Self { startup: "home".into(), auto_watch: true, auto_update: true, recursive: true,
-            dpi: 300, jpeg_quality: 90, output_dir: "texgo-pdf".into(), after_conversion: "stay".into(),
+        Self { startup: "home".into(), auto_watch: true, auto_update: true,
+            dpi: 300, jpeg_quality: 90, output_dir: "texgo-pdf".into(),
             allow_unreviewed: false, notify_success: true, notify_failure: true, notify_unchanged: false,
             shortcut_enabled: true, shortcut: "CommandOrControl+Alt+Enter".into(), close_action: "background".into() }
     }
@@ -39,7 +37,6 @@ impl Preferences {
         crate::conversion::validate(&self.options(vec![]))?;
         // The same path policy as a real conversion, without touching a workspace.
         if !matches!(self.startup.as_str(), "home" | "lastWorkspace")
-            || !matches!(self.after_conversion.as_str(), "stay" | "history" | "review")
             || !matches!(self.close_action.as_str(), "background" | "quit") { return Err("无效的设置选项".into()); }
         if self.shortcut_enabled && (self.shortcut.trim().is_empty() || self.shortcut.len() > 100) { return Err("请输入全局快捷键".into()); }
         Ok(())
@@ -78,7 +75,7 @@ mod tests {
         prefs.auto_watch = false; prefs.shortcut_enabled = false;
         prefs.save(&path).unwrap();
         assert_eq!(Preferences::load(&path).unwrap(), prefs);
-        fs::write(&path, r#"{"autoWatch":false}"#).unwrap();
+        fs::write(&path, r#"{"autoWatch":false,"recursive":false,"afterConversion":"history"}"#).unwrap();
         assert_eq!(Preferences::load(&path).unwrap().jpeg_quality, 90);
         assert!(!Preferences::load(&path).unwrap().auto_watch);
     }

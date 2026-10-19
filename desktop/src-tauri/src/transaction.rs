@@ -378,7 +378,7 @@ mod batch_workflow {
         let root = dir.path().canonicalize().unwrap();
         fs::write(root.join("main.tex"), b"old").unwrap();
         fs::write(root.join("a.png"), b"source").unwrap();
-        let project = Project { mode: "tex".into(), recursive: false, converted_images: vec![], main_file: root.join("main.tex").to_string_lossy().into(), root: root.to_string_lossy().into(), tex_files: vec![], images: vec![], warnings: vec![], undo_available: false };
+        let project = Project { status: Default::default(), converted_images: vec![], main_file: root.join("main.tex").to_string_lossy().into(), root: root.to_string_lossy().into(), tex_files: vec![], images: vec![], warnings: vec![], undo_available: false };
         let _lock = lock_project(&root).unwrap();
         let mut journal = Journal::load(&root).unwrap();
         let batch = journal.begin(&root, &ConversionOptions { image_ids: vec![], quality: "custom".into(), dpi: 150, jpeg_quality: 100, output_dir: "out".into() }).unwrap();

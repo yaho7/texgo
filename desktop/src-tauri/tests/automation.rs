@@ -185,23 +185,24 @@ fn rpc_transport_bounds_requests_recovers_and_flushes_notifications() {
 }
 
 #[test]
-fn rpc_directory_conversion_defaults_history_reopen_and_confirmed_undo() {
+fn rpc_project_conversion_defaults_history_reopen_and_confirmed_undo() {
     let dir = fixture();
     image::RgbImage::new(4, 2).save(dir.path().join("a.png")).unwrap();
     let mut session = RpcSession::default();
-    let opened = request(&mut session, "project.openDirectory", json!({"directory":dir.path(),"recursive":true}));
-    assert_eq!(opened["result"]["mode"], "directory");
+    write(dir.path(), "main.tex", "\\includegraphics{a.png}");
+    let opened = request(&mut session, "project.open", json!({"mainFile":dir.path().join("main.tex")}));
+    assert_eq!(opened["result"]["status"]["nextAction"], "convertImages");
     let id = opened["result"]["images"][0]["id"].clone();
     let converted = request(&mut session, "images.convert", json!({"options":{"imageIds":[id],"dpi":150,"jpegQuality":100}}));
     assert!(Path::new(converted["result"]["images"][0]["pdfPath"].as_str().unwrap()).ends_with(Path::new("texgo-pdf").join("a.pdf")));
     let refreshed = request(&mut session, "project.scan", json!({}));
-    assert_eq!(refreshed["result"]["mode"], "directory");
+    assert_eq!(refreshed["result"]["status"]["nextAction"], "reviewReferences");
     assert_eq!(refreshed["result"]["convertedImages"].as_array().unwrap().len(), 1);
     let history = request(&mut session, "images.history", json!({}));
     let id = history["result"][0]["id"].clone();
     assert_eq!(history["result"][0]["canUndo"], true);
     assert_eq!(request(&mut session, "images.undo", json!({"entryId":id,"confirm":false}))["error"]["code"], -32602);
-    assert_eq!(request(&mut session, "images.undo", json!({"entryId":id,"confirm":true}))["result"]["mode"], "directory");
+    assert_eq!(request(&mut session, "images.undo", json!({"entryId":id,"confirm":true}))["result"]["status"]["nextAction"], "convertImages");
     assert!(!dir.path().join("texgo-pdf/a.pdf").exists());
 }
 

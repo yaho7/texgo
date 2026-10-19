@@ -1,13 +1,11 @@
 //! Shared outcome policy. Desktop adapters own OS integration; Workspace owns mutations.
-use crate::{preferences::Preferences, ConversionResult};
+use crate::{preferences::Preferences, ConversionResult, NextAction, WorkspaceStatus};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct NotificationTarget {
-    pub mode: String,
     pub path: String,
-    pub recursive: bool,
     pub view: String,
     pub batch_id: Option<String>,
     pub image_id: Option<String>,
@@ -24,12 +22,33 @@ pub fn result_notice(result: &ConversionResult, prefs: &Preferences) -> Option<N
     let succeeded = result.images.iter().filter(|i| i.pdf_path.is_some() && i.error.is_none()).count();
     let failed = result.images.len() - succeeded;
     if failed > 0 && prefs.notify_failure {
-        Some(Notice { title: format!("Texgo · 转换完成，但有 {failed} 项失败"), body: format!("{succeeded} 张成功，{failed} 张失败") })
+        Some(Notice { title: format!("Texgo · 更新完成，但有 {failed} 项失败"), body: format!("{succeeded} 张成功，{failed} 张失败") })
     } else if failed == 0 && succeeded > 0 && prefs.notify_success {
-        Some(Notice { title: "Texgo · 转换完成".into(), body: format!("已更新 {succeeded} 张图片") })
+        Some(Notice { title: "Texgo · 图片已更新".into(), body: format!("已更新 {succeeded} 张图片") })
     } else if result.images.is_empty() && prefs.notify_unchanged {
-        Some(Notice { title: "Texgo · 无需转换".into(), body: "当前工作区没有需要更新的图片".into() })
+        Some(Notice { title: "Texgo · 项目已是最新".into(), body: "当前项目没有需要更新的图片".into() })
     } else { None }
+}
+
+/// Notification follow-up comes from exactly the same next action shown in the window.
+pub fn workspace_notice(status: &WorkspaceStatus, result: &ConversionResult, prefs: &Preferences) -> Option<Notice> {
+    let mut notice = result_notice(result, prefs)?;
+    if status.next_action == NextAction::ReviewReferences && result.images.iter().all(|image| image.error.is_none()) {
+        notice.body = format!("已更新 {} 张图片，{} 处引用等待确认", result.images.len(), status.pending_references);
+    } else if status.next_action == NextAction::UpToDate && result.images.is_empty() {
+        notice.body = "项目已是最新状态".into();
+    }
+    Some(notice)
+}
+
+pub fn status_label(status: &WorkspaceStatus) -> String {
+    if status.blocking_reason.is_some() { return "项目需要处理安全问题".into(); }
+    match status.next_action {
+        NextAction::ReviewReferences => format!("{} 处引用等待确认", status.pending_references),
+        NextAction::ConvertImages => format!("{} 张图片需要更新", status.pending_images),
+        NextAction::ResolveProblems => format!("{} 个问题需要处理", status.problem_count),
+        NextAction::UpToDate => "项目已是最新状态".into(),
+    }
 }
 
 // Isolated registrar makes replacement/rollback testable without grabbing real OS hotkeys.
@@ -86,9 +105,29 @@ mod tests {
         assert_eq!(result_notice(&result(vec![success, failure]), &prefs).unwrap().body, "1 张成功，1 张失败");
         assert!(result_notice(&result(vec![]), &prefs).is_none());
         prefs.notify_unchanged = true;
-        assert!(result_notice(&result(vec![]), &prefs).unwrap().title.contains("无需转换"));
+        assert!(result_notice(&result(vec![]), &prefs).unwrap().title.contains("项目已是最新"));
         prefs.notify_success = false; prefs.notify_failure = false;
         assert!(result_notice(&result(vec![crate::ConvertedImage { id: "a".into(), pdf_path: None, bytes: None, cached: false, error: Some("x".into()) }]), &prefs).is_none());
         assert!(result_notice(&ConversionResult { images: vec![], cancelled: true }, &prefs).is_none());
+    }
+}
+
+#[cfg(test)]
+mod workspace_status_tests {
+    use super::*;
+    #[test]
+    fn notifications_and_tray_describe_the_same_next_action_as_the_window() {
+        let prefs = Preferences::default();
+        let result = ConversionResult { images: vec![crate::ConvertedImage {
+            id: "image".into(), pdf_path: Some("image.pdf".into()), bytes: Some(10), cached: false, error: None,
+        }], cancelled: false };
+        let status = WorkspaceStatus { next_action: NextAction::ReviewReferences, pending_references: 3, ..Default::default() };
+        assert_eq!(status_label(&status), "3 处引用等待确认");
+        assert_eq!(workspace_notice(&status, &result, &prefs).unwrap().body, "已更新 1 张图片，3 处引用等待确认");
+        let status = WorkspaceStatus { next_action: NextAction::ConvertImages, pending_images: 2, ..Default::default() };
+        assert_eq!(status_label(&status), "2 张图片需要更新");
+        let status = WorkspaceStatus { next_action: NextAction::ResolveProblems, problem_count: 1, ..Default::default() };
+        assert_eq!(status_label(&status), "1 个问题需要处理");
+        assert_eq!(status_label(&WorkspaceStatus::default()), "项目已是最新状态");
     }
 }

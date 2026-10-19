@@ -153,8 +153,16 @@ impl Journal {
             .filter_map(|batch| output_directory(root, &batch.entry.output_dir).ok()).collect()
     }
 
-    pub fn directories(&self, root: &Path) -> Vec<(PathBuf, bool)> {
-        self.directories.iter().map(|(path, recursive)| (root.join(path), *recursive)).collect()
+    /// The last attempted result for this source, including across app restarts.
+    /// A changed source can be retried; an unprocessed cancelled item is not a failure.
+    pub fn source_failure(&self, root: &Path, source: &str) -> Option<(String, Option<String>)> {
+        let file = self.batches.iter().rev().filter(|batch| !batch.entry.undone)
+            .flat_map(|batch| batch.entry.files.iter().rev()).find(|file| file.source == source)?;
+        let error = file.error.as_ref()?;
+        if error == "Conversion interrupted before completion" { return None; }
+        let current = fs::read(root.join(source)).ok().map(|bytes| digest(&bytes));
+        if file.source_hash.is_some() && file.source_hash != current { return None; }
+        Some((error.clone(), current))
     }
 
     pub fn begin(&mut self, root: &Path, options: &ConversionOptions) -> Result<usize, String> {
@@ -166,7 +174,7 @@ impl Journal {
         if !crate::transaction::standalone_undo_available(root)? { return self.begin(root, options); }
         crate::transaction::validate_standalone_refresh(project)?;
         let directory = output_directory(root, &options.output_dir)?;
-        if project.mode != "tex" || options.image_ids.is_empty() { return Err("独立引用记录存在时只允许原位置更新".into()); }
+        if options.image_ids.is_empty() { return Err("独立引用记录存在时只允许原位置更新".into()); }
         for id in &options.image_ids {
             let asset = project.images.iter().find(|asset| &asset.id == id).ok_or("找不到图片")?;
             let output = relative(root, &directory.join(&asset.relative_path).with_extension("pdf"))?;
@@ -201,7 +209,7 @@ impl Journal {
 
     pub fn ensure_settled(&self) -> Result<(), String> {
         if self.batches.iter().any(|batch| !batch.entry.undone && (batch.undoing || batch.references_applying || batch.changes.iter().any(|change| !change.committed))) {
-            return Err("请先从转换记录撤销上次中断的文件操作，再开始新操作".into());
+            return Err("请先从操作记录撤销上次中断的文件操作，再开始新操作".into());
         }
         Ok(())
     }
