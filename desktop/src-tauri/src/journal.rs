@@ -161,7 +161,7 @@ impl Journal {
         self.begin_validated(root, options, false)
     }
 
-    // CLI-only: all writes must keep the exact destinations already referenced by TeX.
+    // Headless compatibility: all writes must keep the exact destinations already referenced by TeX.
     pub fn begin_managed_refresh(&mut self, root: &Path, options: &ConversionOptions, project: &crate::Project) -> Result<usize, String> {
         if !crate::transaction::standalone_undo_available(root)? { return self.begin(root, options); }
         crate::transaction::validate_standalone_refresh(project)?;
@@ -171,7 +171,8 @@ impl Journal {
             let asset = project.images.iter().find(|asset| &asset.id == id).ok_or("找不到图片")?;
             let output = relative(root, &directory.join(&asset.relative_path).with_extension("pdf"))?;
             let managed = self.outputs.get(&output).ok_or("独立引用记录存在时不能创建新 PDF 路径")?;
-            if managed.source != asset.relative_path || !self.valid_output(root, &output, managed)
+            let missing_output = fs::symlink_metadata(root.join(&output)).is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound);
+            if managed.source != asset.relative_path || !(self.valid_output(root, &output, managed) || missing_output)
                 || asset.references.is_empty() || asset.references.iter().any(|reference| reference.original != output) {
                 return Err("独立引用记录存在时只能更新已引用的托管 PDF".into());
             }

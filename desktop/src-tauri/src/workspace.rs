@@ -182,7 +182,7 @@ impl Workspace {
     }
 
     pub fn convert(&mut self, options: &ConversionOptions, cancel: &AtomicBool, progress: impl Fn(Progress)) -> Result<ConversionResult, String> {
-        self.convert_with_results(options, cancel, progress, |_| {})
+        self.convert_internal(options, cancel, progress, |_| {}, true)
     }
 
     pub fn convert_with_results(&mut self, options: &ConversionOptions, cancel: &AtomicBool, progress: impl Fn(Progress), on_image: impl Fn(ConvertedImage)) -> Result<ConversionResult, String> {
@@ -193,7 +193,7 @@ impl Workspace {
         self.convert_internal(options, &AtomicBool::new(false), |_| {}, |_| {}, true)
     }
 
-    fn convert_internal(&mut self, options: &ConversionOptions, cancel: &AtomicBool, progress: impl Fn(Progress), on_image: impl Fn(ConvertedImage), pipeline: bool) -> Result<ConversionResult, String> {
+    fn convert_internal(&mut self, options: &ConversionOptions, cancel: &AtomicBool, progress: impl Fn(Progress), on_image: impl Fn(ConvertedImage), allow_managed_refresh: bool) -> Result<ConversionResult, String> {
         conversion::validate(options)?;
         let selected: HashSet<&str> = options.image_ids.iter().map(String::as_str).collect();
         if selected.is_empty() { return Err("请先选择图片".into()); }
@@ -207,8 +207,8 @@ impl Workspace {
         let root = PathBuf::from(&self.scan.project.root);
         let _lock = transaction::lock_project(&root)?;
         let mut journal = Journal::load(&root)?;
-        let preserving_standalone = pipeline && transaction::standalone_undo_available(&root)?;
-        let batch = if pipeline { journal.begin_managed_refresh(&root, options, &self.scan.project)? } else { journal.begin(&root, options)? };
+        let preserving_standalone = allow_managed_refresh && transaction::standalone_undo_available(&root)?;
+        let batch = if allow_managed_refresh { journal.begin_managed_refresh(&root, options, &self.scan.project)? } else { journal.begin(&root, options)? };
         // Check the entire source tree, including images not referenced by TeX or selected in the UI.
         let preflight = (|| {
             let output_dir = journal::output_directory(&root, &options.output_dir)?;
