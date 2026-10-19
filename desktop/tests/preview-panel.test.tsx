@@ -47,3 +47,33 @@ it("ignores a late response and resets comparison when changing assets", async (
   expect(screen.getByAltText("原始：b.png")).not.toHaveAttribute("src", "stale-a");
   await waitFor(() => expect(screen.getByRole("radio", { name: "原图" })).toHaveAttribute("data-state", "on"));
 });
+
+it("keeps the original visible during a pending or failed PDF request", async () => {
+  let reject!: (error: Error) => void;
+  ipc.invoke.mockImplementation((_command, { converted }) => converted
+    ? new Promise((_resolve, fail) => { reject = fail; })
+    : Promise.resolve({ kind: "image", data: "data:image/png;base64,YQ==" }));
+  render(<AssetPreview asset={asset} result={result} revision={1} />);
+  await screen.findByAltText("原始：a.png");
+  await userEvent.click(screen.getByRole("radio", { name: "对比" }));
+  expect(screen.getByAltText("原始：a.png")).toBeVisible();
+  expect(screen.getByRole("status")).toHaveTextContent("正在载入 PDF");
+  await act(async () => reject(new Error("PDF unavailable")));
+  expect(screen.getByRole("alert")).toHaveTextContent("PDF unavailable");
+  expect(screen.getByAltText("原始：a.png")).toBeVisible();
+});
+
+it("resets a selected comparison on asset change and ignores its late PDF", async () => {
+  let resolve!: (value: AssetPreviewData) => void;
+  ipc.invoke.mockImplementation((_command, { converted }) => converted
+    ? new Promise<AssetPreviewData>((done) => { resolve = done; })
+    : Promise.resolve({ kind: "image", data: "data:image/png;base64,YQ==" }));
+  const view = render(<AssetPreview asset={asset} result={result} revision={1} />);
+  await screen.findByAltText("原始：a.png");
+  await userEvent.click(screen.getByRole("radio", { name: "对比" }));
+  view.rerender(<AssetPreview asset={{ ...asset, id: "b", path: "/b.png", relativePath: "b.png" }} result={{ ...result, id: "b", pdfPath: "/b.pdf" }} revision={1} />);
+  await screen.findByAltText("原始：b.png");
+  await act(async () => resolve({ kind: "pdf", data: "stale-pdf-a" }));
+  expect(screen.queryByLabelText("真实 PDF")).not.toBeInTheDocument();
+  expect(screen.getByRole("radio", { name: "原图" })).toHaveAttribute("aria-checked", "true");
+});
