@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
 
 const keyNames: Record<string, string> = {
@@ -20,27 +21,57 @@ export function shortcutTokens(value: string, mac = /Mac|iPhone|iPad/.test(navig
   return value.split("+").filter(Boolean).map((key) => labels[key] ?? key);
 }
 
+// Serialize transient native updates, including cleanup from a previous settings view.
+let nativeRecordingQueue: Promise<unknown> = Promise.resolve();
+function nativeRecording(recording: boolean) {
+  const next = nativeRecordingQueue.catch(() => undefined).then(() => invoke("set_shortcut_recording", { recording }));
+  nativeRecordingQueue = next;
+  return next;
+}
+
 export default function ShortcutRecorder({ value, onChange, disabled = false }: { value: string; onChange: (value: string) => void; disabled?: boolean }) {
   const [recording, setRecording] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
+  const [arming, setArming] = useState(false);
+  const mounted = useRef(true);
+  const intent = useRef(0);
   const capture = useRef<HTMLDivElement>(null);
-  function start() { setRecording(true); setHint(null); capture.current?.focus(); }
-  return <div className="shortcut-recorder" data-recording={recording}>
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; intent.current += 1; void nativeRecording(false).catch(() => {}); };
+  }, []);
+  function finish() {
+    intent.current += 1; setRecording(false); setArming(false); setHint(null);
+    void nativeRecording(false).catch(() => { if (mounted.current) setHint("未能恢复全局快捷键，请重新打开 Texgo。"); });
+  }
+  useEffect(() => { if (disabled && (recording || arming)) finish(); }, [disabled, recording, arming]);
+  async function start() {
+    if (arming || recording || disabled) return;
+    const request = ++intent.current; setArming(true); setHint(null);
+    try {
+      await nativeRecording(true);
+      if (!mounted.current || request !== intent.current) return;
+      setArming(false); setRecording(true); capture.current?.focus();
+    } catch {
+      if (mounted.current && request === intent.current) { setArming(false); setHint("暂时无法开始录制，请重试。现有快捷键保持不变。"); }
+    }
+  }
+  return <div className="shortcut-recorder" data-recording={recording || arming}
+    onBlur={(event) => { if ((recording || arming) && !event.currentTarget.contains(event.relatedTarget as Node | null)) finish(); }}>
     <div ref={capture} className="shortcut-capture" role="group" aria-label="全局快速转换快捷键" tabIndex={disabled ? -1 : 0} aria-disabled={disabled}
-      onBlur={(event) => { if (!event.currentTarget.parentElement?.contains(event.relatedTarget as Node | null)) { setRecording(false); setHint(null); } }}
       onKeyDown={(event) => {
         if (!recording || disabled) return;
         event.preventDefault(); event.stopPropagation();
-        if (event.key === "Escape") { setRecording(false); setHint(null); return; }
+        if (event.key === "Escape") { finish(); return; }
         if (event.repeat || event.nativeEvent.isComposing) return;
         if (["Meta", "Control", "Alt", "Shift"].includes(event.key)) return;
         const next = shortcutFromKey(event.nativeEvent);
         if (!next) { setHint("请同时按住 ⌘ / Ctrl 和 Alt / Option，再按一个按键"); return; }
-        onChange(next); setRecording(false); setHint(null);
+        onChange(next); finish();
       }}>
-      {recording ? <span role="status">正在等待按键…</span> : <span className="shortcut-tokens" aria-label={shortcutTokens(value).join(" + ")}>{shortcutTokens(value).map((token, index) => <span className="shortcut-token-part" key={`${value}:${index}`}>{index > 0 && <span aria-hidden="true">+</span>}<kbd style={{ animationDelay: `calc(var(--motion-fast) * ${index} / 4)` }}>{token}</kbd></span>)}</span>}
+      {arming ? <span role="status">正在准备录制…</span> : recording ? <span role="status">正在等待按键…</span> : <span className="shortcut-tokens" aria-label={shortcutTokens(value).join(" + ")}>{shortcutTokens(value).map((token, index) => <span className="shortcut-token-part" key={`${value}:${index}`}>{index > 0 && <span aria-hidden="true">+</span>}<kbd style={{ animationDelay: `calc(var(--motion-fast) * ${index} / 4)` }}>{token}</kbd></span>)}</span>}
     </div>
-    <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => recording ? (setRecording(false), setHint(null)) : start()}>{recording ? "取消录制" : "重新录制"}</Button>
+    <Button type="button" variant="outline" size="sm" disabled={disabled} aria-busy={arming} onClick={() => recording || arming ? finish() : void start()}>{arming ? "正在准备…" : recording ? "取消录制" : "重新录制"}</Button>
     <p className="shortcut-hint text-xs text-muted-foreground" aria-live="polite">{hint ?? (recording ? "请按下新的快捷键，按 Esc 取消" : "按住 ⌘ / Ctrl 和 Alt / Option 录制。在其他应用中也可快速更新当前项目。")}</p>
   </div>;
 }

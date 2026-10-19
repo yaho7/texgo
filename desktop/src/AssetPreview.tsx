@@ -22,6 +22,7 @@ interface Props {
   asset: ImageAsset | null;
   result?: ImageResult;
   revision: number;
+  busy?: boolean;
   ignored?: boolean;
   statusLabel?: string;
   onLocate?: (id: string) => void;
@@ -81,7 +82,7 @@ function PreviewContent({ asset, converted, revision, pdfPath, overlay = false }
   </div>;
 }
 
-export default function AssetPreview({ asset, result, revision, ignored, statusLabel, onLocate, onInspect, onIgnore }: Props) {
+export default function AssetPreview({ asset, result, revision, busy = false, ignored, statusLabel, onLocate, onInspect, onIgnore }: Props) {
   const [mode, setMode] = useState("original");
   const unavailable = !asset?.path || ["missing", "ambiguous", "unsupported"].includes(asset.status);
   const hasConverted = Boolean(asset && !unavailable && result?.id === asset.id && result.pdfPath && !result.error && !result.cancelled);
@@ -125,7 +126,7 @@ export default function AssetPreview({ asset, result, revision, ignored, statusL
     const bounds = surface.current?.getBoundingClientRect();
     if (bounds?.width) setDivider(Math.max(0, Math.min(100, (event.clientX - bounds.left) / bounds.width * 100)));
   }
-  const problem = Boolean(asset && (["missing", "ambiguous", "unsupported"].includes(asset.status) || result?.error));
+  const problem = Boolean(asset && (["missing", "ambiguous", "unsupported"].includes(asset.status) || result?.error || statusLabel === "需要处理"));
   const state = statusLabel ?? (ignored ? "已忽略" : problem ? "需要处理" : asset?.updateAvailable ? "有更新" : hasConverted || asset?.status === "pdf" ? "已完成" : "待转换");
 
   return <section className="preview-panel" aria-label="图片预览" tabIndex={0} onKeyDown={keydown}>
@@ -159,6 +160,6 @@ export default function AssetPreview({ asset, result, revision, ignored, statusL
       {asset && <Popover><PopoverTrigger asChild><Button type="button" variant="link" size="sm" disabled={asset.references.length === 0} className="preview-reference-trigger">被引用 {asset.references.length} 次</Button></PopoverTrigger><PopoverContent className="preview-references" align="end" aria-label="引用位置"><h3 className="text-sm font-medium">引用位置</h3><ul>{asset.references.map((reference, index) => <li key={`${reference.file}:${reference.line}:${index}`}><span title={reference.file}>{reference.file.split(/[\\/]/).pop()}</span><span>第 {reference.line} 行</span></li>)}</ul></PopoverContent></Popover>}
       {saving !== null && <span className="preview-savings">{saving >= 0 ? `节省 ${Number(saving.toFixed(1))}%` : `增大 ${Number((-saving).toFixed(1))}%`}</span>}
     </div>
-    {asset && <div className="inspector-image-state"><Badge variant={problem && !ignored ? "destructive" : "secondary"}>{state}</Badge>{problem && <><p>{result?.error ?? asset.message}</p>{asset.status === "missing" && <p>LaTeX 引用了：<code>{asset.relativePath}</code></p>}</>}<div className="inspector-image-actions">{problem && onLocate && ["missing", "ambiguous"].includes(asset.status) && <Button type="button" variant="outline" size="sm" onClick={() => onLocate(asset.id)}>定位文件</Button>}{problem && onInspect && !["missing", "ambiguous"].includes(asset.status) && <Button type="button" variant="outline" size="sm" onClick={() => onInspect(asset.id)}>查看详情</Button>}{onIgnore && <Button type="button" variant="ghost" size="sm" onClick={() => onIgnore(asset.id, !ignored)}>{ignored ? "恢复处理" : "忽略本次"}</Button>}</div></div>}
+    {asset && <div className="inspector-image-state"><Badge variant={problem && !ignored ? "destructive" : "secondary"}>{state}</Badge>{problem && <><p>{result?.error ?? asset.message}</p>{asset.status === "missing" && <p>LaTeX 引用了：<code>{asset.relativePath}</code></p>}</>}<div className="inspector-image-actions">{problem && onLocate && ["missing", "ambiguous"].includes(asset.status) && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onLocate(asset.id)}>定位文件</Button>}{problem && onInspect && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onInspect(asset.id)}>{["missing", "ambiguous"].includes(asset.status) ? "修复" : "查看详情"}</Button>}{onIgnore && <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => onIgnore(asset.id, !ignored)}>{ignored ? "恢复处理" : "忽略本次"}</Button>}</div></div>}
   </section>;
 }

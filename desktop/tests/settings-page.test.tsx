@@ -8,7 +8,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: ipc.invoke }));
 beforeEach(() => { ipc.invoke.mockReset(); });
 it("saves native preferences only on explicit submission", async () => {
   const saved = vi.fn(); const user = userEvent.setup();
-  ipc.invoke.mockImplementation((_command, { preferences }) => Promise.resolve(preferences));
+  ipc.invoke.mockImplementation((_command, args) => Promise.resolve(args?.preferences));
   render(<SettingsPage value={defaultPreferences} onSaved={saved} onClose={vi.fn()} />);
   await user.click(screen.getByLabelText("没有变化时显示通知"));
   expect(ipc.invoke).not.toHaveBeenCalled();

@@ -191,3 +191,9 @@ it("only enters repair after an explicit inspector action", async () => {
   await userEvent.click(screen.getByRole("button", { name: "忽略本次" }));
   expect(ignore).toHaveBeenCalledWith("a", true);
 });
+
+it("disables inspector mutations while the project is busy", () => {
+  render(<AssetPreview asset={{ ...asset, status: "missing", path: null }} revision={1} busy onLocate={vi.fn()} onIgnore={vi.fn()} />);
+  expect(screen.getByRole("button", { name: "定位文件" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "忽略本次" })).toBeDisabled();
+});
