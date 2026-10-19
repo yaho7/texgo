@@ -284,7 +284,7 @@ fn normalized_shortcut(prefs: &Preferences) -> Result<Option<String>, String> {
     // Require Alt plus the primary modifier or Super. This reserves a separate namespace
     // from application shortcuts (Cmd/Ctrl Enter, Shift Enter, O, R, F and comma).
     use tauri_plugin_global_shortcut::Modifiers;
-    if !shortcut.mods.contains(Modifiers::ALT) || !shortcut.mods.intersects(Modifiers::CONTROL | Modifiers::META) {
+    if !shortcut.mods.contains(Modifiers::ALT) || !shortcut.mods.intersects(Modifiers::CONTROL | Modifiers::META | Modifiers::SUPER) {
         return Err("全局快捷键必须包含 Cmd/Ctrl + Alt/Option，避免与应用内快捷键冲突".into());
     }
     Ok(Some(shortcut.to_string()))
@@ -437,6 +437,10 @@ mod desktop_policy_tests {
     #[test]
     fn shortcuts_validate_modifiers_and_disable_without_parsing() {
         let mut prefs = Preferences::default();
+        assert!(normalized_shortcut(&prefs).unwrap().is_some());
+        prefs.shortcut = "Command+Option+Enter".into();
+        assert!(normalized_shortcut(&prefs).unwrap().is_some());
+        prefs.shortcut = "Control+Alt+Enter".into();
         assert!(normalized_shortcut(&prefs).unwrap().is_some());
         prefs.shortcut = "Ctrl+Enter".into(); assert!(normalized_shortcut(&prefs).is_err());
         prefs.shortcut = "bad shortcut".into(); assert!(normalized_shortcut(&prefs).is_err());
