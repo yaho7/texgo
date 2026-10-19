@@ -224,7 +224,7 @@ Project {
 ImageAsset {
   id: string, path: string|null, relativePath: string, format: string,
   width: integer|null, height: integer|null, bytes: integer|null,
-  status: string, message: string|null, references: Reference[]
+  status: string, updateAvailable: boolean, message: string|null, references: Reference[]
 }
 Reference { file: string, line: integer, original: string, start: integer, end: integer }
 ```
@@ -240,6 +240,15 @@ they persist across refresh and reopen in either mode. Folder scans skip
 `texgo-pdf`, `.texgo`, `.git`, `node_modules`, all configured conversion
 output directories, and symlinks. `convertedImages` always exists and includes
 only outputs whose PDF, source and dependency hashes remain valid on reopen.
+
+`updateAvailable` is true when a convertible source or its SVG dependencies have
+changed since a managed, intact PDF was generated. It is recomputed when opening,
+refreshing, converting or undoing a workspace; it is not a filesystem watcher.
+Content hashes are compared, so rewriting identical bytes does not trigger an
+update. Missing or externally edited PDFs are not offered as safe updates. If a
+valid current output exists, it takes precedence over older stale conversions.
+The asset retains `status:"ready"` so existing automation clients can still
+convert it. Stale PDFs are excluded from `convertedImages` and reference plans.
 
 ### Conversion, References, And Pipeline
 

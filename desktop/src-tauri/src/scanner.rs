@@ -120,7 +120,7 @@ pub(crate) fn add_directory(scan: &mut Scan, directory: &Path, recursive: bool, 
             id, path: Some(name), relative_path: path.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/"),
             format: path.extension().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase(),
             width: dimensions.map(|d| d.0), height: dimensions.map(|d| d.1),
-            bytes: fs::metadata(&path).ok().map(|m| m.len()), status: "ready".into(), message: None, references: Vec::new(),
+            bytes: fs::metadata(&path).ok().map(|m| m.len()), status: "ready".into(), update_available: false, message: None, references: Vec::new(),
         });
     }
     Ok(())
@@ -235,7 +235,7 @@ impl Scanner {
         self.project.images.push(ImageAsset {
             id: digest(key.as_bytes()), path: path.map(|p| p.to_string_lossy().into()), relative_path,
             format, width: dimensions.map(|d| d.0), height: dimensions.map(|d| d.1), bytes,
-            status: status.into(), message, references: vec![reference],
+            status: status.into(), update_available: false, message, references: vec![reference],
         });
     }
 }

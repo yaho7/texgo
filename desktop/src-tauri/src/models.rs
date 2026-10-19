@@ -25,6 +25,7 @@ pub struct ImageAsset {
     pub height: Option<u32>,
     pub bytes: Option<u64>,
     pub status: String,
+    pub update_available: bool,
     pub message: Option<String>,
     pub references: Vec<Reference>,
 }

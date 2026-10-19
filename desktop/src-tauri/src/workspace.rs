@@ -57,10 +57,17 @@ impl Workspace {
         self.converted.clear();
         self.scan.project.converted_images.clear();
         self.scan.project.undo_available = transaction::undo_available(root);
-        for asset in &self.scan.project.images {
+        for asset in &mut self.scan.project.images {
+            asset.update_available = false;
             for output in journal.preferred_outputs(&asset.relative_path) {
                 let Some(managed) = journal.outputs.get(&output) else { continue; };
-                if managed.source != asset.relative_path || !journal.valid(root, &output, managed) { continue; }
+                if managed.source != asset.relative_path || !journal.valid_output(root, &output, managed) { continue; }
+                if journal.valid_sources(root, managed).is_err() {
+                    asset.update_available |= asset.status == "ready" && journal.sources_changed(root, managed);
+                    continue;
+                }
+                // A current valid output takes precedence over older stale conversions.
+                asset.update_available = false;
                 let path = root.join(&output);
                 self.scan.project.converted_images.push(ConvertedImage { id: asset.id.clone(), pdf_path: Some(path.to_string_lossy().into()),
                     bytes: fs::metadata(&path).ok().map(|m| m.len()), cached: true, error: None });

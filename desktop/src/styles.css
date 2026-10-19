@@ -176,6 +176,7 @@ h1, h2, h3, p { margin: 0; }
 .pdf-error { position: absolute; inset: 0; display: grid; place-content: center; padding: 18px; background: var(--muted); }
 .success-ink { color: var(--success); }
 .warning-ink { color: var(--warning); }
+.update-badge { background: #eff6ff; color: #1d4ed8; border-color: #dbeafe; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -214,6 +215,7 @@ h1, h2, h3, p { margin: 0; }
   .history-entry > header { flex-wrap: wrap; }
 }
 @media (pointer: fine) { html { overscroll-behavior: none; } }
+@media (max-width: 600px) { .scan-label { display: none; } }
 @media (any-pointer: coarse) {
   [data-slot="button"]:not(.asset-preview-trigger), [data-slot="toggle-group-item"], [data-slot="tabs-trigger"],
   [data-slot="input"], [data-slot="input-group"], [data-slot="native-select"], .checkbox-option,

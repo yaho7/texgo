@@ -17,6 +17,7 @@ export interface ImageAsset {
   height: number | null;
   bytes: number | null;
   status: AssetStatus;
+  updateAvailable?: boolean;
   message: string | null;
   references: Reference[];
 }

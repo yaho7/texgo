@@ -275,7 +275,7 @@ export default function App() {
   const visibleImages = (project?.images ?? []).filter((image) => {
     const textMatch = `${image.relativePath} ${image.format}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
     const result = results[image.id];
-    return textMatch && (filter === "all" || (filter === "converted" ? Boolean(result?.pdfPath && !result.error) : filter === "error" ? Boolean(result?.error) : image.status === filter));
+    return textMatch && (filter === "all" || (filter === "converted" ? Boolean(result?.pdfPath && !result.error) : filter === "updatable" ? Boolean(image.updateAvailable && !(result?.pdfPath && !result.error)) : filter === "error" ? Boolean(result?.error) : image.status === filter));
   });
   const canReview = project?.mode === "tex" && project.images.some((image) => {
     const output = results[image.id]?.pdfPath;
@@ -298,7 +298,7 @@ export default function App() {
         <IconButton id="sidebar-toggle" label={narrow ? "打开项目导航" : sidebarOpen ? "收起侧栏" : "展开侧栏"} aria-expanded={narrow ? drawerOpen : sidebarOpen} onClick={() => narrow ? setDrawerOpen(true) : setSidebarOpen((value) => !value)}><PanelLeft aria-hidden="true" /></IconButton>
         {project && <IconButton label="返回首页" disabled={busy} onClick={goHome}><ArrowLeft aria-hidden="true" /></IconButton>}
         <div className="project-title">{project ? <><h1 title={project.mainFile || project.root}>{fileName(project.mainFile || project.root)}</h1><p title={project.root}>{project.root}</p></> : <span>新工作区</span>}</div>
-        {project && <div className="toolbar-actions"><Badge variant="outline" className="project-file-count">{project.mode === "directory" ? "图片目录" : `${project.texFiles.length} 个 TeX 文件`}</Badge><IconButton label="重新扫描" disabled={busy} onClick={() => { void execute("opening", () => refresh()); }}><RefreshCw aria-hidden="true" /></IconButton><IconButton label="打开 .tex 主文件" disabled={busy} onClick={openProject}><FolderOpen aria-hidden="true" /></IconButton></div>}
+        {project && <div className="toolbar-actions"><Badge variant="outline" className="project-file-count">{project.mode === "directory" ? "图片目录" : `${project.texFiles.length} 个 TeX 文件`}</Badge><Button variant="ghost" size="sm" aria-label="重新扫描" title="重新扫描并检查图片更新" disabled={busy} onClick={() => { void execute("opening", () => refresh()); }}><RefreshCw aria-hidden="true" /><span className="scan-label">检查更新</span></Button><IconButton label="打开 .tex 主文件" disabled={busy} onClick={openProject}><FolderOpen aria-hidden="true" /></IconButton></div>}
       </header>
       {error && !review && !undoEntry && <Alert variant="destructive" role="alert" className="workbench-alert"><TriangleAlert aria-hidden="true" /><AlertTitle>操作未完成</AlertTitle><AlertDescription className="flex items-start justify-between gap-4"><span>{error}</span><IconButton label="关闭错误提示" onClick={() => setError(null)}><X aria-hidden="true" /></IconButton></AlertDescription></Alert>}
       {!project ? <Home busy={busy} recursive={recursive} onRecursive={setRecursive} onOpenTex={openProject} onOpenDirectory={() => openDirectory()} /> : <>

@@ -15,6 +15,66 @@ fn options(ws: &Workspace) -> ConversionOptions {
 }
 
 #[test]
+fn source_content_changes_are_reported_until_reconverted() {
+    let dir = tempfile::tempdir().unwrap();
+    png(dir.path(), "plot.png", 1);
+    let mut ws = Workspace::open_directory(dir.path(), true).unwrap();
+    assert!(!ws.project().images[0].update_available);
+    let opts = options(&ws);
+    ws.convert(&opts, &AtomicBool::new(false), |_| {}).unwrap();
+    let original = fs::read(dir.path().join("plot.png")).unwrap();
+    // Rewriting identical bytes must not mark an image as changed.
+    fs::write(dir.path().join("plot.png"), &original).unwrap();
+    ws.refresh().unwrap();
+    assert!(!ws.project().images[0].update_available);
+    png(dir.path(), "plot.png", 200);
+    ws.refresh().unwrap();
+    assert!(ws.project().images[0].update_available);
+    assert!(ws.project().converted_images.is_empty());
+    assert_eq!(ws.project().images[0].status, "ready");
+    ws.convert(&opts, &AtomicBool::new(false), |_| {}).unwrap();
+    assert!(!ws.project().images[0].update_available);
+    assert_eq!(ws.project().converted_images.len(), 1);
+    let batch = ws.conversion_history().unwrap()[0].id.clone();
+    ws.undo_conversion(&batch).unwrap();
+    assert!(ws.project().images[0].update_available);
+    fs::write(dir.path().join("plot.png"), original).unwrap();
+    ws.refresh().unwrap();
+    assert!(!ws.project().images[0].update_available);
+}
+
+#[test]
+fn changed_or_missing_output_is_not_offered_as_a_safe_update() {
+    let dir = tempfile::tempdir().unwrap();
+    png(dir.path(), "plot.png", 1);
+    let mut ws = Workspace::open_directory(dir.path(), true).unwrap();
+    ws.convert(&options(&ws), &AtomicBool::new(false), |_| {}).unwrap();
+    png(dir.path(), "plot.png", 200);
+    fs::write(dir.path().join("output/plot.pdf"), b"external edit").unwrap();
+    ws.refresh().unwrap();
+    assert!(!ws.project().images[0].update_available);
+    fs::remove_file(dir.path().join("output/plot.pdf")).unwrap();
+    ws.refresh().unwrap();
+    assert!(!ws.project().images[0].update_available);
+}
+
+#[test]
+fn svg_dependency_changes_are_reported_as_updates() {
+    let dir = tempfile::tempdir().unwrap();
+    png(dir.path(), "embedded.png", 1);
+    fs::write(dir.path().join("plot.svg"), r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="12"><image href="embedded.png" width="24" height="12"/></svg>"#).unwrap();
+    let mut ws = Workspace::open_directory(dir.path(), true).unwrap();
+    let mut opts = options(&ws);
+    opts.image_ids = ws.project().images.iter().filter(|asset| asset.format == "svg").map(|asset| asset.id.clone()).collect();
+    assert_eq!(opts.image_ids.len(), 1);
+    let result = ws.convert(&opts, &AtomicBool::new(false), |_| {}).unwrap();
+    assert!(result.images[0].error.is_none(), "{:?}", result.images[0].error);
+    png(dir.path(), "embedded.png", 200);
+    ws.refresh().unwrap();
+    assert!(ws.project().images.iter().find(|asset| asset.format == "svg").unwrap().update_available);
+}
+
+#[test]
 fn directory_modes_exclusions_and_extra_directories_survive_refresh() {
     let dir = tempfile::tempdir().unwrap();
     png(dir.path(), "top.png", 1);

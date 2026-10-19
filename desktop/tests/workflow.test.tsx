@@ -91,6 +91,33 @@ async function convertFirst(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("LaTeX 图片工作流", () => {
+  it("filters changed source images and clears their update badge after conversion", async () => {
+    backendProject.images[0] = { ...backendProject.images[0], updateAvailable: true };
+    const user = await openProject();
+    const status = screen.getByRole("combobox", { name: "筛选状态" });
+    await user.selectOptions(status, "updatable");
+    const preview = screen.getByRole("button", { name: "预览 figures/alpha.png" });
+    expect(within(preview.closest("tr")!).getByText("可更新")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "预览 figures/beta.jpg" })).not.toBeInTheDocument();
+    await convertFirst(user);
+    expect(screen.queryByRole("button", { name: "预览 figures/alpha.png" })).not.toBeInTheDocument();
+    await user.selectOptions(status, "all");
+    expect(within(screen.getByRole("button", { name: "预览 figures/alpha.png" }).closest("tr")!).getByText("已转换")).toBeInTheDocument();
+  });
+
+  it("detects updated images on rescan and keeps failed updates in the update filter", async () => {
+    const user = await openProject();
+    backendProject.images[0] = { ...backendProject.images[0], updateAvailable: true };
+    await user.click(screen.getByRole("button", { name: "重新扫描" }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "筛选状态" }), "updatable");
+    await user.click(screen.getByRole("checkbox", { name: "选择 figures/alpha.png" }));
+    handlers.convert_images = () => ({ images: [{ id: "a", pdfPath: null, bytes: null, cached: false, error: "转换失败" }], cancelled: false });
+    await user.click(screen.getByRole("button", { name: "转换所选图片" }));
+    await screen.findByText("转换完成：0 成功，1 失败");
+    expect(screen.getByRole("button", { name: "预览 figures/alpha.png" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "预览替换" })).toBeDisabled();
+  });
+
   it("keeps the current workspace intact when its sidebar recent entry is clicked", async () => {
     const user = await openProject();
     await user.click(screen.getByRole("checkbox", { name: "选择 figures/alpha.png" }));

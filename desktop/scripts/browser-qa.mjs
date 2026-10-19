@@ -12,7 +12,7 @@ const project = {
   undoAvailable: false, warnings: ["未找到 figures/missing.png"],
   images: [
     { id: "plot", path: "/论文/figures/result.png", relativePath: "figures/result.png", format: "png", width: 2400, height: 1600, bytes: 1000000, status: "ready", message: null, references: [reference] },
-    { id: "long", path: "/论文/figures/实验装置与磁流体响应结果.png", relativePath: "figures/实验装置与磁流体响应结果.png", format: "png", width: 1200, height: 900, bytes: 300000, status: "ready", message: null, references: [{ ...reference, line: 60 }] },
+    { id: "long", path: "/论文/figures/实验装置与磁流体响应结果.png", relativePath: "figures/实验装置与磁流体响应结果.png", format: "png", width: 1200, height: 900, bytes: 300000, status: "ready", updateAvailable: true, message: null, references: [{ ...reference, line: 60 }] },
     { id: "missing", path: null, relativePath: "figures/missing.png", format: "png", width: null, height: null, bytes: null, status: "missing", message: "找不到图片", references: [{ ...reference, line: 75 }] },
   ],
 };
@@ -96,6 +96,10 @@ try {
   assert.equal(await secondCheckbox.isChecked(), true, "Selection cell padding must toggle selection");
   assert.equal(await secondPreview.getAttribute("aria-pressed"), "false", "Checkbox must not activate preview");
   await secondCheckbox.uncheck();
+  await page.getByRole("combobox", { name: "筛选状态" }).selectOption("updatable");
+  assert.equal(await page.getByRole("button", { name: "预览 figures/result.png", exact: true }).count(), 0);
+  await secondRow.getByText("可更新", { exact: true }).waitFor();
+  await page.getByRole("combobox", { name: "筛选状态" }).selectOption("all");
   await page.screenshot({ path: "screenshots/fixture-workbench-desktop.png", fullPage: true });
   await page.getByRole("checkbox", { name: "选择 figures/result.png", exact: true }).check();
   await page.getByRole("button", { name: "转换所选图片", exact: true }).click();

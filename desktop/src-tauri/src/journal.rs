@@ -230,11 +230,25 @@ impl Journal {
     }
 
     pub fn valid(&self, root: &Path, output: &str, managed: &Managed) -> bool {
+        self.valid_output(root, output, managed) && self.valid_sources(root, managed).is_ok()
+    }
+
+    pub fn valid_output(&self, root: &Path, output: &str, managed: &Managed) -> bool {
         let path = root.join(output);
         safe_path(root, &path).is_ok()
             && fs::read(&path).is_ok_and(|bytes| digest(&bytes) == managed.pdf_hash)
-            && self.valid_sources(root, managed).is_ok()
             && lopdf::Document::load(path).is_ok_and(|doc| doc.get_pages().len() == 1)
+    }
+
+    pub fn sources_changed(&self, root: &Path, managed: &Managed) -> bool {
+        std::iter::once((&managed.source, &managed.source_hash)).chain(managed.dependencies.iter().map(|(path, hash)| (path, hash))).any(|(path, hash)| {
+            let path = root.join(path);
+            if safe_path(root, &path).is_err() { return false; }
+            match fs::read(path) {
+                Ok(bytes) => digest(&bytes) != *hash,
+                Err(error) => error.kind() == std::io::ErrorKind::NotFound,
+            }
+        })
     }
 
     pub fn valid_sources(&self, root: &Path, managed: &Managed) -> Result<(), String> {

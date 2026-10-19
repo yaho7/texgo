@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronLeft, ChevronRight, CircleCheck, FileImage, FileWarning, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, CircleCheck, FileImage, FileWarning, RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -57,6 +57,7 @@ export default function AssetList(props: Props) {
           <NativeSelect name="assetStatus" autoComplete="off" aria-label="筛选状态" value={props.filter} onChange={(event) => props.onFilter(event.target.value)}>
             <NativeSelectOption value="all">全部状态</NativeSelectOption>
             <NativeSelectOption value="ready">可转换</NativeSelectOption>
+            <NativeSelectOption value="updatable">可更新</NativeSelectOption>
             <NativeSelectOption value="converted">已转换</NativeSelectOption>
             <NativeSelectOption value="error">转换失败</NativeSelectOption>
             <NativeSelectOption value="missing">文件缺失</NativeSelectOption>
@@ -85,8 +86,9 @@ export default function AssetList(props: Props) {
             {pageImages.map((asset) => {
               const result = props.results[asset.id];
               const converted = Boolean(result?.pdfPath && !result.error);
+              const updatable = Boolean(asset.updateAvailable && !converted);
               const warning = ["missing", "unsupported", "ambiguous"].includes(asset.status);
-              const label = result?.cancelled ? "已取消" : result?.error ? "转换失败" : converted ? (result?.cached ? "已缓存" : "已转换") : statusLabels[asset.status];
+              const label = result?.cancelled ? "已取消" : result?.error ? "转换失败" : converted ? (result?.cached ? "已缓存" : "已转换") : updatable ? "可更新" : statusLabels[asset.status];
               const normalizedPath = asset.relativePath.replaceAll("\\", "/");
               const slash = normalizedPath.lastIndexOf("/");
               const filename = normalizedPath.slice(slash + 1);
@@ -111,8 +113,8 @@ export default function AssetList(props: Props) {
                   <TableCell className="hidden @min-[36rem]:table-cell"><span className="text-xs tabular-nums text-muted-foreground">{asset.width && asset.height ? `${asset.width} × ${asset.height}` : "-"}</span></TableCell>
                   <TableCell className="text-right"><span className="text-xs tabular-nums text-muted-foreground">{formatBytes(asset.bytes)}</span></TableCell>
                   <TableCell className="pr-4 text-right">
-                    <Badge variant={result?.error && !result.cancelled ? "destructive" : converted ? "success" : warning ? "warning" : "secondary"} title={result?.pdfPath ?? undefined}>
-                      {converted && <CircleCheck data-icon="inline-start" aria-hidden="true" />}{label}
+                    <Badge className={updatable && !result?.error ? "update-badge" : undefined} variant={result?.error && !result.cancelled ? "destructive" : converted ? "success" : warning ? "warning" : "secondary"} title={updatable ? "源图片或 SVG 依赖已变化，可重新转换" : result?.pdfPath ?? undefined}>
+                      {converted && <CircleCheck data-icon="inline-start" aria-hidden="true" />}{updatable && !result?.error && <RefreshCw data-icon="inline-start" aria-hidden="true" />}{label}
                     </Badge>
                   </TableCell>
                 </TableRow>
