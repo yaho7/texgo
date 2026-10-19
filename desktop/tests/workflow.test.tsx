@@ -231,7 +231,7 @@ describe("LaTeX 项目唯一工作流", () => {
     await user.click(screen.getByRole("button", { name: "操作记录" }));
     expect(screen.getByRole("button", { name: "操作记录" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByText("更新了 18 处 LaTeX 引用")).toBeInTheDocument();
-    expect(screen.queryByText(/0 张|300 DPI/)).not.toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "操作记录" })).queryByText(/0 张|300 DPI/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "设置" }));
     await screen.findByRole("main", { name: "设置" });
     await user.click(screen.getByRole("button", { name: "图片" }));
@@ -245,7 +245,7 @@ describe("LaTeX 项目唯一工作流", () => {
     await user.type(screen.getByRole("searchbox", { name: "搜索图片" }), "alpha");
     backend.images[0].updateAvailable = true; handlers.poll_workspace = () => structuredClone(backend);
     await act(async () => { fireEvent.focus(window); });
-    await screen.findByText("有更新");
+    await screen.findAllByText("有更新");
     expect(screen.getByRole("checkbox", { name: "选择 figures/alpha.png" })).toBeChecked();
     expect(screen.getByRole("searchbox", { name: "搜索图片" })).toHaveValue("alpha");
     expect(screen.queryByText("正在扫描…")).not.toBeInTheDocument();
@@ -310,6 +310,40 @@ describe("LaTeX 项目唯一工作流", () => {
     expect(within(dialog).getByRole("button", { name: "更新 2 处引用" })).toBeEnabled();
     expect(calls.some((call) => call.command === "apply_replacements")).toBe(false);
   });
+  it("offers an explicit safe retry for a failed source without writing immediately", async () => {
+    backend.images[0].message = "输出目录暂不可写";
+    setStatus({ pendingImageIds: ["b"], problemIds: ["missing", "unsupported", "a"] });
+    handlers.retry_asset = ({ imageId }) => {
+      expect(imageId).toBe("a");
+      setStatus({ pendingImageIds: ["a", "b"], problemIds: ["missing", "unsupported"], nextAction: "convertImages" });
+      backend.images[0].message = null; return structuredClone(backend);
+    };
+    const user = await openProject();
+    await user.click(screen.getByRole("button", { name: "预览 figures/alpha.png" }));
+    await user.click(screen.getByRole("button", { name: "重试此图片" }));
+    await screen.findByRole("button", { name: "更新 2 张图片" });
+    expect(calls.some((call) => call.command === "convert_images")).toBe(false);
+  });
+  it("reconciles partial background writes from a recovery snapshot when watcher is disabled", async () => {
+    handlers.get_preferences = () => ({ ...defaultPreferences, autoWatch: false, autoUpdate: false });
+    await openProject();
+    await act(async () => { await emit("background-start", structuredClone(backend)); });
+    backend.convertedImages = [{ id: "a", pdfPath: "/paper/pdf/a.pdf", bytes: 123, cached: false, error: null }];
+    setStatus({ pendingImageIds: ["b"], completedImageIds: ["pdf", "a"], nextAction: "convertImages" });
+    await act(async () => { await emit("workspace-updated", structuredClone(backend)); await emit("background-idle", null); });
+    expect(await screen.findByRole("button", { name: "更新 1 张图片" })).toBeEnabled();
+    expect(screen.getByRole("radio", { name: "已完成 2" })).toBeInTheDocument();
+  });
+  it("retains queued automatic review while settings is open", async () => {
+    const user = await openProject();
+    await user.click(screen.getByRole("button", { name: "更新 2 张图片" }));
+    await user.click(screen.getByRole("button", { name: "设置" }));
+    await screen.findByRole("main", { name: "设置" });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 750)); });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "图片" }));
+    expect(await screen.findByRole("dialog", { name: "检查引用变更" })).toBeInTheDocument();
+  });
   it("opens project by shortcut and ignores invalid drops", async () => {
     const user = userEvent.setup(); render(<App />);
     await act(async () => { await emit("tauri://drag-drop", { paths: ["/paper/figures/alpha.png"] }); });
@@ -320,7 +354,7 @@ describe("LaTeX 项目唯一工作流", () => {
   });
   it("opens settings and returns to the preserved project with keyboard shortcuts", async () => {
     const user = await openProject(); await user.keyboard("{Control>}f{/Control}");
-    expect(screen.getByRole("searchbox", { name: "搜索图片" })).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole("searchbox", { name: "搜索图片" })).toHaveFocus());
     await user.keyboard("{Control>},{/Control}"); await screen.findByRole("main", { name: "设置" });
     await user.keyboard("{Escape}");
     expect(screen.getByRole("searchbox", { name: "搜索图片" })).toBeInTheDocument();

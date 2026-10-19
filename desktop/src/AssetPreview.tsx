@@ -27,6 +27,7 @@ interface Props {
   statusLabel?: string;
   onLocate?: (id: string) => void;
   onInspect?: (id: string) => void;
+  onRetry?: (id: string) => void;
   onIgnore?: (id: string, ignored?: boolean) => void;
 }
 interface PreviewResponse { key: string; preview: AssetPreviewData; label: string; width: number; height: number }
@@ -82,7 +83,7 @@ function PreviewContent({ asset, converted, revision, pdfPath, overlay = false }
   </div>;
 }
 
-export default function AssetPreview({ asset, result, revision, busy = false, ignored, statusLabel, onLocate, onInspect, onIgnore }: Props) {
+export default function AssetPreview({ asset, result, revision, busy = false, ignored, statusLabel, onLocate, onInspect, onIgnore, onRetry }: Props) {
   const [mode, setMode] = useState("original");
   const unavailable = !asset?.path || ["missing", "ambiguous", "unsupported"].includes(asset.status);
   const hasConverted = Boolean(asset && !unavailable && result?.id === asset.id && result.pdfPath && !result.error && !result.cancelled);
@@ -160,6 +161,6 @@ export default function AssetPreview({ asset, result, revision, busy = false, ig
       {asset && <Popover><PopoverTrigger asChild><Button type="button" variant="link" size="sm" disabled={asset.references.length === 0} className="preview-reference-trigger">被引用 {asset.references.length} 次</Button></PopoverTrigger><PopoverContent className="preview-references" align="end" aria-label="引用位置"><h3 className="text-sm font-medium">引用位置</h3><ul>{asset.references.map((reference, index) => <li key={`${reference.file}:${reference.line}:${index}`}><span title={reference.file}>{reference.file.split(/[\\/]/).pop()}</span><span>第 {reference.line} 行</span></li>)}</ul></PopoverContent></Popover>}
       {saving !== null && <span className="preview-savings">{saving >= 0 ? `节省 ${Number(saving.toFixed(1))}%` : `增大 ${Number((-saving).toFixed(1))}%`}</span>}
     </div>
-    {asset && <div className="inspector-image-state"><Badge variant={problem && !ignored ? "destructive" : "secondary"}>{state}</Badge>{problem && <><p>{result?.error ?? asset.message}</p>{asset.status === "missing" && <p>LaTeX 引用了：<code>{asset.relativePath}</code></p>}</>}<div className="inspector-image-actions">{problem && onLocate && ["missing", "ambiguous"].includes(asset.status) && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onLocate(asset.id)}>定位文件</Button>}{problem && onInspect && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onInspect(asset.id)}>{["missing", "ambiguous"].includes(asset.status) ? "修复" : "查看详情"}</Button>}{onIgnore && <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => onIgnore(asset.id, !ignored)}>{ignored ? "恢复处理" : "忽略本次"}</Button>}</div></div>}
+    {asset && <div className="inspector-image-state"><Badge variant={problem && !ignored ? "destructive" : "secondary"}>{state}</Badge>{problem && <><p>{result?.error ?? asset.message}</p>{asset.status === "missing" && <p>LaTeX 引用了：<code>{asset.relativePath}</code></p>}</>}<div className="inspector-image-actions">{problem && asset.status === "ready" && !ignored && onRetry && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onRetry(asset.id)}>重试此图片</Button>}{problem && onLocate && ["missing", "ambiguous"].includes(asset.status) && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onLocate(asset.id)}>定位文件</Button>}{problem && onInspect && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onInspect(asset.id)}>{["missing", "ambiguous"].includes(asset.status) ? "修复" : "查看详情"}</Button>}{onIgnore && <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => onIgnore(asset.id, !ignored)}>{ignored ? "恢复处理" : "忽略本次"}</Button>}</div></div>}
   </section>;
 }

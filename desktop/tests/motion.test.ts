@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");

@@ -151,6 +151,9 @@ export default function App() {
     function keep(promise: Promise<() => void>) {
       void promise.then((stop) => { if (active) stops.push(stop); else void Promise.resolve(stop()).catch(() => {}); }).catch(() => {});
     }
+    keep(listen<Project>("workspace-updated", ({ payload }) => {
+      if (projectRef.current?.mainFile === payload.mainFile) void acceptProject(payload, true, "项目状态已更新").catch((reason) => setError(errorMessage(reason)));
+    }));
     keep(listen<Project>("background-start", ({ payload }) => backgroundStart.current(payload)));
     keep(listen<SmartReport>("background-finished", ({ payload }) => backgroundFinished.current(payload)));
     keep(listen("background-idle", () => { if (backgroundActive.current) { backgroundActive.current = false; operationRef.current = null; setOperation(null); void loadHistory(); } }));
@@ -306,6 +309,11 @@ export default function App() {
     });
   }
 
+  function retryAsset(imageId: string) {
+    if (operationRef.current) return;
+    void execute("updating", async () => acceptProject(await invoke<Project>("retry_asset", { imageId }), true, "已准备重试，请确认更新图片"));
+  }
+
   function inspectProblem(imageId: string) {
     if (!project || busy) return;
     setView("assets"); setActiveId(imageId); setProblemId(imageId); setRepairCandidates([]); rememberFocus();
@@ -375,6 +383,11 @@ export default function App() {
           const preview = await invoke<ChangePreview>("preview_changes");
           if (preview.referenceCount > 0) setQueuedReview({ key: workspaceKey(projectEntry(fresh)), preview });
         }
+      } catch (reason) {
+        // A multi-destination update may have partially completed before returning an error.
+        try { await refresh("更新中断，已重新读取项目状态"); }
+        catch (recovery) { setProject(null); projectRef.current = null; throw new Error(`${errorMessage(reason)}；重新扫描失败：${errorMessage(recovery)}`); }
+        throw reason;
       } finally {
         acceptingEvents = false;
         unlisten?.();
@@ -471,7 +484,7 @@ export default function App() {
     const failed = report.result.images.filter((image) => image.error).length;
     const updated = report.result.images.length - failed;
     const status = report.project.status;
-    setNotice(updated ? `已更新 ${updated} 张图片` : status.pendingReferences ? `${status.pendingReferences} 处引用等待确认` : status.problemCount ? `${status.problemCount} 个问题需要处理` : "项目已是最新状态");
+    setNotice(updated ? `已更新 ${updated} 张图片` : status.pendingReferences ? `${status.pendingReferences} 处引用等待确认` : status.blockingReason ? "项目存在安全问题，请先处理" : status.pendingImages ? `${status.pendingImages} 张图片需要更新` : status.problemCount ? `${status.problemCount} 个问题需要处理` : "项目已是最新状态");
     if (updated > 0) setCompletion(updated);
     if (status.pendingReferences > 0) {
       void invoke<ChangePreview>("preview_changes").then((preview) => {
@@ -591,7 +604,7 @@ export default function App() {
             <Splitter label="调整图片列表宽度" value={assetsWidth} min={340} max={900} onChange={setAssetsWidth} />
             <div className="asset-inspector" key={contextKey ?? undefined}><AssetPreview busy={busy} asset={activeAsset} result={activeAsset ? results[activeAsset.id] : undefined} revision={revision} ignored={activeAsset ? ignored.has(activeAsset.id) : false}
               statusLabel={activeAsset ? ignored.has(activeAsset.id) ? "已忽略" : problemIds.has(activeAsset.id) ? "需要处理" : pendingIds.has(activeAsset.id) ? activeAsset.updateAvailable ? "有更新" : "待转换" : "已完成" : undefined}
-              onInspect={inspectProblem} onLocate={locateRepair} onIgnore={(id, value) => { void ignoreAsset(id, value); }} /></div>
+              onInspect={inspectProblem} onLocate={locateRepair} onRetry={project.status.blockingReason ? undefined : retryAsset} onIgnore={(id, value) => { void ignoreAsset(id, value); }} /></div>
           </div>
           <div className="history-view page-enter" hidden={view !== "history"}><ConversionHistory highlightId={highlightBatch} entries={history} busy={busy} onUndo={(entry) => { rememberFocus(); setError(null); setUndoEntry(entry); }} /></div>
         </main>
