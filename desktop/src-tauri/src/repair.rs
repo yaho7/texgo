@@ -1,12 +1,13 @@
 //! Reviewed reference repair. Discovery and preparation never write files.
-//! Keep the original Scan and Prepared until approval; apply acquires its own
-//! project lock, so Workspace must not already hold transaction::lock_project.
-//! Uses the standalone (legacy) undo record, not a conversion batch association.
+//! Keep the Scan and full ReplacementPlan until approval. prepare_reviewed never
+//! locks or writes: Workspace can hold one lock and use transaction::apply_linked.
+//! Legacy apply/apply_reviewed acquire their own lock and create standalone undo
+//! records; callers of those wrappers must not already hold a project lock.
 use crate::journal::{self, Journal};
 use crate::models::{FileChanges, ImageAsset, MutationResult, Project, ReferenceChange, ReplacementPlan};
 use crate::{scanner, transaction};
 use serde::Serialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -74,7 +75,10 @@ fn checked_target(root: &Path, target: &Path, excluded: &[PathBuf]) -> Result<(P
         return Err("请选择项目内的普通图片文件或 PDF".into());
     }
     if path.canonicalize().map_err(|e| e.to_string())? != path { return Err("图片路径发生变化，请重新选择".into()); }
-    let relative = path.strip_prefix(root).map_err(|e| e.to_string())?.to_str().ok_or("图片路径不是 UTF-8")?.to_string();
+    // Normalize native separators, but retain/reject literal backslashes in Unix
+    // filenames rather than accidentally generating a different target path.
+    let relative = path.strip_prefix(root).map_err(|e| e.to_string())?.to_str().ok_or("图片路径不是 UTF-8")?
+        .replace(std::path::MAIN_SEPARATOR, "/");
     if !static_path(&relative) || relative.trim() != relative {
         return Err("图片路径含有 TeX 特殊字符，请先重命名".into());
     }
@@ -120,6 +124,10 @@ pub(crate) fn candidates(project: &Project, id: &str) -> Result<Vec<Candidate>, 
 
 /// Returns a normal transaction plan plus exact before/after bytes, without writes.
 pub(crate) fn prepare(scan: &scanner::Scan, id: &str, target: &Path) -> Result<transaction::Prepared, String> {
+    prepare_selected(scan, id, target, None)
+}
+
+fn prepare_selected(scan: &scanner::Scan, id: &str, target: &Path, selection: Option<&HashSet<String>>) -> Result<transaction::Prepared, String> {
     let asset = problem(&scan.project, id)?;
     let root = root(&scan.project)?;
     let (_, replacement) = checked_target(&root, target, &excluded(&root)?)?;
@@ -138,8 +146,15 @@ pub(crate) fn prepare(scan: &scanner::Scan, id: &str, target: &Path) -> Result<t
         || serde_json::to_vec(current_asset).map_err(|e| e.to_string())? != serde_json::to_vec(asset).map_err(|e| e.to_string())? {
         return Err("扫描快照已改变，请重新扫描后审核修复".into());
     }
+    if let Some(selection) = selection {
+        if selection.is_empty() { return Err("请至少选择一处需要修复的引用".into()); }
+        let known: HashSet<String> = asset.references.iter()
+            .map(|reference| format!("{}:{}", reference.file, reference.start)).collect();
+        if !selection.is_subset(&known) { return Err("所选引用不在修复计划中，请重新审核".into()); }
+    }
     let mut edits = BTreeMap::<PathBuf, Vec<_>>::new();
     for reference in &asset.references {
+        if selection.is_some_and(|ids| !ids.contains(&format!("{}:{}", reference.file, reference.start))) { continue; }
         edits.entry(PathBuf::from(&reference.file)).or_default().push(reference);
     }
     let mut prepared = transaction::Prepared {
@@ -173,6 +188,26 @@ pub(crate) fn prepare(scan: &scanner::Scan, id: &str, target: &Path) -> Result<t
         prepared.files.push((path, before.clone(), after.into_bytes()));
     }
     Ok(prepared)
+}
+
+/// Read-only preparation for a task-linked transaction. The expected plan must
+/// include ALL references, not only checked rows. Caller owns any required lock.
+pub(crate) fn prepare_reviewed(scan: &scanner::Scan, id: &str, target: &Path, expected: &ReplacementPlan, selection: &HashSet<String>) -> Result<transaction::Prepared, String> {
+    let complete = prepare(scan, id, target)?;
+    if serde_json::to_vec(&complete.plan).map_err(|e| e.to_string())?
+        != serde_json::to_vec(expected).map_err(|e| e.to_string())? {
+        return Err("修复计划已改变，请重新审核".into());
+    }
+    prepare_selected(scan, id, target, Some(selection))
+}
+
+/// Standalone-undo convenience wrapper. Workspace task repair should instead
+/// call prepare_reviewed under its own lock, then transaction::apply_linked.
+pub(crate) fn apply_reviewed(scan: &scanner::Scan, id: &str, target: &Path, expected: &ReplacementPlan, selection: &HashSet<String>) -> Result<MutationResult, String> {
+    let root = root(&scan.project)?;
+    let _lock = transaction::lock_project(&root)?;
+    let prepared = prepare_reviewed(scan, id, target, expected, selection)?;
+    transaction::apply(&scan.project, prepared)
 }
 
 /// Call only after human approval of reviewed.plan. No nested project lock.

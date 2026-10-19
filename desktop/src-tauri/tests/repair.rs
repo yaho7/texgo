@@ -11,7 +11,7 @@
 #[path = "../src/workspace.rs"] mod workspace;
 pub use models::*;
 
-use std::{fs, path::Path};
+use std::{collections::HashSet, fs, path::Path};
 
 fn tempdir() -> tempfile::TempDir {
     tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap()
@@ -125,7 +125,14 @@ fn outside_directory_reserved_and_tex_metacharacter_targets_are_rejected() {
     let id = &scan.project.images[0].id;
     assert!(repair::prepare(&scan, id, &outside.path().join("plot.png")).is_err());
     assert!(repair::prepare(&scan, id, dir.path()).is_err());
-    for name in ["texgo-pdf/plot.png", "bad%/plot.png", "bad#/plot.png", "bad\\/plot.png", "plot.tex", "bad\n/plot.png"] {
+    for name in ["texgo-pdf/plot.png", "bad%/plot.png", "bad#/plot.png", "plot.tex"] {
+        write(dir.path(), name, b"image");
+        assert!(repair::prepare(&scan, id, &dir.path().join(name)).is_err(), "{name:?}");
+    }
+    // These are legal Unix filenames; Windows rejects them at file creation or
+    // interprets backslash as a directory separator instead of a literal name.
+    #[cfg(unix)]
+    for name in ["bad\\/plot.png", "bad\n/plot.png"] {
         write(dir.path(), name, b"image");
         assert!(repair::prepare(&scan, id, &dir.path().join(name)).is_err(), "{name:?}");
     }
@@ -222,4 +229,153 @@ fn too_many_candidates_fail_closed_instead_of_silently_truncating() {
     let scan = scan(dir.path(), "\\includegraphics{missing/plot}");
     let error = repair::candidates(&scan.project, &scan.project.images[0].id).unwrap_err();
     assert!(error.contains("512"));
+}
+
+#[test]
+fn reviewed_subset_preparation_is_read_only_and_preserves_unselected_arguments() {
+    let dir = tempdir();
+    write(dir.path(), "figs/实验.png", b"image");
+    let source = "中文 \\includegraphics{ missing }\r\n\\includegraphics[width=2cm]{missing}\r\n\\includegraphics{missing}%keep";
+    let scan = scan(dir.path(), source);
+    let id = &scan.project.images[0].id;
+    let target = dir.path().join("figs/实验.png");
+    let expected = repair::prepare(&scan, id, &target).unwrap().plan;
+    let selection = HashSet::from([
+        expected.files[0].changes[0].id.clone(),
+        expected.files[0].changes[2].id.clone(),
+    ]);
+    let prepared = repair::prepare_reviewed(&scan, id, &target, &expected, &selection).unwrap();
+    assert_eq!(prepared.plan.reference_count, 2);
+    assert_eq!(prepared.plan.files[0].changes.len(), 2);
+    assert_eq!(prepared.files[0].2, "中文 \\includegraphics{ figs/实验.png }\r\n\\includegraphics[width=2cm]{missing}\r\n\\includegraphics{figs/实验.png}%keep".as_bytes());
+    assert_eq!(fs::read(dir.path().join("main.tex")).unwrap(), source.as_bytes());
+    assert!(!dir.path().join(".texgo").exists());
+}
+
+#[test]
+fn reviewed_subset_rejects_unknown_empty_and_mixed_selections_without_writes() {
+    let dir = tempdir();
+    write(dir.path(), "plot.png", b"image");
+    let scan = scan(dir.path(), "\\includegraphics{missing}");
+    let id = &scan.project.images[0].id;
+    let target = dir.path().join("plot.png");
+    let expected = repair::prepare(&scan, id, &target).unwrap().plan;
+    let valid = expected.files[0].changes[0].id.clone();
+    for selection in [HashSet::new(), HashSet::from(["unknown:0".into()]), HashSet::from([valid, "unknown:0".into()])] {
+        assert!(repair::prepare_reviewed(&scan, id, &target, &expected, &selection).is_err());
+    }
+    assert!(!dir.path().join(".texgo").exists());
+}
+
+#[test]
+fn reviewed_subset_compares_the_complete_plan_including_unselected_changes() {
+    let dir = tempdir();
+    write(dir.path(), "plot.png", b"image");
+    let scan = scan(dir.path(), "\\includegraphics{missing}\\includegraphics{missing}");
+    let id = &scan.project.images[0].id;
+    let target = dir.path().join("plot.png");
+    let expected = repair::prepare(&scan, id, &target).unwrap().plan;
+    let selection = HashSet::from([expected.files[0].changes[0].id.clone()]);
+    let mut changed = expected.clone();
+    changed.files[0].changes[1].after = "tampered-unselected.png".into();
+    assert!(repair::prepare_reviewed(&scan, id, &target, &changed, &selection).is_err());
+    let mut truncated = expected.clone();
+    truncated.files[0].changes.pop();
+    truncated.reference_count -= 1;
+    assert!(repair::prepare_reviewed(&scan, id, &target, &truncated, &selection).is_err());
+    assert!(!dir.path().join(".texgo").exists());
+}
+
+#[test]
+fn reviewed_subset_application_is_locked_and_undo_restores_only_its_changes() {
+    let dir = tempdir();
+    write(dir.path(), "plot.png", b"image");
+    let source = "\\includegraphics{missing}\\includegraphics{missing}";
+    let scan = scan(dir.path(), source);
+    let id = &scan.project.images[0].id;
+    let target = dir.path().join("plot.png");
+    let expected = repair::prepare(&scan, id, &target).unwrap().plan;
+    let selection = HashSet::from([expected.files[0].changes[1].id.clone()]);
+    {
+        let _lock = transaction::lock_project(Path::new(&scan.project.root)).unwrap();
+        assert!(repair::prepare_reviewed(&scan, id, &target, &expected, &selection).is_ok());
+        assert!(repair::apply_reviewed(&scan, id, &target, &expected, &selection).is_err());
+    }
+    let result = repair::apply_reviewed(&scan, id, &target, &expected, &selection).unwrap();
+    assert_eq!(result.files_changed, 1);
+    assert_eq!(result.references_changed, 1);
+    assert_eq!(fs::read(dir.path().join("main.tex")).unwrap(), b"\\includegraphics{missing}\\includegraphics{plot.png}");
+    transaction::undo(&scan.project).unwrap();
+    assert_eq!(fs::read(dir.path().join("main.tex")).unwrap(), source.as_bytes());
+}
+
+#[test]
+fn reviewed_subset_revalidates_unselected_source_graph_before_applying() {
+    let dir = tempdir();
+    write(dir.path(), "plot.png", b"image");
+    write(dir.path(), "chapter.tex", "original");
+    let scan = scan(dir.path(), "\\input{chapter}\\includegraphics{missing}");
+    let id = &scan.project.images[0].id;
+    let target = dir.path().join("plot.png");
+    let expected = repair::prepare(&scan, id, &target).unwrap().plan;
+    let selection = HashSet::from([expected.files[0].changes[0].id.clone()]);
+    write(dir.path(), "chapter.tex", "external edit");
+    assert!(repair::prepare_reviewed(&scan, id, &target, &expected, &selection).is_err());
+    assert!(repair::apply_reviewed(&scan, id, &target, &expected, &selection).is_err());
+    assert!(!dir.path().join(".texgo/undo.json").exists());
+}
+
+#[test]
+fn reviewed_subset_can_be_linked_to_a_task_with_one_external_lock() {
+    let dir = tempdir();
+    write(dir.path(), "plot.png", b"image");
+    let source = "\\includegraphics{missing}\\includegraphics{missing}";
+    let scan = scan(dir.path(), source);
+    let id = &scan.project.images[0].id;
+    let target = dir.path().join("plot.png");
+    let expected = repair::prepare(&scan, id, &target).unwrap().plan;
+    let selection = HashSet::from([expected.files[0].changes[0].id.clone()]);
+    let root = Path::new(&scan.project.root);
+    let _lock = transaction::lock_project(root).unwrap();
+    let prepared = repair::prepare_reviewed(&scan, id, &target, &expected, &selection).unwrap();
+    let mut journal = journal::Journal::load(root).unwrap();
+    journal.begin(root, &models::ConversionOptions {
+        image_ids: vec![], quality: "custom".into(), dpi: 150,
+        jpeg_quality: 90, output_dir: "texgo-pdf".into(),
+    }).unwrap();
+    let batch_id = journal.latest_batch_id().unwrap().to_owned();
+    transaction::apply_linked(&scan.project, prepared, Some(&batch_id)).unwrap();
+    transaction::undo_batch_locked(&scan.project, &batch_id).unwrap();
+    assert_eq!(fs::read(root.join("main.tex")).unwrap(), source.as_bytes());
+}
+
+#[test]
+fn nested_target_references_and_candidate_labels_use_forward_slashes() {
+    let dir = tempdir();
+    write(dir.path(), "figs/nested/plot.png", b"image");
+    let scan = scan(dir.path(), "\\includegraphics{missing/plot}");
+    let id = &scan.project.images[0].id;
+    let prepared = repair::prepare(&scan, id, &dir.path().join("figs/nested/plot.png")).unwrap();
+    assert_eq!(prepared.plan.files[0].changes[0].after, "figs/nested/plot.png");
+    assert_eq!(repair::candidates(&scan.project, id).unwrap()[0].relative_path, "figs/nested/plot.png");
+}
+
+#[test]
+fn reviewed_apply_rejects_empty_unknown_and_unreviewed_selections_without_tex_writes() {
+    let dir = tempdir();
+    write(dir.path(), "plot.png", b"image");
+    let source = "\\includegraphics{missing}";
+    let scan = scan(dir.path(), source);
+    let id = &scan.project.images[0].id;
+    let target = dir.path().join("plot.png");
+    let expected = repair::prepare(&scan, id, &target).unwrap().plan;
+    for selection in [HashSet::new(), HashSet::from(["unknown:0".into()])] {
+        assert!(repair::apply_reviewed(&scan, id, &target, &expected, &selection).is_err());
+    }
+    let selection = HashSet::from([expected.files[0].changes[0].id.clone()]);
+    let mut changed = expected.clone();
+    changed.files[0].changes[0].line += 1;
+    assert!(repair::apply_reviewed(&scan, id, &target, &changed, &selection).is_err());
+    assert_eq!(fs::read(dir.path().join("main.tex")).unwrap(), source.as_bytes());
+    assert!(!dir.path().join(".texgo/undo.json").exists());
 }
