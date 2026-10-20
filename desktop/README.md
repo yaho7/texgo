@@ -37,3 +37,11 @@ Windows requires current WebView2; Linux requires current WebKitGTK
 [Chinese guide](README.zh.md), [API](../docs/api.md),
 [schema](../docs/project.schema.json) and [editor example](../examples/vscode/).
 The repository's [MIT license](../LICENSE) applies.
+
+## Explicit asset control
+
+The Command Bar recommends one primary action but keeps manual conversion available in every project state. Its conversion menu updates pending images, selects a temporary subset, or explicitly reconverts the current/all convertible assets. A manual reconvert bypasses cache reuse, never output ownership, external-edit, symlink, journal, or pending-reference protection. Smart Convert remains pending-only.
+
+Asset menus distinguish session ignore from permanent project ignore (`.texgo/ignore.json`, version 1). Permanent identities use normalized project-relative source paths, or relative TeX file plus original reference argument for unresolved assets; IDs and line numbers are not persisted. Ignored assets can be converted explicitly once without removing their ignore rule. Corrupt rules block writes rather than being overwritten.
+
+Double-click the filename text, press F2, or choose Rename to edit its basename with a fixed extension. Enter submits; Escape/blur cancels; errors remain inline. The Rust transaction migrates the source, managed PDFs, verified TeX reference spans, ownership, mappings, and ignore identities. It records durable before/after states before writing and rolls back interrupted work before scanning. History and safe reverse-order Undo include rename operations. Keep `.texgo/` to preserve recovery data. Case-only names, dotted names with extensionless references, and assets referenced as external SVG resources are conservatively rejected.

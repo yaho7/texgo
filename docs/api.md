@@ -497,3 +497,11 @@ TeX document, SVG, config, and `.vscode/tasks.json`. Its default build task runs
 the pipeline once; its background task runs watch. Neither runs automatically
 on folder open. The example deliberately opts into reference replacement;
 set `images.replace:false` to keep TeX references untouched.
+
+## Desktop asset-control commands
+
+The native desktop bridge additionally exposes `ignore_asset({imageId, mode})`, where `mode` is `none`, `session`, or `permanent`, and `rename_asset({imageId, newBaseName, expectedFingerprint})`. The rename fingerprint comes from the current `Project.stateFingerprint`. It returns `{project, oldImageId, newImageId}` after a complete backend transaction and rescan; consumers migrate the active ID rather than editing paths locally.
+
+`Project.images[].ignoreMode` is authoritative. `WorkspaceStatus.convertibleImageIds` lists explicit manual candidates independently of `pendingImageIds` and `nextAction`. `convert_images({options, intent})` accepts `pending`, `selected`, or `reconvert`; omitting intent preserves pending behavior. The latter two represent explicit user selection and regenerate selected outputs without cache reuse, including ignored assets without changing ignore rules. Existing conversion options, engine pipeline and Smart Convert retain their meanings.
+
+Rename history entries carry an optional `rename` summary. Recovery data is stored in `.texgo/rename-active.json` during a transaction and `.texgo/rename-undo/` for Undo. External edits cause preflight rejection, and interrupted changes recover before scanning. These desktop commands do not change the independent engine JSON-RPC protocol.
