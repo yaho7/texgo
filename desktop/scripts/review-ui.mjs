@@ -60,18 +60,18 @@ const preferences = { startup: "home", autoWatch: false, autoUpdate: false, dpi:
 function reference(name, line = 128) { return { file: `${projectRoot}/chapters/results.tex`, line, original: `figures/${name}`, start: 0, end: name.length }; }
 const assets = Array.from({ length: 18 }, (_, index) => {
   const name = index === 0 ? "response-curve.png" : index === 1 ? "architecture.svg" : `experiment-${String(index + 1).padStart(2, "0")}.png`;
-  return { id: `image-${index + 1}`, path: `${projectRoot}/figures/${name}`, relativePath: `figures/${name}`, format: name.endsWith("svg") ? "svg" : "png", width: 1024, height: 1024, bytes: png.length, status: "ready", updateAvailable: index > 1 && index < 6, message: null, references: [reference(name, 128 + index), ...(index === 0 ? [reference(name, 231)] : [])] };
+  return { id: `image-${index + 1}`, path: `${projectRoot}/figures/${name}`, relativePath: `figures/${name}`, format: name.endsWith("svg") ? "svg" : "png", width: 1024, height: 1024, bytes: png.length, status: "ready", canRename: true, ignoreMode: "none", updateAvailable: index > 1 && index < 6, message: null, references: [reference(name, 128 + index), ...(index === 0 ? [reference(name, 231)] : [])] };
 });
 const problems = [
-  { id: "missing", path: null, relativePath: "figures/missing-result.png", format: "png", width: null, height: null, bytes: null, status: "missing", updateAvailable: false, message: "项目中找不到 LaTeX 引用的图片。", references: [reference("missing-result.png", 46)] },
-  { id: "ambiguous", path: null, relativePath: "figures/calibration", format: "", width: null, height: null, bytes: null, status: "ambiguous", updateAvailable: false, message: "找到多个同名图片，请确认项目使用的文件。", references: [reference("calibration", 72)] },
+  { id: "missing", path: null, relativePath: "figures/missing-result.png", format: "png", width: null, height: null, bytes: null, status: "missing", canRename: false, ignoreMode: "none", updateAvailable: false, message: "项目中找不到 LaTeX 引用的图片。", references: [reference("missing-result.png", 46)] },
+  { id: "ambiguous", path: null, relativePath: "figures/calibration", format: "", width: null, height: null, bytes: null, status: "ambiguous", canRename: false, ignoreMode: "none", updateAvailable: false, message: "找到多个同名图片，请确认项目使用的文件。", references: [reference("calibration", 72)] },
 ];
 function projectFixture(scenario) {
   const completed = scenario === "completed" || scenario === "review";
   const pendingImageIds = completed ? [] : assets.slice(0, 12).map((image) => image.id);
   const completedImageIds = (completed ? assets : assets.slice(12)).map((image) => image.id);
   const images = completed ? assets : [...assets, ...problems];
-  return { mainFile, root: projectRoot, texFiles: [mainFile, `${projectRoot}/chapters/results.tex`, `${projectRoot}/appendix.tex`], images, convertedImages: images.filter((image) => completedImageIds.includes(image.id)).map((image) => ({ id: image.id, pdfPath: `${projectRoot}/texgo-pdf/${image.id}.pdf`, bytes: Math.round(png.length * .8), cached: false, error: null })), warnings: [], undoAvailable: true, status: { pendingImages: pendingImageIds.length, pendingReferences: scenario === "review" ? 18 : 0, problemCount: completed ? 0 : problems.length, ignoredCount: 0, completedImages: completedImageIds.length, totalImages: images.length, pendingImageIds, completedImageIds, problemIds: completed ? [] : problems.map((image) => image.id), ignoredImageIds: [], nextAction: scenario === "review" ? "reviewReferences" : completed ? "upToDate" : "convertImages", blockingReason: null } };
+  return { stateFingerprint: `visual-fixture-${scenario}`, mainFile, root: projectRoot, texFiles: [mainFile, `${projectRoot}/chapters/results.tex`, `${projectRoot}/appendix.tex`], images, convertedImages: images.filter((image) => completedImageIds.includes(image.id)).map((image) => ({ id: image.id, pdfPath: `${projectRoot}/texgo-pdf/${image.id}.pdf`, bytes: Math.round(png.length * .8), cached: false, error: null })), warnings: [], undoAvailable: true, status: { convertibleImageIds: assets.map((image) => image.id), pendingImages: pendingImageIds.length, pendingReferences: scenario === "review" ? 18 : 0, problemCount: completed ? 0 : problems.length, ignoredCount: 0, completedImages: completedImageIds.length, totalImages: images.length, pendingImageIds, completedImageIds, problemIds: completed ? [] : problems.map((image) => image.id), ignoredImageIds: [], nextAction: scenario === "review" ? "reviewReferences" : completed ? "upToDate" : "convertImages", blockingReason: null } };
 }
 const history = [
   { id: "images-and-references", createdAt: new Date("2026-10-20T10:42:00Z").getTime(), outputDir: "texgo-pdf", dpi: 300, jpegQuality: 90, files: assets.slice(0, 12).map((image) => ({ source: image.relativePath, output: `texgo-pdf/${image.id}.pdf`, cached: false, error: null })), referencesChanged: 18, filesChanged: 2, undone: false, canUndo: true },
@@ -84,7 +84,20 @@ const preview = { referenceCount: 18, files: [{ path: `${projectRoot}/chapters/r
 function installNativeFixture(fixture) {
   localStorage.clear();
   localStorage.setItem("texgo.recents.v1", JSON.stringify([{ path: fixture.mainFile, openedAt: 1792492920000 }, { path: "/Users/research/paper/paper.tex", openedAt: 1792406520000 }, { path: "/Users/research/report/report.tex", openedAt: 1792320120000 }]));
-  const callbacks = new Map(), listeners = new Map(), unexpectedCommands = [];
+  const callbacks = new Map(), listeners = new Map(), unexpectedCommands = [], commands = [];
+  const basePending = [...fixture.project.status.pendingImageIds];
+  const baseProblems = [...fixture.project.status.problemIds];
+  const baseCompleted = [...fixture.project.status.completedImageIds];
+  function updateClassification() {
+    const status = fixture.project.status;
+    status.ignoredImageIds = fixture.project.images.filter((image) => image.ignoreMode !== "none").map((image) => image.id);
+    status.ignoredCount = status.ignoredImageIds.length;
+    status.pendingImageIds = basePending.filter((id) => !status.ignoredImageIds.includes(id));
+    status.problemIds = baseProblems.filter((id) => !status.ignoredImageIds.includes(id));
+    status.completedImageIds = baseCompleted.filter((id) => !status.ignoredImageIds.includes(id));
+    status.pendingImages = status.pendingImageIds.length; status.problemCount = status.problemIds.length; status.completedImages = status.completedImageIds.length;
+    status.nextAction = status.pendingReferences ? "reviewReferences" : status.pendingImages ? "convertImages" : status.problemCount ? "resolveProblems" : "upToDate";
+  }
   let identifier = 1;
   function unregisterListener(event, id) { listeners.get(event)?.delete(id); callbacks.delete(id); }
   function runCallback(id, data) { callbacks.get(id)?.(data); }
@@ -95,6 +108,7 @@ function installNativeFixture(fixture) {
     transformCallback(callback, once = false) { const id = identifier++; callbacks.set(id, (data) => { if (once) callbacks.delete(id); return callback?.(data); }); return id; },
     unregisterCallback(id) { callbacks.delete(id); }, runCallback,
     async invoke(command, args = {}) {
+      commands.push({ command, args: structuredClone(args) });
       switch (command) {
         case "plugin:event|listen": if (!listeners.has(args.event)) listeners.set(args.event, new Set()); listeners.get(args.event).add(args.handler); return args.handler;
         case "plugin:event|unlisten": unregisterListener(args.event, args.eventId); return null;
@@ -107,6 +121,34 @@ function installNativeFixture(fixture) {
         case "open_project": case "refresh_workspace": return structuredClone(fixture.project);
         case "close_workspace": return null;
         case "poll_workspace": return null;
+        case "ignore_asset": {
+          const image = fixture.project.images.find((item) => item.id === args.imageId);
+          if (!image || !["none", "session", "permanent"].includes(args.mode)) throw new Error("Ignore fixture requires an explicit known asset and mode");
+          image.ignoreMode = args.mode; updateClassification(); return structuredClone(fixture.project);
+        }
+        case "rename_asset": {
+          if (args.expectedFingerprint !== fixture.project.stateFingerprint) throw new Error("Unexpected rename fingerprint");
+          const image = fixture.project.images.find((item) => item.id === args.imageId);
+          if (!image?.canRename) throw new Error("Asset is not renameable");
+          const oldImageId = image.id, oldSource = image.relativePath, slash = oldSource.lastIndexOf("/"), oldFilename = oldSource.slice(slash + 1), extension = oldFilename.slice(oldFilename.lastIndexOf("."));
+          const newSource = oldSource.slice(0, slash + 1) + args.newBaseName + extension;
+          const newImageId = oldImageId + "-renamed";
+          image.id = newImageId; image.relativePath = newSource; image.path = fixture.project.root + "/" + newSource;
+          image.references = image.references.map((item) => ({ ...item, original: newSource, end: item.start + newSource.length }));
+          for (const values of [basePending, baseProblems, baseCompleted, fixture.project.status.convertibleImageIds]) { const index = values.indexOf(oldImageId); if (index >= 0) values[index] = newImageId; }
+          const converted = fixture.project.convertedImages.find((item) => item.id === oldImageId);
+          const oldPdf = converted?.pdfPath ?? null, newPdf = oldPdf ? fixture.project.root + "/texgo-pdf/" + args.newBaseName + ".pdf" : null;
+          if (converted) { converted.id = newImageId; converted.pdfPath = newPdf; }
+          fixture.history.unshift({ id: "rename-visual", createdAt: 1792494000000, outputDir: "", dpi: 300, jpegQuality: 90, files: [], undone: false, canUndo: true, rename: { oldSource, newSource, oldPdf, newPdf, referencesChanged: image.references.length } });
+          fixture.project.stateFingerprint += "-renamed"; updateClassification();
+          return { project: structuredClone(fixture.project), oldImageId, newImageId };
+        }
+        case "convert_images": {
+          if (!["pending", "selected", "reconvert"].includes(args.intent)) throw new Error("Conversion fixture requires an explicit intent");
+          const ids = args.options.imageIds;
+          if (!ids.length || ids.some((id) => !fixture.project.status.convertibleImageIds.includes(id))) throw new Error("Conversion fixture requires safe source IDs");
+          return { images: ids.map((id) => ({ id, pdfPath: fixture.project.root + "/texgo-pdf/" + id + ".pdf", bytes: 1000, cached: false, error: null })), cancelled: false };
+        }
         case "conversion_history": return structuredClone(fixture.history);
         case "preview_changes": return structuredClone(fixture.preview);
         case "asset_preview": return args.converted ? { kind: "pdf", data: fixture.pdf } : { kind: "image", data: fixture.source };
@@ -115,7 +157,7 @@ function installNativeFixture(fixture) {
     },
   };
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener };
-  window.__TEXGO_UI_REVIEW__ = { unexpectedCommands, emit };
+  window.__TEXGO_UI_REVIEW__ = { unexpectedCommands, commands, emit, snapshot: () => structuredClone(fixture.project) };
 }
 
 await mkdir(output, { recursive: true });
@@ -146,7 +188,7 @@ async function pageFor(scenario = "pending", viewport = { width: 1440, height: 9
   await page.getByRole("heading", { name: "Texgo", exact: true }).waitFor();
   return page;
 }
-async function openProject(page, action = "更新 12 张图片") {
+async function openProject(page, action = "转换 12 张图片") {
   await page.getByRole("button", { name: "打开 LaTeX 项目", exact: true }).click();
   if (action) await page.getByRole("button", { name: action, exact: true }).waitFor();
   else await page.getByText("项目已是最新状态", { exact: true }).waitFor();
@@ -166,10 +208,11 @@ try {
   await openProject(page);
   assert.equal(await page.getByRole("checkbox").count(), 0, "Checkboxes must be hidden by default");
   await screenshot(page, "02-pending-1440");
-  await page.getByRole("button", { name: "选择部分图片…", exact: true }).click();
+  await page.getByRole("button", { name: "更多转换操作", exact: true }).click();
+  await page.getByRole("menuitem", { name: "选择图片转换…", exact: true }).click();
   await page.getByRole("checkbox", { name: "选择 figures/response-curve.png", exact: true }).check();
   await page.getByRole("checkbox", { name: "选择 figures/architecture.svg", exact: true }).check();
-  await page.getByRole("button", { name: "更新已选 2 张", exact: true }).waitFor();
+  await page.getByRole("button", { name: "转换 2 张图片", exact: true }).waitFor();
   await screenshot(page, "03-selection-1440");
   await page.keyboard.press("Escape");
   await page.getByRole("radio", { name: "问题 2", exact: true }).click();
@@ -216,6 +259,69 @@ try {
   await openProject(compact);
   assert.ok(await compact.locator(".command-action").isVisible(), "The primary action must stay visible in a compact desktop window");
   await screenshot(compact, "12-workspace-1000");
+  const manual = await pageFor("completed");
+  await openProject(manual, null);
+  assert.equal(await manual.locator(".command-action").count(), 0, "Up-to-date projects must not gain another primary action");
+  await manual.getByRole("button", { name: "转换…", exact: true }).click();
+  assert.equal(await manual.getByRole("radio", { name: "当前图片", exact: true }).isEnabled(), true, "Completed sources remain manually convertible");
+  await screenshot(manual, "13-up-to-date-manual-conversion-1440");
+  await manual.getByRole("button", { name: "开始转换", exact: true }).click();
+  await manual.getByRole("button", { name: "转换…", exact: true }).waitFor();
+  const manualCalls = await manual.evaluate(() => window.__TEXGO_UI_REVIEW__.commands.filter((item) => item.command === "convert_images"));
+  assert.equal(manualCalls.length, 1); assert.equal(manualCalls[0].args.intent, "reconvert"); assert.deepEqual(manualCalls[0].args.options.imageIds, ["image-1"]);
+  assert.equal(await manual.getByRole("dialog").count(), 0, "Same-path manual regeneration must not open reference review");
+
+  const ignored = await pageFor("completed");
+  await openProject(ignored, null);
+  await ignored.getByRole("button", { name: "更多操作 figures/response-curve.png", exact: true }).click();
+  await ignored.getByRole("menuitem", { name: "始终忽略", exact: true }).click();
+  await ignored.getByRole("button", { name: "更多筛选", exact: true }).click();
+  await ignored.getByRole("menuitem", { name: "已忽略 1", exact: true }).click();
+  await ignored.locator('[title="始终忽略"]').first().waitFor();
+  await screenshot(ignored, "14-permanent-ignore-1440");
+  await ignored.getByRole("button", { name: "更多操作 figures/response-curve.png", exact: true }).click();
+  await ignored.getByRole("menuitem", { name: "手动转换一次", exact: true }).click();
+  await ignored.getByRole("button", { name: "转换…", exact: true }).waitFor();
+  assert.equal(await ignored.evaluate(() => window.__TEXGO_UI_REVIEW__.snapshot().images.find((image) => image.id === "image-1").ignoreMode), "permanent", "Manual conversion must preserve permanent ignore");
+  await ignored.getByRole("button", { name: "更多操作 figures/response-curve.png", exact: true }).click();
+  await ignored.getByRole("menuitem", { name: "恢复处理", exact: true }).click();
+  await ignored.getByRole("radio", { name: "已完成 18", exact: true }).waitFor();
+  assert.equal(await ignored.evaluate(() => window.__TEXGO_UI_REVIEW__.snapshot().images.find((image) => image.id === "image-1").ignoreMode), "none");
+  const ignoreCalls = await ignored.evaluate(() => window.__TEXGO_UI_REVIEW__.commands.filter((item) => item.command === "ignore_asset").map((item) => item.args.mode));
+  assert.deepEqual(ignoreCalls, ["permanent", "none"]);
+
+  const renamed = await pageFor("completed");
+  await openProject(renamed, null);
+  await renamed.getByRole("searchbox", { name: "搜索图片" }).fill("figures");
+  await renamed.getByRole("radio", { name: "对比", exact: true }).click();
+  const divider = renamed.getByRole("slider", { name: "原图与 PDF 分隔线" });
+  await divider.focus(); await renamed.keyboard.press("Shift+ArrowRight");
+  await renamed.getByText("response-curve.png", { exact: true }).dblclick();
+  const renameInput = renamed.getByRole("textbox", { name: "图片新名称" });
+  assert.deepEqual(await renameInput.evaluate((input) => [input.selectionStart, input.selectionEnd]), [0, "response-curve".length]);
+  await screenshot(renamed, "15-inline-rename-1440");
+  await renameInput.fill("pressure-map"); await renameInput.press("Enter");
+  await renamed.getByRole("button", { name: "预览 figures/pressure-map.png", exact: true }).waitFor();
+  await renamed.locator(".preview-filename", { hasText: "figures/pressure-map.png" }).waitFor();
+  assert.equal(await renamed.getByRole("searchbox", { name: "搜索图片" }).inputValue(), "figures", "Rename must retain search context");
+  assert.equal(await renamed.getByRole("radio", { name: "对比", exact: true }).getAttribute("aria-checked"), "true", "Rename must retain preview mode");
+  assert.equal(await renamed.getByRole("slider").getAttribute("aria-valuenow"), "60", "Rename must retain comparison position");
+  assert.equal(await renamed.getByRole("button", { name: "预览 figures/pressure-map.png", exact: true }).getAttribute("aria-pressed"), "true", "Rename must migrate the active asset ID");
+  await screenshot(renamed, "16-renamed-asset-1440");
+  await renamed.getByRole("button", { name: "操作记录", exact: true }).click();
+  await renamed.getByText("重命名图片", { exact: true }).waitFor();
+  await screenshot(renamed, "17-rename-history-1440");
+
+  const blocked = await pageFor("review");
+  await openProject(blocked, "检查 18 处引用");
+  await blocked.getByRole("button", { name: "转换…", exact: true }).click();
+  await blocked.getByRole("button", { name: "开始转换", exact: true }).click();
+  await blocked.getByRole("dialog", { name: "请先审核引用" }).waitFor();
+  await blocked.getByText("当前有 18 处引用尚未审核。建议先完成引用审核，再开始新的转换。", { exact: true }).waitFor();
+  assert.equal(await blocked.evaluate(() => window.__TEXGO_UI_REVIEW__.commands.filter((item) => item.command === "convert_images").length), 0, "Unreviewed references must block manual conversion before native invocation");
+  await screenshot(blocked, "18-manual-conversion-reference-guard-1440");
+  await blocked.getByRole("button", { name: "检查引用", exact: true }).click();
+  await blocked.getByRole("dialog", { name: "检查引用变更" }).waitFor();
   report.result = "passed";
   console.log(`Captured ${report.screenshots.length} Texgo UI states without browser errors.`);
 } catch (error) {
