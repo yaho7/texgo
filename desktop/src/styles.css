@@ -336,7 +336,8 @@ h1, h2, h3, p { margin: 0; }
 .asset-rename-field { display: flex; min-width: 0; align-items: center; gap: 4px; }
 .asset-rename-field input { min-width: 0; height: 30px; }
 .asset-rename-field > span { flex: none; color: var(--muted-foreground); font-size: 12px; }
-.asset-filename { animation: badge-enter var(--motion-normal) var(--ease-out); }
+/* Keep filename hit-testing above the stretched single-click row target. */
+.asset-filename { position: relative; z-index: 1; animation: badge-enter var(--motion-normal) var(--ease-out); }
 .command-split { display: inline-flex; align-items: stretch; }
 .command-split .command-action { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .command-split-menu { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 1px solid color-mix(in srgb, var(--primary-foreground) 25%, transparent); }

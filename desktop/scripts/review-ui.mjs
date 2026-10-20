@@ -302,7 +302,14 @@ try {
   await renamed.getByRole("radio", { name: "对比", exact: true }).click();
   const divider = renamed.getByRole("slider", { name: "原图与 PDF 分隔线" });
   await divider.focus(); await renamed.keyboard.press("Shift+ArrowRight");
-  await renamed.getByText("response-curve.png", { exact: true }).dblclick();
+  const filename = renamed.getByText("response-curve.png", { exact: true });
+  assert.equal(await filename.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2)?.closest(".asset-filename") === element;
+  }), true, "The filename must receive pointer events above the stretched row preview target");
+  await filename.dblclick();
+  const renameDoubleClick = await renamed.evaluate(() => window.__TEXGO_UI_REVIEW__.focusTrace.filter((event) => event.type === "dblclick").at(-1));
+  assert.equal(renameDoubleClick?.tag, "SPAN", "Filename double-click must reach the text handler, not the stretched row button");
   const renameInput = renamed.getByRole("textbox", { name: "图片新名称" });
   assert.deepEqual(await renameInput.evaluate((input) => [input.selectionStart, input.selectionEnd]), [0, "response-curve".length]);
   await screenshot(renamed, "15-inline-rename-1440");
