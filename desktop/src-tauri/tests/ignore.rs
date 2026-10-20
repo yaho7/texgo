@@ -89,3 +89,70 @@ fn malformed_rules_surface_safety_blocker_and_cannot_be_silently_replaced() {
     assert!(ws.set_ignore_mode(&id, IgnoreMode::Permanent).is_err());
     assert_eq!(fs::read_to_string(root.join(".texgo/ignore.json")).unwrap(), "corrupt");
 }
+
+#[test]
+fn permanent_source_ignore_survives_missing_source_behind_managed_pdf_and_can_restore() {
+    let (_dir, root) = fixture();
+    fs::write(root.join("main.tex"), r"\includegraphics{a.png}").unwrap();
+    let mut ws = Workspace::open(&root.join("main.tex")).unwrap();
+    let options = texgo_desktop::preferences::Preferences::default().options(vec![]);
+    ws.update_pending_with_results(&options, &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+    ws.apply().unwrap();
+    let id = ws.project().images[0].id.clone();
+    ws.set_ignore_mode(&id, IgnoreMode::Permanent).unwrap();
+    // Even a compact path-only v1 rule must keep working: no reference alias
+    // or asset ID is needed when the journal proves which source owns this PDF.
+    fs::write(root.join(".texgo/ignore.json"), r#"{"version":1,"entries":[{"kind":"path","path":"a.png"}]}"#).unwrap();
+    fs::remove_file(root.join("a.png")).unwrap();
+    let mut reopened = Workspace::open(&root.join("main.tex")).unwrap();
+    assert_eq!(reopened.project().images[0].ignore_mode, IgnoreMode::Permanent);
+    assert_eq!(reopened.project().status.ignored_count, 1);
+    assert_eq!(reopened.project().status.pending_images, 0);
+    assert_eq!(reopened.project().status.problem_count, 0);
+    let report = reopened.smart_convert(&Default::default(), &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+    assert!(report.result.images.is_empty());
+    let missing_source_id = reopened.project().images[0].id.clone();
+    reopened.set_ignore_mode(&missing_source_id, IgnoreMode::None).unwrap();
+    let rules: serde_json::Value = serde_json::from_slice(&fs::read(root.join(".texgo/ignore.json")).unwrap()).unwrap();
+    assert!(rules["entries"].as_array().unwrap().is_empty());
+    assert_eq!(Workspace::open(&root.join("main.tex")).unwrap().project().images[0].ignore_mode, IgnoreMode::None);
+}
+
+#[test]
+fn missing_source_ignore_uses_read_only_legacy_mapping_when_no_journal_exists() {
+    let (_dir, root) = fixture();
+    fs::write(root.join("main.tex"), r"\includegraphics{a.png}").unwrap();
+    let mut ws = Workspace::open(&root.join("main.tex")).unwrap();
+    let options = texgo_desktop::preferences::Preferences::default().options(vec![]);
+    ws.update_pending_with_results(&options, &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+    ws.apply().unwrap();
+    let output = format!("{}/a.pdf", options.output_dir);
+    fs::write(root.join(".texgo/images.json"), serde_json::to_vec(&serde_json::json!({"version":1,"images":{(output):{"source":"a.png"}}})).unwrap()).unwrap();
+    fs::write(root.join(".texgo/ignore.json"), r#"{"version":1,"entries":[{"kind":"path","path":"a.png"}]}"#).unwrap();
+    fs::remove_file(root.join(".texgo/conversions.json")).unwrap();
+    fs::remove_file(root.join("a.png")).unwrap();
+    let mapping = fs::read(root.join(".texgo/images.json")).unwrap();
+    let mut reopened = Workspace::open(&root.join("main.tex")).unwrap();
+    assert_eq!(reopened.project().images[0].ignore_mode, IgnoreMode::Permanent);
+    let id = reopened.project().images[0].id.clone();
+    reopened.set_ignore_mode(&id, IgnoreMode::None).unwrap();
+    assert_eq!(fs::read(root.join(".texgo/images.json")).unwrap(), mapping);
+}
+
+#[test]
+fn reference_alias_alone_does_not_ignore_an_unrelated_resolved_pdf() {
+    let (_dir, root) = fixture();
+    fs::write(root.join("main.tex"), r"\includegraphics{a.png}").unwrap();
+    let mut ws = Workspace::open(&root.join("main.tex")).unwrap();
+    let options = texgo_desktop::preferences::Preferences::default().options(vec![]);
+    ws.update_pending_with_results(&options, &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+    ws.apply().unwrap();
+    let id = ws.project().images[0].id.clone();
+    ws.set_ignore_mode(&id, IgnoreMode::Permanent).unwrap();
+    fs::remove_file(root.join(".texgo/conversions.json")).unwrap();
+    if root.join(".texgo/images.json").exists() { fs::remove_file(root.join(".texgo/images.json")).unwrap(); }
+    fs::remove_file(root.join("a.png")).unwrap();
+    let reopened = Workspace::open(&root.join("main.tex")).unwrap();
+    assert_eq!(reopened.project().images[0].status, "pdf");
+    assert_eq!(reopened.project().images[0].ignore_mode, IgnoreMode::None);
+}

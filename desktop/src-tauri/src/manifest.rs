@@ -36,8 +36,21 @@ pub(crate) fn restore_sources(project: &mut Project) {
     for mut asset in std::mem::take(&mut project.images) {
         if asset.status == "pdf" || (asset.status == "missing" && asset.format == "pdf") {
             if let Some(entry) = manifest.images.get(&asset.relative_path) {
-                let source = root.join(&entry.source).canonicalize().ok().filter(|path| path.starts_with(&root) && path.is_file());
-                if let Some(source) = source {
+                let candidate = root.join(&entry.source);
+                // Check the stored source spelling before canonicalize can hide
+                // a symlink. Keep its source identity visible as a problem.
+                let source_safe = crate::journal::safe_path(&root, &candidate).is_ok();
+                let source = source_safe.then(|| candidate.canonicalize().ok()).flatten()
+                    .filter(|path| path.starts_with(&root) && path.is_file());
+                if !source_safe || crate::journal::safe_path(&root, &candidate).is_err() {
+                    asset.id = digest(candidate.to_string_lossy().as_bytes());
+                    asset.path = None;
+                    asset.relative_path = entry.source.clone();
+                    asset.status = "unsupported".into();
+                    asset.can_rename = false;
+                    asset.message = Some("原图片路径包含符号链接或不安全路径，请引用项目内的真实文件".into());
+                    project.warnings.push(format!("转换 PDF 的原图片路径不安全：{}", entry.source));
+                } else if let Some(source) = source {
                     let format = source.extension().and_then(|ext| ext.to_str()).unwrap_or("").to_lowercase();
                     if matches!(format.as_str(), "png" | "jpg" | "jpeg" | "svg" | "webp" | "tif" | "tiff" | "bmp" | "gif") {
                         asset.id = digest(source.to_string_lossy().as_bytes());

@@ -91,6 +91,30 @@ fn identities(root: &Path, asset: &ImageAsset) -> Vec<ReferenceIdentity> {
     })).collect::<BTreeSet<_>>().into_iter().collect()
 }
 
+// A missing managed source can leave a perfectly valid PDF in the scan.
+// Only durable ownership evidence may relate that PDF back to a source rule;
+// a matching reference alias alone must not ignore an unrelated resolved file.
+fn managed_source(root: &Path, asset: &ImageAsset) -> Option<String> {
+    if !matches!(asset.status.as_str(), "pdf" | "missing") || asset.format != "pdf" { return None; }
+    let output = normalized_path(&asset.relative_path).ok()?;
+    if let Ok(journal) = journal::Journal::load(root) {
+        if let Some(managed) = journal.outputs.get(&output) {
+            return normalized_path(&managed.source).ok();
+        }
+    }
+    #[derive(Deserialize)]
+    struct LegacyEntry { source: String }
+    #[derive(Deserialize)]
+    struct LegacyMapping { version: u8, images: std::collections::BTreeMap<String, LegacyEntry> }
+    let path = root.join(".texgo/images.json");
+    journal::safe_path(root, &path).ok()?;
+    let metadata = fs::symlink_metadata(&path).ok()?;
+    if !metadata.is_file() || metadata.len() > MAX_CONFIG_BYTES { return None; }
+    let mapping: LegacyMapping = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
+    if mapping.version != 1 { return None; }
+    normalized_path(&mapping.images.get(&output)?.source).ok()
+}
+
 fn normalized_entries(entries: Vec<Entry>) -> Result<Vec<Entry>, String> {
     entries.into_iter().map(|entry| match entry {
         Entry::Path { path, references } => Ok(Entry::Path {
@@ -132,8 +156,10 @@ impl IgnoreStore {
         let path = asset.path.as_ref().and_then(|path| relative(root, path).ok())
             .or_else(|| normalized_path(&asset.relative_path).ok());
         let references = identities(root, asset);
+        let managed_source = managed_source(root, asset);
         self.entries.iter().any(|entry| match entry {
             Entry::Path { path: saved, references: aliases } => path.as_ref() == Some(saved)
+                || managed_source.as_ref() == Some(saved)
                 || (asset.path.is_none() && aliases.iter().any(|alias| references.contains(alias))),
             Entry::Reference { tex_file, reference } => references.iter()
                 .any(|candidate| &candidate.tex_file == tex_file && &candidate.reference == reference),
@@ -142,7 +168,8 @@ impl IgnoreStore {
 
     pub(crate) fn set(&mut self, root: &Path, asset: &ImageAsset, ignored: bool) -> Result<(), String> {
         let references = identities(root, asset);
-        let path = asset.path.as_ref().map(|path| relative(root, path)).transpose()?;
+        let source = managed_source(root, asset);
+        let path = source.clone().or(asset.path.as_ref().map(|path| relative(root, path)).transpose()?);
         if ignored {
             if let Some(path) = path {
                 if let Some(Entry::Path { references: existing, .. }) = self.entries.iter_mut()
@@ -159,6 +186,7 @@ impl IgnoreStore {
             let fallback_path = path.or_else(|| normalized_path(&asset.relative_path).ok());
             self.entries.retain(|entry| match entry {
                 Entry::Path { path, references: aliases } => fallback_path.as_ref() != Some(path)
+                    && source.as_ref() != Some(path)
                     && !aliases.iter().any(|alias| references.contains(alias)),
                 Entry::Reference { tex_file, reference } => !references.iter()
                     .any(|candidate| &candidate.tex_file == tex_file && &candidate.reference == reference),

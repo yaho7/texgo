@@ -513,3 +513,29 @@ fn scanner_rejects_symlink_parent_and_graphicspath_without_hiding_safe_images() 
         assert_eq!(ws.project().status.problem_count, 1);
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn managed_pdf_source_symlink_cannot_be_restored_as_a_ready_source() {
+    use std::os::unix::fs::symlink;
+    let dir = tempfile::tempdir().unwrap();
+    png(dir.path(), "a.png", 1);
+    fs::write(dir.path().join("main.tex"), r"\includegraphics{a.png}").unwrap();
+    let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    ws.convert(&options(&ws), &AtomicBool::new(false), |_| {}).unwrap();
+    ws.apply().unwrap();
+    let id = ws.project().images[0].id.clone();
+    ws.set_ignore_mode(&id, texgo_desktop::IgnoreMode::Permanent).unwrap();
+    fs::rename(dir.path().join("a.png"), dir.path().join("real.png")).unwrap();
+    symlink(dir.path().join("real.png"), dir.path().join("a.png")).unwrap();
+    let mut reopened = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    assert_eq!(reopened.project().images[0].status, "unsupported");
+    assert!(reopened.project().images[0].path.is_none());
+    assert!(!reopened.project().images[0].can_rename);
+    assert!(reopened.project().status.convertible_image_ids.is_empty());
+    assert_eq!(reopened.project().images[0].ignore_mode, texgo_desktop::IgnoreMode::Permanent);
+    assert_eq!(reopened.project().status.ignored_count, 1);
+    let unsupported_id = reopened.project().images[0].id.clone();
+    reopened.set_ignore_mode(&unsupported_id, texgo_desktop::IgnoreMode::None).unwrap();
+    assert_eq!(reopened.project().status.problem_count, 1);
+}
