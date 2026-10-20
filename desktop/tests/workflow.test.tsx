@@ -354,6 +354,13 @@ describe("LaTeX 项目唯一工作流", () => {
     await user.click(screen.getByRole("button", { name: "图片" }));
     expect(await screen.findByRole("dialog", { name: "检查引用变更" })).toBeInTheDocument();
   });
+  it("restores a project using persisted global conversion defaults", async () => {
+    localStorage.setItem("texgo.recents.v1", JSON.stringify([{ path: backend.mainFile, openedAt: Date.now() }]));
+    handlers.get_preferences = () => ({ ...defaultPreferences, startup: "lastWorkspace", autoUpdate: false, dpi: 450, jpegQuality: 88, outputDir: "paper-pdf" });
+    render(<App />);
+    expect(await screen.findByRole("button", { name: "输出参数：自定义 · 450 DPI" })).toBeInTheDocument();
+    expect(calls.find((call) => call.command === "open_project")?.args).toEqual({ mainFile: backend.mainFile });
+  });
   it("opens project by shortcut and ignores invalid drops", async () => {
     const user = userEvent.setup(); render(<App />);
     await act(async () => { await emit("tauri://drag-drop", { paths: ["/paper/figures/alpha.png"] }); });

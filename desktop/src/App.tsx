@@ -41,6 +41,8 @@ function projectEntry(project: Project): Omit<RecentWorkspace, "openedAt"> {
 
 export default function App() {
   const [preferences, setPreferences] = useState<Preferences>(defaultPreferences);
+  const preferencesRef = useRef(preferences);
+  preferencesRef.current = preferences;
   const [settingsPage, setSettingsPage] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
   const [recents, setRecents] = useState(readRecents);
@@ -173,6 +175,7 @@ export default function App() {
     let disposed = false;
     void invoke<Preferences>("get_preferences").then((value) => {
       if (disposed || !value) return;
+      preferencesRef.current = value;
       setPreferences(value);
       if (value.startup === "lastWorkspace") { const last = readRecents()[0]; if (last) openRecent(last); }
       const current = import.meta.env.VITE_RELEASE_TAG;
@@ -246,7 +249,8 @@ export default function App() {
     if (!same) {
       clearAssetState(); setSettingsPage(false); setSearch(""); setFilter("all"); setView("assets");
       setActiveId(next.status.pendingImageIds[0] ?? next.images[0]?.id ?? null);
-      setSettings(readSettings(workspaceKey(projectEntry(next))) ?? { dpi: String(preferences.dpi), jpegQuality: String(preferences.jpegQuality), outputDir: preferences.outputDir });
+      const defaults = preferencesRef.current;
+      setSettings(readSettings(workspaceKey(projectEntry(next))) ?? { dpi: String(defaults.dpi), jpegQuality: String(defaults.jpegQuality), outputDir: defaults.outputDir });
     } else {
       setActiveId((previous) => next.images.some((image) => image.id === previous) ? previous : next.status.pendingImageIds[0] ?? next.images[0]?.id ?? null);
       setSelected((previous) => new Set([...previous].filter((id) => next.status.pendingImageIds.includes(id))));
@@ -591,7 +595,7 @@ export default function App() {
       </header>
       {error && !review && !undoEntry && !problemId && <Alert variant="destructive" role="alert" className="workbench-alert"><TriangleAlert aria-hidden="true" /><AlertTitle>操作未完成</AlertTitle><AlertDescription className="flex items-start justify-between gap-4"><span>{error}</span><IconButton label="关闭错误提示" onClick={() => setError(null)}><X aria-hidden="true" /></IconButton></AlertDescription></Alert>}
       {project?.status.blockingReason && <Alert variant="destructive" role="alert" className="workbench-alert"><TriangleAlert aria-hidden="true" /><AlertTitle>需要先解决安全问题</AlertTitle><AlertDescription>{project.status.blockingReason}</AlertDescription></Alert>}
-      {settingsPage && <div className="page-enter settings-view"><SettingsPage value={preferences} onSaved={setPreferences} onClose={() => setSettingsPage(false)} /></div>}
+      {settingsPage && <div className="page-enter settings-view"><SettingsPage value={preferences} onSaved={(next) => { preferencesRef.current = next; setPreferences(next); }} onClose={() => setSettingsPage(false)} /></div>}
       {!project && !settingsPage && <Home busy={busy} onOpenTex={openProject} recents={recents} onRecent={openRecent} />}
       {project && <>
         <main id={settingsPage ? undefined : "main-content"} tabIndex={-1} className="workspace-content" hidden={settingsPage} data-view={view} onKeyDownCapture={(event) => {
