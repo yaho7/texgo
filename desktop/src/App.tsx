@@ -594,7 +594,11 @@ export default function App() {
       {settingsPage && <div className="page-enter settings-view"><SettingsPage value={preferences} onSaved={setPreferences} onClose={() => setSettingsPage(false)} /></div>}
       {!project && !settingsPage && <Home busy={busy} onOpenTex={openProject} recents={recents} onRecent={openRecent} />}
       {project && <>
-        <main id={settingsPage ? undefined : "main-content"} tabIndex={-1} className="workspace-content" hidden={settingsPage} data-view={view}>
+        <main id={settingsPage ? undefined : "main-content"} tabIndex={-1} className="workspace-content" hidden={settingsPage} data-view={view} onKeyDownCapture={(event) => {
+          if (selectionMode && event.key === "Escape" && !busy && view === "assets") {
+            event.preventDefault(); event.stopPropagation(); setSelectionMode(false); setSelected(new Set());
+          }
+        }}>
           <div className="workspace-grid" hidden={view !== "assets"} data-view={view} style={layoutStyle}>
             <div className="workspace-library"><AssetList images={visibleImages} allImages={project.images} ignored={ignored} pendingIds={pendingIds} problemIds={problemIds} completedIds={completedIds}
               selectionMode={selectionMode} onIgnore={(id, value) => { void ignoreAsset(id, value); }} onInspect={inspectProblem} onLocate={locateRepair} total={project.status.totalImages} selected={selected} activeId={activeId} results={results}

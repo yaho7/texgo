@@ -146,6 +146,16 @@ describe("LaTeX 项目唯一工作流", () => {
     expect(search).toHaveValue("alpha");
     expect(screen.getByRole("radio", { name: "待处理 2" })).toHaveAttribute("aria-checked", "true");
   });
+  it("Escape exits selection even when the comparison Inspector has keyboard focus", async () => {
+    backend.convertedImages = [{ id: "a", pdfPath: "/paper/pdf/a.pdf", bytes: 10, cached: true, error: null }];
+    const user = await openProject();
+    await user.click(screen.getByRole("button", { name: "选择部分图片…" }));
+    await user.click(screen.getByRole("radio", { name: "对比" }));
+    screen.getByRole("region", { name: "图片预览" }).focus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "对比" })).toHaveAttribute("aria-checked", "true");
+  });
   it("does not open ReviewDialog when an update keeps the same PDF references", async () => {
     handlers.convert_images = ({ options }) => convertResponse((options as ConversionOptions).imageIds, false);
     const user = await openProject();
