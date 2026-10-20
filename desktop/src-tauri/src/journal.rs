@@ -46,6 +46,8 @@ struct Batch {
     reference_phase: Option<ReferencePhase>,
     #[serde(default)]
     rename_fingerprint: Option<String>,
+    #[serde(default)]
+    rename_outputs: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -173,8 +175,8 @@ impl Journal {
         Ok(())
     }
 
-    pub(crate) fn record_rename(&mut self,id:&str,created_at:u64,rename:RenameHistory,references:usize,files:usize,fingerprint:String) {
-        self.batches.push(Batch{entry:ConversionHistoryEntry{id:id.into(),created_at,output_dir:String::new(),dpi:0,jpeg_quality:0,files:Vec::new(),undone:false,can_undo:false,cancelled:false,undo_reason:None,references_changed:references,files_changed:files,rename:Some(rename)},changes:Vec::new(),undoing:false,references_applying:false,reference_phase:None,rename_fingerprint:Some(fingerprint)});
+    pub(crate) fn record_rename(&mut self,id:&str,created_at:u64,rename:RenameHistory,references:usize,files:usize,fingerprint:String,preferred_outputs:Vec<String>) {
+        self.batches.push(Batch{entry:ConversionHistoryEntry{id:id.into(),created_at,output_dir:String::new(),dpi:0,jpeg_quality:0,files:Vec::new(),undone:false,can_undo:false,cancelled:false,undo_reason:None,references_changed:references,files_changed:files,rename:Some(rename)},changes:Vec::new(),undoing:false,references_applying:false,reference_phase:None,rename_fingerprint:Some(fingerprint),rename_outputs:preferred_outputs});
     }
 
     pub(crate) fn append_undone_rename(&mut self,current:&Self,id:&str)->Result<(),String> {
@@ -246,7 +248,7 @@ impl Journal {
             entry: ConversionHistoryEntry { id, created_at, output_dir: options.output_dir.clone(),
                 dpi: options.dpi, jpeg_quality: options.jpeg_quality, files: Vec::new(), undone: false, can_undo: false, cancelled: false, undo_reason: None,
                 references_changed: 0, files_changed: 0, rename: None },
-            changes: Vec::new(), undoing: false, references_applying: false, reference_phase: None, rename_fingerprint: None,
+            changes: Vec::new(), undoing: false, references_applying: false, reference_phase: None, rename_fingerprint: None, rename_outputs: Vec::new(),
         });
         self.save(root)?;
         Ok(self.batches.len() - 1)
@@ -359,6 +361,13 @@ impl Journal {
     pub fn preferred_outputs(&self, source: &str) -> Vec<String> {
         let mut outputs = Vec::new();
         for batch in self.batches.iter().rev().filter(|batch| !batch.entry.undone) {
+            if batch.entry.rename.as_ref().is_some_and(|rename|rename.new_source==source) {
+                // A rename preserves the source's prior preference order while
+                // immutable conversion history keeps its original paths for undo.
+                for output in &batch.rename_outputs {
+                    if !outputs.contains(output) { outputs.push(output.clone()); }
+                }
+            }
             for file in batch.entry.files.iter().rev().filter(|file| file.source == source && file.error.is_none()) {
                 if !outputs.contains(&file.output) { outputs.push(file.output.clone()); }
             }

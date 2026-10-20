@@ -238,3 +238,25 @@ fn graphicspath_rename_refuses_a_new_name_that_root_resolution_would_capture() {
     assert!(dir.path().join("figures/result.png").exists());
     assert!(!dir.path().join("figures/map.png").exists());
 }
+#[test]
+fn rename_preserves_latest_managed_output_preference_across_multiple_directories() {
+    let (dir,mut ws)=fixture(r"\includegraphics{result.png}");
+    let image_id=ws.project().images[0].id.clone();
+    for output in ["alpha-earlier","zulu-latest"] {
+        ws.convert(&ConversionOptions{image_ids:vec![image_id.clone()],quality:"custom".into(),dpi:300,jpeg_quality:90,output_dir:output.into()},&AtomicBool::new(false),|_|{}).unwrap();
+    }
+    apply_references(&mut ws);
+    let before=ws.project().converted_images[0].pdf_path.clone().unwrap();
+    assert!(Path::new(&before).ends_with(Path::new("zulu-latest").join("result.pdf")));
+    let result=rename(&mut ws,"map").unwrap();
+    assert_eq!(result.project.status.pending_references,0);
+    assert!(Path::new(result.project.converted_images[0].pdf_path.as_ref().unwrap()).ends_with(Path::new("zulu-latest").join("map.pdf")));
+    assert!(dir.path().join("alpha-earlier/map.pdf").exists());
+    assert!(dir.path().join("zulu-latest/map.pdf").exists());
+    let mut ws=Workspace::open(&dir.path().join("main.tex")).unwrap();
+    assert_eq!(ws.project().status.pending_references,0);
+    assert!(Path::new(ws.project().converted_images[0].pdf_path.as_ref().unwrap()).ends_with(Path::new("zulu-latest").join("map.pdf")));
+    let id=ws.conversion_history().unwrap()[0].id.clone();
+    ws.undo_conversion(&id).unwrap();
+    assert_eq!(ws.project().converted_images[0].pdf_path.as_ref(),Some(&before));
+}

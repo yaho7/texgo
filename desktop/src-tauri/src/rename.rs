@@ -261,12 +261,14 @@ pub(crate) fn rename_locked(project:&Project,sources:&BTreeMap<PathBuf,Vec<u8>>,
     }
     let created_at=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e|e.to_string())?.as_millis() as u64;
     let record_id=format!("r{}-{}",SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e|e.to_string())?.as_nanos(),journal.history(root).len());
+    let preferred_outputs=journal.preferred_outputs(&old_rel).into_iter()
+        .filter_map(|output|moves.iter().skip(1).find(|(old,_)|old==&output).map(|(_,new)|new.clone())).collect();
     journal.migrate_asset(&moves,&old_rel,&new_rel)?;
     let rename=RenameHistory { old_source:old_rel.clone(),new_source:new_rel.clone(),old_pdf:moves.get(1).map(|v|v.0.clone()),new_pdf:moves.get(1).map(|v|v.1.clone()),references_changed:reference_count,pdf_count:moves.len()-1 };
     let mut protected=files.clone();
     protected.push(state(".texgo/conversions.json".into(),journal_before.clone(),None));
     let identity=record_fingerprint(&Record{version:1,id:record_id.clone(),main_file:project.main_file.clone(),files:protected})?;
-    journal.record_rename(&record_id,created_at,rename,reference_count,tex_count,identity);
+    journal.record_rename(&record_id,created_at,rename,reference_count,tex_count,identity,preferred_outputs);
     files.push(state(".texgo/conversions.json".into(),journal_before,Some(journal.serialized()?)));
     let record=Record{version:1,id:record_id,main_file:project.main_file.clone(),files};
     commit(root,&record,true)?;
