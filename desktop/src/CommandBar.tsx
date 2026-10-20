@@ -25,6 +25,7 @@ interface Props {
   completion: number | null;
   cancelRequested: boolean;
   onAction: () => void;
+  onManualOpen?: () => boolean;
   onConvert?: (intent: "pending" | "selected" | "reconvert", imageIds?: string[]) => void;
   currentImageId?: string | null;
   convertibleIds?: string[];
@@ -133,11 +134,12 @@ export default function CommandBar(props: Props) {
             <DropdownMenuItem disabled={!currentConvertible} onSelect={() => convert("reconvert", [props.currentImageId!])}>重新转换当前图片</DropdownMenuItem>
             <DropdownMenuItem disabled={!convertibleIds.length} onSelect={() => convert("reconvert", convertibleIds)}>重新转换全部图片</DropdownMenuItem>
           </DropdownMenuGroup><DropdownMenuSeparator /><DropdownMenuGroup><DropdownMenuItem onSelect={() => setSettingsOpen(true)}>转换设置…</DropdownMenuItem></DropdownMenuGroup></DropdownMenuContent></DropdownMenu>
-        </div> : <Popover open={manualOpen} onOpenChange={(open) => { setManualOpen(open); if (open) setManualScope(currentConvertible ? "current" : "all"); }}><PopoverTrigger asChild><Button variant="outline" disabled={working} onClick={() => { if (!manualOpen) setManualScope(currentConvertible ? "current" : "all"); }}>转换…</Button></PopoverTrigger><PopoverContent align="end" side="top" className="command-manual" aria-label="手动转换图片"><FieldSet disabled={working}><FieldLegend>转换图片</FieldLegend><FieldGroup>
+        </div> : <Popover open={manualOpen} onOpenChange={(open) => { if (open && props.onManualOpen?.() === false) return; setManualOpen(open); if (open) setManualScope(currentConvertible ? "current" : "all"); }}><PopoverTrigger asChild><Button variant="outline" disabled={working} onClick={() => { if (!manualOpen) setManualScope(currentConvertible ? "current" : "all"); }}>转换…</Button></PopoverTrigger><PopoverContent align="end" side="top" className="command-manual" aria-label="手动转换图片"><FieldSet disabled={working}><FieldLegend>转换图片</FieldLegend><FieldGroup>
           <ToggleGroup type="single" value={manualScope} onValueChange={(value) => { if (value) setManualScope(value); }} aria-label="转换范围" className="manual-scope" variant="outline"><ToggleGroupItem value="current" disabled={!currentConvertible}>当前图片</ToggleGroupItem><ToggleGroupItem value="selected" disabled={!convertibleIds.length}>选择图片…</ToggleGroupItem><ToggleGroupItem value="all" disabled={!convertibleIds.length}>全部可转换图片</ToggleGroupItem></ToggleGroup>
           <Button variant="ghost" onClick={() => { setManualOpen(false); setSettingsOpen(true); }}>{presetLabel} · {settings.dpi} DPI · 转换设置…</Button>
+          {blocked && <p role="alert" className="text-sm text-destructive">{status.blockingReason}</p>}
           {!convertibleIds.length && <p className="text-sm text-muted-foreground">当前没有可安全转换的源图片，请先处理问题。</p>}
-          <Button variant="outline" disabled={working || !convertibleIds.length || (manualScope === "current" && !currentConvertible)} onClick={() => { if (manualScope === "selected") { setManualOpen(false); props.onSelectionMode(true); } else convert("reconvert", manualScope === "current" ? [props.currentImageId!] : convertibleIds); }}>{manualScope === "selected" ? "选择图片" : "开始转换"}</Button>
+          <Button variant="outline" disabled={working || blocked || !convertibleIds.length || (manualScope === "current" && !currentConvertible)} onClick={() => { if (manualScope === "selected") { setManualOpen(false); props.onSelectionMode(true); } else convert("reconvert", manualScope === "current" ? [props.currentImageId!] : convertibleIds); }}>{manualScope === "selected" ? "选择图片" : "开始转换"}</Button>
         </FieldGroup></FieldSet></PopoverContent></Popover>}
       </>}
       {props.converting && <Button variant="outline" size="sm" disabled={props.cancelRequested} onClick={props.onCancel}><Square data-icon="inline-start" aria-hidden="true" />{props.cancelRequested ? "等待取消…" : "取消更新"}</Button>}

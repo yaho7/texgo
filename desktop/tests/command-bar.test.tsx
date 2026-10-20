@@ -74,3 +74,19 @@ it("converts a temporary selection even when the project is otherwise up to date
   expect(screen.getByRole("status")).toHaveTextContent("已选择 1 张");
   await user.click(screen.getByRole("button", { name: "转换 1 张图片" })); expect(convert).toHaveBeenCalledWith("selected", undefined);
 });
+
+
+it("checks the manual conversion guard before opening its panel", async () => {
+  const user = userEvent.setup(); const guard = vi.fn(() => false);
+  render(<CommandBar {...defaults} status={{ ...status, nextAction: "reviewReferences", pendingReferences: 18 }} onManualOpen={guard} />);
+  await user.click(screen.getByRole("button", { name: "转换…" }));
+  expect(guard).toHaveBeenCalledOnce(); expect(screen.queryByRole("radiogroup", { name: "转换范围" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "转换…" })).toBeEnabled();
+});
+it("explains a safety block inside the manual panel and disables conversion", async () => {
+  const user = userEvent.setup(); const convert = vi.fn();
+  render(<CommandBar {...defaults} status={{ ...status, blockingReason: "输出文件已被外部修改" }} convertibleIds={["a"]} currentImageId="a" onConvert={convert} />);
+  await user.click(screen.getByRole("button", { name: "转换…" }));
+  expect(screen.getByRole("alert")).toHaveTextContent("输出文件已被外部修改");
+  expect(screen.getByRole("button", { name: "开始转换" })).toBeDisabled(); expect(convert).not.toHaveBeenCalled();
+});

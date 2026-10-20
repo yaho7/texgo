@@ -56,6 +56,7 @@ interface Props {
 export default function AssetList(props: Props) {
   const [rename, setRename] = useState<{ id: string; name: string; error: string | null; saving: boolean } | null>(null);
   const renameRef = useRef<HTMLInputElement>(null);
+  const renameHandoff = useRef(false);
   const latestImages = useRef(props.allImages ?? props.images);
   latestImages.current = props.allImages ?? props.images;
   const savingRename = useRef(false);
@@ -67,9 +68,21 @@ export default function AssetList(props: Props) {
     if (!props.onRename || !asset.canRename || props.busy || savingRename.current) return;
     const filename = asset.relativePath.replaceAll("\\", "/").split("/").pop()!;
     const dot = filename.lastIndexOf(".");
+    renameHandoff.current = true;
     setRename({ id: asset.id, name: dot > 0 ? filename.slice(0, dot) : filename, error: null, saving: false });
   }
-  useEffect(() => { if (rename && !rename.saving) { renameRef.current?.focus(); renameRef.current?.select(); } }, [rename?.id]);
+  useEffect(() => {
+    if (!rename || rename.saving) return;
+    renameRef.current?.focus(); renameRef.current?.select();
+    // Native double-click and Radix FocusScope finish their focus handoff after
+    // the editor mounts. Preserve only that handoff; genuine outside blur cancels.
+    const frame = requestAnimationFrame(() => {
+      const input = renameRef.current;
+      if (input && document.activeElement !== input) { input.focus(); input.select(); }
+      renameHandoff.current = false;
+    });
+    return () => { cancelAnimationFrame(frame); renameHandoff.current = false; };
+  }, [rename?.id]);
   useEffect(() => {
     const request = props.renameRequest;
     if (request) { const asset = (props.allImages ?? props.images).find((image) => image.id === request.id); if (asset) beginRename(asset); }
@@ -217,11 +230,16 @@ export default function AssetList(props: Props) {
                   <TableCell className="min-w-0 whitespace-normal">
                     <div className="flex min-w-0 flex-col gap-1">
                       {rename?.id === asset.id ? <div className="asset-rename" onClick={(event) => event.stopPropagation()}>
-                        <div className="asset-rename-field"><Input ref={renameRef} aria-label="图片新名称" value={rename.name} readOnly={rename.saving} aria-invalid={Boolean(rename.error)} aria-describedby={rename.error ? `rename-error-${asset.id}` : undefined} onChange={(event) => setRename({ ...rename, name: event.target.value, error: null })} onBlur={() => { if (!savingRename.current) setRename(null); }} onKeyDown={(event) => { if (event.nativeEvent.isComposing) return; if (event.key === "Enter") { event.preventDefault(); void submitRename(); } else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (!savingRename.current) setRename(null); } }} /><span>{filename.slice(filename.lastIndexOf("."))}</span></div>
+                        <div className="asset-rename-field"><Input ref={renameRef} aria-label="图片新名称" value={rename.name} readOnly={rename.saving} aria-invalid={Boolean(rename.error)} aria-describedby={rename.error ? `rename-error-${asset.id}` : undefined} onChange={(event) => setRename({ ...rename, name: event.target.value, error: null })} onBlur={(event) => {
+                          if (savingRename.current) return;
+                          const target = event.relatedTarget;
+                          if (renameHandoff.current && (!target || target instanceof HTMLElement && target.closest('.asset-preview-trigger, .asset-more, [role="menu"]'))) return;
+                          renameHandoff.current = false; setRename(null);
+                        }} onKeyDown={(event) => { if (event.nativeEvent.isComposing) return; if (event.key === "Enter") { event.preventDefault(); void submitRename(); } else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (!savingRename.current) setRename(null); } }} /><span>{filename.slice(filename.lastIndexOf("."))}</span></div>
                         {rename.error && <p role="alert" id={`rename-error-${asset.id}`} className="text-xs text-destructive">{rename.error}</p>}
                       </div> : <Button variant="ghost" className="asset-preview-trigger h-auto min-w-0 justify-start px-0 py-0" disabled={props.previewDisabled || isExiting} aria-label={`预览 ${asset.relativePath}`} aria-pressed={props.activeId === asset.id} onClick={() => props.onActivate(asset.id)} title={asset.relativePath}>
                         {problem ? <FileWarning data-icon="inline-start" aria-hidden="true" /> : <FileImage data-icon="inline-start" aria-hidden="true" />}
-                        <span className="truncate asset-filename" onDoubleClick={(event) => { event.stopPropagation(); beginRename(asset); }}>{filename}</span>
+                        <span className="truncate asset-filename" onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); beginRename(asset); }}>{filename}</span>
                       </Button>}
                       <p className="truncate text-xs text-muted-foreground" title={asset.relativePath}>{folder} · {asset.format.toUpperCase()}{asset.width && asset.height ? ` · ${asset.width} × ${asset.height}` : ""}</p>
                       {result?.error && !result.cancelled && <p className="break-words text-xs text-destructive">{result.error}</p>}
@@ -233,7 +251,7 @@ export default function AssetList(props: Props) {
                     <Badge key={label} className={updatable && !problem ? "status-badge update-badge" : "status-badge"} variant={ignored ? "secondary" : problem ? referenceProblem ? "warning" : "destructive" : converted ? "success" : "secondary"} title={ignored ? ignoreMode === "permanent" ? "始终忽略" : "仅本次忽略" : updatable ? "源图片或 SVG 依赖已变化，可重新转换" : result?.pdfPath ?? undefined}>
                       {converted && !problem && !ignored && <CircleCheck data-icon="inline-start" aria-hidden="true" />}{updatable && !problem && !ignored && <RefreshCw data-icon="inline-start" aria-hidden="true" />}{label}
                     </Badge>
-                    <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" className="asset-more" aria-label={`更多操作 ${asset.relativePath}`} disabled={props.busy || isExiting || Boolean(rename)}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" onCloseAutoFocus={(event) => { if (rename || renameRef.current) event.preventDefault(); }}><DropdownMenuGroup>
+                    <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" className="asset-more" aria-label={`更多操作 ${asset.relativePath}`} disabled={props.busy || isExiting || Boolean(rename)}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" onCloseAutoFocus={(event) => { if (renameHandoff.current || renameRef.current) event.preventDefault(); }}><DropdownMenuGroup>
                       {asset.canRename && props.onRename && <DropdownMenuItem onSelect={() => beginRename(asset)}>重命名</DropdownMenuItem>}
                       {problem && <DropdownMenuItem onSelect={() => props.onInspect?.(asset.id)}>{["missing", "ambiguous"].includes(asset.status) ? "查看并修复" : "查看详情"}</DropdownMenuItem>}
                       {["missing", "ambiguous"].includes(asset.status) && <DropdownMenuItem onSelect={() => props.onLocate?.(asset.id)}>定位文件</DropdownMenuItem>}

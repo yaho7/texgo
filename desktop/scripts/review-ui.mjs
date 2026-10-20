@@ -157,7 +157,13 @@ function installNativeFixture(fixture) {
     },
   };
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener };
-  window.__TEXGO_UI_REVIEW__ = { unexpectedCommands, commands, emit, snapshot: () => structuredClone(fixture.project) };
+  const focusTrace = [];
+  for (const type of ["pointerdown", "dblclick", "focusin", "focusout"]) document.addEventListener(type, (event) => {
+    const target = event.target;
+    focusTrace.push({ type, tag: target?.tagName, label: target?.getAttribute?.("aria-label"), class: String(target?.className ?? "").slice(0, 100) });
+    if (focusTrace.length > 50) focusTrace.shift();
+  }, true);
+  window.__TEXGO_UI_REVIEW__ = { unexpectedCommands, commands, focusTrace, emit, snapshot: () => structuredClone(fixture.project) };
 }
 
 await mkdir(output, { recursive: true });
@@ -315,7 +321,6 @@ try {
   const blocked = await pageFor("review");
   await openProject(blocked, "检查 18 处引用");
   await blocked.getByRole("button", { name: "转换…", exact: true }).click();
-  await blocked.getByRole("button", { name: "开始转换", exact: true }).click();
   await blocked.getByRole("dialog", { name: "请先审核引用" }).waitFor();
   await blocked.getByText("当前有 18 处引用尚未审核。建议先完成引用审核，再开始新的转换。", { exact: true }).waitFor();
   assert.equal(await blocked.evaluate(() => window.__TEXGO_UI_REVIEW__.commands.filter((item) => item.command === "convert_images").length), 0, "Unreviewed references must block manual conversion before native invocation");
@@ -326,6 +331,7 @@ try {
   console.log(`Captured ${report.screenshots.length} Texgo UI states without browser errors.`);
 } catch (error) {
   report.result = "failed"; report.error = error.stack ?? String(error);
+  if (activePage && !activePage.isClosed()) report.focusDiagnostics = await activePage.evaluate(() => ({ active: { tag: document.activeElement?.tagName, label: document.activeElement?.getAttribute("aria-label") }, renameInputs: document.querySelectorAll('[aria-label="图片新名称"]').length, asset: window.__TEXGO_UI_REVIEW__?.snapshot().images[0], trace: window.__TEXGO_UI_REVIEW__?.focusTrace })).catch(() => null);
   if (activePage && !activePage.isClosed()) await activePage.screenshot({ path: fileURLToPath(new URL("failure.png", output)), animations: "disabled" }).catch(() => {});
   throw error;
 } finally {
