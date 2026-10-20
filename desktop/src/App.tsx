@@ -29,11 +29,11 @@ import { conversionOptions, defaultSettings, settingsIssues } from "./settings";
 import type { ConversionSettings } from "./settings";
 import { readRecents, readSettings, rememberWorkspace, removeRecent, storeSettings, workspaceKey } from "./recents";
 import type { RecentWorkspace } from "./recents";
-import type { SmartReport, NotificationTarget, ChangePreview, ConversionHistoryEntry, ConversionProgress, ConversionResult, ImageResult, Project, ReplacementResult } from "./types";
+import type { SmartReport, NotificationTarget, ChangePreview, ConversionHistoryEntry, ConversionProgress, ConversionResult, ImageResult, Project, ReplacementResult, RenameResult, IgnoreMode, ConversionIntent } from "./types";
 import { errorMessage, fileName } from "./utils";
 
-type Operation = "opening" | "converting" | "reviewing" | "applying" | "undoing" | "updating";
-const operationLabels: Record<Operation, string> = { opening: "正在扫描…", converting: "正在更新图片…", reviewing: "正在读取引用变更…", applying: "正在替换引用…", undoing: "正在撤销…", updating: "正在更新项目状态…" };
+type Operation = "opening" | "converting" | "reviewing" | "applying" | "undoing" | "updating" | "renaming";
+const operationLabels: Record<Operation, string> = { opening: "正在扫描…", converting: "正在更新图片…", reviewing: "正在读取引用变更…", applying: "正在替换引用…", undoing: "正在撤销…", updating: "正在更新项目状态…", renaming: "正在重命名图片…" };
 
 function projectEntry(project: Project): Omit<RecentWorkspace, "openedAt"> {
   return { path: project.mainFile };
@@ -49,6 +49,8 @@ export default function App() {
   const [failedRecent, setFailedRecent] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
+  const [renameRequest, setRenameRequest] = useState<{ id: string; token: number }>();
+  const [conversionBlocked, setConversionBlocked] = useState(false);
   const [completion, setCompletion] = useState<number | null>(null);
   const [queuedReview, setQueuedReview] = useState<{ key: string; preview: ChangePreview } | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -93,6 +95,7 @@ export default function App() {
   useEffect(() => { const update = () => setWindowVisible(!document.hidden); document.addEventListener("visibilitychange", update); return () => document.removeEventListener("visibilitychange", update); }, []);
   const contextKey = project ? workspaceKey(projectEntry(project)) : null;
   const pendingIds = new Set(project?.status.pendingImageIds ?? []);
+  const convertibleIds = new Set(project?.status.convertibleImageIds ?? project?.status.pendingImageIds ?? []);
   const problemIds = new Set(project?.status.problemIds ?? []);
   const ignored = new Set(project?.status.ignoredImageIds ?? []);
   const completedIds = new Set(project?.status.completedImageIds ?? []);
@@ -107,9 +110,9 @@ export default function App() {
   useEffect(() => {
     if (!queuedReview) return;
     if (queuedReview.key !== contextKey) { setQueuedReview(null); return; }
-    if (busy || completion !== null || settingsPage || !windowVisible || undoEntry || problemId || updateOpen) return;
+    if (busy || completion !== null || settingsPage || !windowVisible || undoEntry || problemId || updateOpen || conversionBlocked) return;
     rememberFocus(); setReviewKind("conversion"); setReview(queuedReview.preview); setQueuedReview(null);
-  }, [queuedReview, completion, busy, contextKey, settingsPage, windowVisible, undoEntry, problemId, updateOpen]);
+  }, [queuedReview, completion, busy, contextKey, settingsPage, windowVisible, undoEntry, problemId, updateOpen, conversionBlocked]);
 
   useEffect(() => {
     if (!notice.startsWith("检测到")) return;
@@ -226,6 +229,7 @@ export default function App() {
     setQueuedReview(null);
     setCompletion(null);
     setSelectionMode(false);
+    setRenameRequest(undefined); setConversionBlocked(false);
     setProblemId(null);
     setProgress(null);
     setRevision((value) => value + 1);
@@ -253,7 +257,7 @@ export default function App() {
       setSettings(readSettings(workspaceKey(projectEntry(next))) ?? { dpi: String(defaults.dpi), jpegQuality: String(defaults.jpegQuality), outputDir: defaults.outputDir });
     } else {
       setActiveId((previous) => next.images.some((image) => image.id === previous) ? previous : next.status.pendingImageIds[0] ?? next.images[0]?.id ?? null);
-      setSelected((previous) => new Set([...previous].filter((id) => next.status.pendingImageIds.includes(id))));
+      setSelected((previous) => new Set([...previous].filter((id) => (next.status.convertibleImageIds ?? next.status.pendingImageIds).includes(id))));
     }
     projectRef.current = next;
     setProject(next);
@@ -303,14 +307,28 @@ export default function App() {
     });
   }
 
-  async function ignoreAsset(id: string, value = true) {
+  async function ignoreAsset(id: string, mode: IgnoreMode = "session") {
     if (operationRef.current || !projectRef.current) return;
     await execute("updating", async () => {
-      const next = await invoke<Project>("ignore_asset", { imageId: id, ignored: value });
+      const next = await invoke<Project>("ignore_asset", { imageId: id, mode });
       await acceptProject(next, true);
       setSelected((previous) => new Set([...previous].filter((item) => item !== id)));
-      setProblemId(null); setError(null); setNotice(value ? "已忽略本次，源文件未修改" : "已恢复处理");
+      setProblemId(null); setError(null); setNotice(mode === "permanent" ? "已始终忽略，可随时恢复处理" : mode === "session" ? "已忽略本次，源文件未修改" : "已恢复处理");
     });
+  }
+
+  async function renameAsset(imageId: string, newBaseName: string) {
+    const current = projectRef.current;
+    if (!current || operationRef.current) throw new Error("已有项目操作正在运行，请稍后重试");
+    operationRef.current = "renaming"; setOperation("renaming"); setError(null);
+    try {
+      const result = await invoke<RenameResult>("rename_asset", { imageId, newBaseName, expectedFingerprint: current.stateFingerprint ?? "" });
+      await acceptProject(result.project, true);
+      setActiveId(result.newImageId);
+      setSelected((previous) => new Set([...previous].map((id) => id === result.oldImageId ? result.newImageId : id).filter((id) => (result.project.status.convertibleImageIds ?? []).includes(id))));
+      const entry = result.project.images.find((image) => image.id === result.newImageId);
+      setNotice(`已重命名${entry?.references.length ? `，并更新 ${entry.references.length} 处 LaTeX 引用` : ""}`);
+    } finally { operationRef.current = null; setOperation(null); }
   }
 
   function retryAsset(imageId: string) {
@@ -341,16 +359,16 @@ export default function App() {
     });
   }
 
-  function convert() {
+  function convert(intent: ConversionIntent = selectionMode ? "selected" : "pending", explicitIds?: string[]) {
     if (!project || operationRef.current || project.status.blockingReason) return;
-    if (canReview && !preferences.allowUnreviewed) { reviewChanges(); return; }
+    if (canReview && !preferences.allowUnreviewed) { rememberFocus(); setConversionBlocked(true); return; }
     const issues = settingsIssues(settings);
     const first = (["dpi", "jpegQuality", "outputDir"] as const).find((key) => issues[key]);
     if (first) {
       document.getElementById({ dpi: "conversion-dpi", jpegQuality: "conversion-quality", outputDir: "conversion-output" }[first])?.focus();
       return;
     }
-    const imageIds = project.status.pendingImageIds.filter((id) => !selectionMode || selected.has(id));
+    const imageIds = intent === "pending" ? project.status.pendingImageIds : (explicitIds ?? [...selected]).filter((id) => convertibleIds.has(id));
     if (!imageIds.length) return;
     void execute("converting", async () => {
       setReview(null);
@@ -368,7 +386,7 @@ export default function App() {
           if (acceptingEvents && imageIds.includes(payload.id)) setResults((previous) => ({ ...previous, [payload.id]: payload }));
         });
         if (cancelRef.current) { setNotice("已取消：0 张已完成"); return; }
-        const result = await invoke<ConversionResult>("convert_images", { options: conversionOptions(settings, imageIds) });
+        const result = await invoke<ConversionResult>("convert_images", { options: conversionOptions(settings, imageIds), intent });
         const next: Record<string, ImageResult> = {};
         for (const image of result.images) next[image.id] = { ...image, error: image.error || (!image.pdfPath ? "未生成 PDF" : null) };
         for (const id of imageIds) {
@@ -537,7 +555,7 @@ export default function App() {
 
   useEffect(() => {
     function keydown(event: KeyboardEvent) {
-      const element = event.target as HTMLElement | null;
+      const element = event.target instanceof HTMLElement ? event.target : null;
       const editing = Boolean(element?.closest("input,textarea,select,[contenteditable]:not([contenteditable=false])"));
       if (event.isComposing || event.repeat || event.altKey) return;
       const mod = event.metaKey || event.ctrlKey;
@@ -548,12 +566,13 @@ export default function App() {
         if (event.key === "Escape") { event.preventDefault(); setSettingsPage(false); requestAnimationFrame(() => document.getElementById("main-content")?.focus()); }
         return;
       }
-      if (review || undoEntry || updateOpen || drawerOpen || problemId || document.querySelector('[data-slot="dropdown-menu-content"], [data-slot="popover-content"], [data-recording="true"]')) return;
+      if (review || undoEntry || updateOpen || drawerOpen || problemId || conversionBlocked || document.querySelector('[data-slot="dropdown-menu-content"], [data-slot="popover-content"], [data-recording="true"]')) return;
       if (mod && event.key.toLowerCase() === "o") { event.preventDefault(); desktopAction.current("open-project"); }
       else if (mod && event.key.toLowerCase() === "r") { event.preventDefault(); desktopAction.current("refresh"); }
       else if (mod && event.key === "Enter") { event.preventDefault(); desktopAction.current(event.shiftKey ? "review" : "convert"); }
       else if (mod && event.key.toLowerCase() === "f") { event.preventDefault(); setView("assets"); requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[name="imageSearch"]')?.focus()); }
       else if (!editing && !mod && event.key === "/") { event.preventDefault(); setView("assets"); requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[name="imageSearch"]')?.focus()); }
+      else if (view === "assets" && !editing && !mod && event.key === "F2" && !busy && activeAsset?.canRename) { event.preventDefault(); setRenameRequest({ id: activeAsset.id, token: Date.now() }); }
       else if (view === "assets" && !editing && !mod && ["ArrowUp", "ArrowDown"].includes(event.key) && visibleImages.length) {
         event.preventDefault(); const index = visibleImages.findIndex((image) => image.id === activeId);
         const next = Math.max(0, Math.min(visibleImages.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)));
@@ -563,7 +582,7 @@ export default function App() {
     }
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
-  }, [review, undoEntry, updateOpen, drawerOpen, problemId, busy, selected.size, activeId, visibleImages, settingsPage, selectionMode, view]);
+  }, [review, undoEntry, updateOpen, drawerOpen, problemId, busy, selected.size, activeId, visibleImages, settingsPage, selectionMode, view, conversionBlocked, activeAsset]);
   function nextAction() {
     if (!project || busy || project.status.blockingReason) return;
     if (project.status.nextAction === "reviewReferences") reviewChanges();
@@ -582,7 +601,7 @@ export default function App() {
     onRemove={(entry) => { const saved = removeRecent(entry); setRecents(readRecents()); setNotice(saved ? "已移除最近记录，文件未删除" : "无法移除记录，请检查应用存储权限"); }} />;
 
   return <TooltipProvider delayDuration={350}><div className="app-shell">
-    <div className="workbench" inert={review !== null || undoEntry !== null || problemId !== null || updateOpen}>
+    <div className="workbench" inert={review !== null || undoEntry !== null || problemId !== null || updateOpen || conversionBlocked}>
       <a href="#main-content" className="skip-link">跳转到工作区</a>
       {!narrow && <aside className="workspace-sidebar" data-collapsed={!sidebarOpen} aria-hidden={!sidebarOpen} inert={!sidebarOpen}>{sidebar}</aside>}
       <div className="workspace-main">
@@ -599,25 +618,25 @@ export default function App() {
       {!project && !settingsPage && <Home busy={busy} onOpenTex={openProject} recents={recents} onRecent={openRecent} />}
       {project && <>
         <main id={settingsPage ? undefined : "main-content"} tabIndex={-1} className="workspace-content" hidden={settingsPage} data-view={view} onKeyDownCapture={(event) => {
-          if (selectionMode && event.key === "Escape" && !busy && view === "assets") {
+          if (selectionMode && event.key === "Escape" && !busy && view === "assets" && !(event.target as HTMLElement).closest(".asset-rename")) {
             event.preventDefault(); event.stopPropagation(); setSelectionMode(false); setSelected(new Set());
           }
         }}>
           <div className="workspace-grid" hidden={view !== "assets"} data-view={view} style={layoutStyle}>
             <div className="workspace-library"><AssetList images={visibleImages} allImages={project.images} ignored={ignored} pendingIds={pendingIds} problemIds={problemIds} completedIds={completedIds}
-              selectionMode={selectionMode} onIgnore={(id, value) => { void ignoreAsset(id, value); }} onInspect={inspectProblem} onLocate={locateRepair} total={project.status.totalImages} selected={selected} activeId={activeId} results={results}
+              selectionMode={selectionMode} renameRequest={renameRequest} onRename={renameAsset} convertibleIds={convertibleIds} onManualConvert={(id) => convert("reconvert", [id])} onIgnore={(id, value) => { void ignoreAsset(id, value); }} onInspect={inspectProblem} onLocate={locateRepair} total={project.status.totalImages} selected={selected} activeId={activeId} results={results}
               busy={busy} previewDisabled={busy && operation !== "converting"} search={search} filter={filter} onSearch={setSearch} onFilter={setFilter} onActivate={setActiveId}
-              onSelect={(id) => { if (!busy && pendingIds.has(id)) setSelected((previous) => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }}
-              onSelectAll={(ids, select) => { if (!busy) setSelected((previous) => { const next = new Set(previous); ids.filter((id) => pendingIds.has(id)).forEach((id) => { if (select) next.add(id); else next.delete(id); }); return next; }); }} /></div>
+              onSelect={(id) => { if (!busy && convertibleIds.has(id)) setSelected((previous) => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }}
+              onSelectAll={(ids, select) => { if (!busy) setSelected((previous) => { const next = new Set(previous); ids.filter((id) => convertibleIds.has(id)).forEach((id) => { if (select) next.add(id); else next.delete(id); }); return next; }); }} /></div>
             <Splitter label="调整图片列表宽度" value={assetsWidth} min={340} max={900} onChange={setAssetsWidth} />
-            <div className="asset-inspector" key={contextKey ?? undefined}><AssetPreview busy={busy} asset={activeAsset} result={activeAsset ? results[activeAsset.id] : undefined} revision={revision} ignored={activeAsset ? ignored.has(activeAsset.id) : false}
+            <div className="asset-inspector" key={contextKey ?? undefined}><AssetPreview busy={busy} canConvert={activeId ? convertibleIds.has(activeId) : false} onManualConvert={(id) => convert("reconvert", [id])} asset={activeAsset} result={activeAsset ? results[activeAsset.id] : undefined} revision={revision} ignored={activeAsset ? ignored.has(activeAsset.id) : false}
               statusLabel={activeAsset ? ignored.has(activeAsset.id) ? "已忽略" : problemIds.has(activeAsset.id) ? "需要处理" : pendingIds.has(activeAsset.id) ? activeAsset.updateAvailable ? "有更新" : "待转换" : "已完成" : undefined}
               onInspect={inspectProblem} onLocate={locateRepair} onRetry={project.status.blockingReason ? undefined : retryAsset} onIgnore={(id, value) => { void ignoreAsset(id, value); }} /></div>
           </div>
           <div className="history-view page-enter" hidden={view !== "history"}><ConversionHistory highlightId={highlightBatch} entries={history} busy={busy} onUndo={(entry) => { rememberFocus(); setError(null); setUndoEntry(entry); }} /></div>
         </main>
         <div hidden={settingsPage}><CommandBar status={project.status} settings={settings} selectionMode={selectionMode} selectedCount={selected.size} busy={busy} converting={operation === "converting"} progress={progress} completion={completion} cancelRequested={cancelRequested}
-          onAction={nextAction} onSettings={updateSettings} onSelectionMode={(enabled) => { setSelectionMode(enabled); if (!enabled) setSelected(new Set()); }} onCancel={() => { void cancelConversion(); }} /></div>
+          onAction={nextAction} onConvert={convert} currentImageId={activeId} convertibleIds={[...convertibleIds]} onSettings={updateSettings} onSelectionMode={(enabled) => { setView("assets"); setSelectionMode(enabled); if (!enabled) setSelected(new Set()); }} onCancel={() => { void cancelConversion(); }} /></div>
       </>}
       <footer className="status-bar"><div className="status-text" role="status" aria-live="polite">{operation === "opening" ? <LoaderCircle className="spin" aria-hidden="true" /> : project ? <Check aria-hidden="true" /> : <span className="status-dot" />}<span>{operation && operation !== "converting" ? operationLabels[operation] : notice}</span></div></footer>
       </div>
@@ -631,9 +650,15 @@ export default function App() {
     </Dialog>
     {problemId && project && <AssetProblems asset={project.images.find((image) => image.id === problemId) ?? null} projectRoot={project.root} busy={busy} candidates={repairCandidates} candidatesLoading={operation === "reviewing"} error={error} onClose={() => { setProblemId(null); setError(null); restoreFocus(); }} onLocate={locateRepair} onChoose={chooseRepair} onIgnore={(id) => { void ignoreAsset(id); }} />}
     {review && project && <ReviewDialog key={JSON.stringify(review)} preview={review} root={project.root} busy={busy} error={error} onClose={() => { if (!operationRef.current) { setReview(null); setError(null); restoreFocus(); } }} onApply={(selection) => replace(false, selection)} />}
+    <Dialog open={conversionBlocked} onOpenChange={setConversionBlocked}>
+      <DialogContent onCloseAutoFocus={(event) => { event.preventDefault(); restoreFocus(); }}>
+        <DialogHeader><DialogTitle>请先审核引用</DialogTitle><DialogDescription>当前有 {project?.status.pendingReferences ?? 0} 处引用尚未审核。建议先完成引用审核，再开始新的转换。</DialogDescription></DialogHeader>
+        <DialogFooter><Button variant="outline" onClick={() => setConversionBlocked(false)}>取消</Button><Button onClick={() => { setConversionBlocked(false); reviewChanges(); }}>检查引用</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
     <Dialog open={undoEntry !== null} onOpenChange={(value) => { if (!value && !operationRef.current) { setUndoEntry(null); setError(null); } }}>
       <DialogContent showCloseButton={false} onCloseAutoFocus={(event) => { event.preventDefault(); restoreFocus(); }} onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }} onInteractOutside={(event) => { if (busy) event.preventDefault(); }}>
-        <DialogHeader><DialogTitle>撤销此次操作？</DialogTitle><DialogDescription>将恢复本次任务修改的引用和 PDF，保留原图片。文件已被其他程序修改时会停止撤销。</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>撤销此次操作？</DialogTitle><DialogDescription>将恢复此次操作修改的文件与引用。重命名操作也会恢复原文件名；文件被外部修改时会停止撤销。</DialogDescription></DialogHeader>
         {error && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}
         <DialogFooter><Button variant="outline" disabled={busy} onClick={() => { setUndoEntry(null); setError(null); }}>取消</Button><Button variant="destructive" disabled={busy} onClick={undoConversion}>{busy ? <LoaderCircle data-icon="inline-start" className="animate-spin" aria-hidden="true" /> : <RotateCcw data-icon="inline-start" aria-hidden="true" />}确认撤销</Button></DialogFooter>
       </DialogContent>

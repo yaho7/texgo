@@ -4,6 +4,7 @@ use std::collections::HashSet;
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
+    pub state_fingerprint: String,
     pub status: WorkspaceStatus,
     pub converted_images: Vec<ConvertedImage>,
     pub main_file: String,
@@ -18,6 +19,7 @@ pub struct Project {
 #[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceStatus {
+    pub convertible_image_ids: Vec<String>,
     pub pending_images: usize,
     pub pending_references: usize,
     pub problem_count: usize,
@@ -81,6 +83,8 @@ impl WorkspaceStatus {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageAsset {
+    pub ignore_mode: IgnoreMode,
+    pub can_rename: bool,
     pub id: String,
     pub path: Option<String>,
     pub relative_path: String,
@@ -92,6 +96,44 @@ pub struct ImageAsset {
     pub update_available: bool,
     pub message: Option<String>,
     pub references: Vec<Reference>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum IgnoreMode {
+    #[default]
+    None,
+    Session,
+    Permanent,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ConversionIntent {
+    #[default]
+    Pending,
+    Selected,
+    Reconvert,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameResult {
+    pub project: Project,
+    pub old_image_id: String,
+    pub new_image_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameHistory {
+    pub old_source: String,
+    pub new_source: String,
+    pub old_pdf: Option<String>,
+    pub new_pdf: Option<String>,
+    pub references_changed: usize,
+    #[serde(default)]
+    pub pdf_count: usize,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -122,6 +164,8 @@ pub(crate) fn default_output_dir() -> String { "texgo-pdf".into() }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConversionHistoryEntry {
+    #[serde(default)]
+    pub rename: Option<RenameHistory>,
     pub id: String,
     pub created_at: u64,
     pub output_dir: String,

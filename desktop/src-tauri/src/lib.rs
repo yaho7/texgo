@@ -7,6 +7,8 @@ mod transaction;
 mod workspace;
 mod observation;
 mod repair;
+mod ignore;
+mod rename;
 pub mod preferences;
 pub mod background;
 pub mod automation;

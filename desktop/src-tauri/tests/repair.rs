@@ -2,6 +2,8 @@
 #![allow(dead_code)]
 #[path = "../src/conversion.rs"] mod conversion;
 #[path = "../src/journal.rs"] mod journal;
+#[path = "../src/ignore.rs"] mod ignore;
+#[path = "../src/rename.rs"] mod rename;
 #[path = "../src/manifest.rs"] mod manifest;
 #[path = "../src/models.rs"] mod models;
 #[path = "../src/preferences.rs"] mod preferences;

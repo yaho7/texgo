@@ -142,7 +142,7 @@ impl Drop for ConversionGuard {
 }
 
 #[tauri::command]
-async fn convert_images(options: ConversionOptions, app: tauri::AppHandle, state: State<'_, AppState>) -> Result<ConversionResult, String> {
+async fn convert_images(options: ConversionOptions, intent: Option<ConversionIntent>, app: tauri::AppHandle, state: State<'_, AppState>) -> Result<ConversionResult, String> {
     if state.converting.swap(true, Ordering::Relaxed) { return Err("已有转换任务正在运行".into()); }
     let guard = ConversionGuard(state.converting.clone());
     state.cancel.store(false, Ordering::Relaxed);
@@ -158,7 +158,7 @@ async fn convert_images(options: ConversionOptions, app: tauri::AppHandle, state
         let result = (|| {
         ws.refresh()?;
         ws.ensure_can_convert(allow_unreviewed)?;
-        ws.update_pending_with_results(&options, &cancel,
+        ws.convert_with_intent(&options, intent.unwrap_or_default(), allow_unreviewed, &cancel,
             |progress| { let _ = app.emit("conversion-progress", progress); },
             |image| {
                 if image.error.is_none() {
@@ -203,14 +203,32 @@ async fn asset_preview(image_id: String, converted: bool, state: State<'_, AppSt
 }
 
 #[tauri::command]
-async fn ignore_asset(image_id: String, ignored: bool, app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Project, String> {
+async fn ignore_asset(image_id: String, ignored: Option<bool>, mode: Option<IgnoreMode>, app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Project, String> {
     let project = work(state.inner().clone(), move |workspace| {
         let ws = current(workspace)?;
-        ws.ignore(&image_id, ignored)?;
-        Ok(ws.project().clone())
+        ws.set_ignore_mode(&image_id, mode.unwrap_or(if ignored.unwrap_or(true) { IgnoreMode::Session } else { IgnoreMode::None }))
     }).await?;
     update_tray_status(&app, &project);
     Ok(project)
+}
+
+#[tauri::command]
+async fn rename_asset(image_id: String, new_base_name: String, expected_fingerprint: String, app: tauri::AppHandle, state: State<'_, AppState>) -> Result<RenameResult, String> {
+    if state.converting.swap(true, Ordering::SeqCst) { return Err("已有项目操作正在运行，请稍后重试".into()); }
+    let guard = ConversionGuard(state.converting.clone());
+    let project_app = app.clone();
+    let result = work(state.inner().clone(), move |workspace| {
+        let _guard = guard;
+        let ws = current(workspace)?;
+        let result = ws.rename_asset(&image_id, &new_base_name, &expected_fingerprint);
+        if let Err(error) = &result {
+            let project = ws.reconcile_after_error(error);
+            publish_workspace(&project_app, &project);
+        }
+        result
+    }).await?;
+    update_tray_status(&app, &result.project);
+    Ok(result)
 }
 
 #[tauri::command]
@@ -263,7 +281,7 @@ pub fn run() {
             install_background(app)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![desktop_status, set_shortcut_recording, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, retry_asset, open_project, refresh_workspace, poll_workspace, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, preview_changes, apply_replacements, undo_replacements])
+        .invoke_handler(tauri::generate_handler![desktop_status, set_shortcut_recording, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, rename_asset, retry_asset, open_project, refresh_workspace, poll_workspace, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, preview_changes, apply_replacements, undo_replacements])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let background = window.state::<AppState>().preferences.lock().is_ok_and(|p| p.close_action == "background");

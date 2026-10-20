@@ -13,6 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 #[derive(Clone)]
 pub struct Workspace {
     scan: scanner::Scan,
+    rename_fingerprints: BTreeMap<String, String>,
     converted: BTreeMap<String, StoredConversion>,
     failures: BTreeMap<String, (String, Option<String>)>,
     retrying: HashSet<String>,
@@ -20,6 +21,7 @@ pub struct Workspace {
     pending_repair: Option<(String, PathBuf, ReplacementPlan)>,
     invalidated: HashSet<String>,
     ignored: HashSet<String>,
+    session_ignored: HashSet<String>,
 }
 
 #[derive(Clone)]
@@ -32,6 +34,12 @@ pub(crate) struct StoredConversion {
 
 impl Workspace {
     pub fn open(main: &Path) -> Result<Self, String> {
+        let canonical = main.canonicalize().map_err(|e|e.to_string())?;
+        let root = canonical.parent().ok_or("主文件没有父目录")?;
+        if root.join(".texgo/rename-active.json").symlink_metadata().is_ok() {
+            let _lock = transaction::lock_project(root)?;
+            crate::rename::recover(root)?;
+        }
         let scan = scanner::scan(main)?;
         Self::from_scan(scan)
     }
@@ -40,7 +48,8 @@ impl Workspace {
         crate::manifest::restore_sources(&mut scan.project);
         let root = Path::new(&scan.project.root);
         let journal = Journal::load(root);
-        let mut workspace = Self { scan, converted: BTreeMap::new(), failures: BTreeMap::new(), retrying: HashSet::new(), observed: None, pending_repair: None, invalidated: HashSet::new(), ignored: HashSet::new() };
+        let rename_fingerprints = crate::rename::fingerprints(&scan.project, &scan.sources)?;
+        let mut workspace = Self { scan, rename_fingerprints, converted: BTreeMap::new(), failures: BTreeMap::new(), retrying: HashSet::new(), observed: None, pending_repair: None, invalidated: HashSet::new(), ignored: HashSet::new(), session_ignored: HashSet::new() };
         if let Ok(journal) = journal {
             workspace.rehydrate(&journal);
             for asset in &workspace.scan.project.images {
@@ -87,10 +96,15 @@ impl Workspace {
     }
 
     fn scan_again(&self) -> Result<Self, String> {
+        let root = Path::new(&self.scan.project.root);
+        if root.join(".texgo/rename-active.json").symlink_metadata().is_ok() {
+            let _lock = transaction::lock_project(root)?;
+            crate::rename::recover(root)?;
+        }
         let scan = scanner::scan(Path::new(&self.scan.project.main_file))?;
         let mut refreshed = Self::from_scan(scan)?;
-        refreshed.ignored = self.ignored.clone();
-        refreshed.ignored.retain(|id| refreshed.scan.project.images.iter().any(|asset| &asset.id == id));
+        refreshed.session_ignored = self.session_ignored.clone();
+        refreshed.session_ignored.retain(|id| refreshed.scan.project.images.iter().any(|asset| &asset.id == id));
         refreshed.invalidated.extend(self.invalidated.iter().cloned());
         refreshed.retrying = self.retrying.iter().filter(|id| refreshed.scan.project.images.iter().any(|asset| &asset.id == *id)).cloned().collect();
         refreshed.invalidated.extend(refreshed.retrying.iter().cloned());
@@ -125,11 +139,19 @@ impl Workspace {
 
     pub fn undo_conversion(&mut self, entry_id: &str) -> Result<Project, String> {
         let root = Path::new(&self.scan.project.root);
+        let session_migration = Journal::load(root)?.history(root).into_iter().find(|e|e.id==entry_id)
+            .and_then(|entry|entry.rename).and_then(|rename| {
+                let current=digest(root.join(&rename.new_source).to_string_lossy().as_bytes());
+                self.session_ignored.contains(&current).then(||(current,digest(root.join(rename.old_source).to_string_lossy().as_bytes())))
+            });
         let result = (|| {
             let _lock = transaction::lock_project(root)?;
             transaction::undo_batch_locked(&self.scan.project, entry_id)
         })();
         if result.is_ok() {
+            if let Some((current,previous)) = session_migration {
+                self.session_ignored.remove(&current); self.session_ignored.insert(previous);
+            }
             // The journal is authoritative after undo; do not revive session-only
             // failures or invalidate outputs which have just been restored.
             self.failures.clear();
@@ -141,15 +163,47 @@ impl Workspace {
         refreshed
     }
 
+    pub fn rename_asset(&mut self, image_id: &str, new_base_name: &str, expected_fingerprint: &str) -> Result<RenameResult, String> {
+        let root = PathBuf::from(&self.scan.project.root);
+        let (old_image_id, new_image_id) = {
+            let _lock = transaction::lock_project(&root)?;
+            crate::rename::rename_locked(&self.scan.project, &self.scan.sources, &self.rename_fingerprints,
+                image_id, new_base_name, expected_fingerprint)?
+        };
+        if self.session_ignored.remove(&old_image_id) { self.session_ignored.insert(new_image_id.clone()); }
+        self.failures.remove(&old_image_id);
+        self.retrying.remove(&old_image_id);
+        self.invalidated.remove(&old_image_id);
+        let project = self.refresh()?;
+        Ok(RenameResult { project, old_image_id, new_image_id })
+    }
+
     pub fn project(&self) -> &Project { &self.scan.project }
 
     pub fn ignored(&self) -> &HashSet<String> { &self.ignored }
 
     pub fn ignore(&mut self, id: &str, ignored: bool) -> Result<(), String> {
-        if !self.project().images.iter().any(|a| a.id == id) { return Err("找不到图片".into()); }
-        if ignored { self.ignored.insert(id.into()); } else { self.ignored.remove(id); }
+        self.set_ignore_mode(id, if ignored { IgnoreMode::Session } else { IgnoreMode::None }).map(|_| ())
+    }
+
+    pub fn set_ignore_mode(&mut self, id: &str, mode: IgnoreMode) -> Result<Project, String> {
+        let asset = self.project().images.iter().find(|asset| asset.id == id).ok_or("找不到图片")?.clone();
+        let root = PathBuf::from(&self.project().root);
+        let rules = crate::ignore::IgnoreStore::load(&root)?;
+        let was_permanent = rules.matches(&root, &asset);
+        if mode == IgnoreMode::Session && was_permanent {
+            return Err("此图片已始终忽略，请先恢复处理".into());
+        }
+        if mode == IgnoreMode::Permanent || (mode == IgnoreMode::None && was_permanent) {
+            let _lock = transaction::lock_project(&root)?;
+            let mut rules = crate::ignore::IgnoreStore::load(&root)?;
+            rules.set(&root, &asset, mode == IgnoreMode::Permanent)?;
+            rules.save(&root)?;
+        }
+        if mode == IgnoreMode::Session { self.session_ignored.insert(id.into()); }
+        else { self.session_ignored.remove(id); }
         self.update_status();
-        Ok(())
+        Ok(self.project().clone())
     }
 
     /// Explicitly retry a failed image after repairing output settings, permissions,
@@ -201,12 +255,25 @@ impl Workspace {
     }
 
     fn update_status(&mut self) {
-        let root = Path::new(&self.scan.project.root);
+        let root_path = PathBuf::from(&self.scan.project.root);
+        let root = root_path.as_path();
+        let rules = crate::ignore::IgnoreStore::load(root);
+        self.ignored = self.session_ignored.clone();
+        for asset in &mut self.scan.project.images {
+            asset.ignore_mode = if rules.as_ref().is_ok_and(|rules| rules.matches(root, asset)) {
+                self.ignored.insert(asset.id.clone()); IgnoreMode::Permanent
+            } else if self.session_ignored.contains(&asset.id) { IgnoreMode::Session } else { IgnoreMode::None };
+            asset.can_rename = asset.status == "ready" && asset.path.as_ref().is_some_and(|path| {
+                let path = Path::new(path);
+                path.is_file() && journal::safe_path(root, path).is_ok() && scanner::supported_source(path)
+            });
+        }
         let journal = Journal::load(root);
         let mut blocking_reason = match &journal {
             Ok(journal) => journal.ensure_settled().err(),
             Err(error) => Some(error.clone()),
         };
+        if let Err(error) = rules { blocking_reason.get_or_insert(error); }
         if let Err(error) = transaction::prepare(&self.review_project(), &self.scan.sources, &self.converted) {
             blocking_reason.get_or_insert(error);
         }
@@ -226,7 +293,8 @@ impl Workspace {
         let mut problems = unsafe_output_ids.clone();
         problems.extend(self.failures.keys().cloned());
         let completed = self.converted.keys().cloned().collect();
-        let status = WorkspaceStatus::classify(&self.scan.project.images, &completed, &problems, &self.ignored, self.pending_references(), blocking_reason);
+        let mut status = WorkspaceStatus::classify(&self.scan.project.images, &completed, &problems, &self.ignored, self.pending_references(), blocking_reason);
+        status.convertible_image_ids = self.scan.project.images.iter().filter(|asset| asset.can_rename && !unsafe_output_ids.contains(&asset.id)).map(|asset| asset.id.clone()).collect();
         for asset in &mut self.scan.project.images {
             if let Some((error, _)) = self.failures.get(&asset.id) { asset.message = Some(error.clone()); }
             else if unsafe_output_ids.contains(&asset.id) { asset.message = Some("输出 PDF 已被外部修改，Texgo 无法安全覆盖。请检查文件，或忽略本次处理。".into()); }
@@ -237,6 +305,7 @@ impl Workspace {
             id: id.clone(), pdf_path: None, bytes: None, cached: false, error: Some(error.clone()),
         }));
         self.scan.project.status = status;
+        self.scan.project.state_fingerprint = crate::rename::state_fingerprint(&self.scan.project, &self.rename_fingerprints).unwrap_or_default();
     }
 
     pub fn ensure_can_convert(&self, allow_unreviewed: bool) -> Result<(), String> {
@@ -248,24 +317,24 @@ impl Workspace {
     }
 
     pub fn convert(&mut self, options: &ConversionOptions, cancel: &AtomicBool, progress: impl Fn(Progress)) -> Result<ConversionResult, String> {
-        let result = self.convert_internal(options, cancel, progress, |_| {}, true);
+        let result = self.convert_internal(options, cancel, progress, |_| {}, true, false);
         self.update_status();
         result
     }
 
     pub fn convert_with_results(&mut self, options: &ConversionOptions, cancel: &AtomicBool, progress: impl Fn(Progress), on_image: impl Fn(ConvertedImage)) -> Result<ConversionResult, String> {
-        let result = self.convert_internal(options, cancel, progress, on_image, false);
+        let result = self.convert_internal(options, cancel, progress, on_image, false, false);
         self.update_status();
         result
     }
 
     pub(crate) fn convert_for_pipeline(&mut self, options: &ConversionOptions) -> Result<ConversionResult, String> {
-        let result = self.convert_internal(options, &AtomicBool::new(false), |_| {}, |_| {}, true);
+        let result = self.convert_internal(options, &AtomicBool::new(false), |_| {}, |_| {}, true, false);
         self.update_status();
         result
     }
 
-    fn convert_internal(&mut self, options: &ConversionOptions, cancel: &AtomicBool, progress: impl Fn(Progress), on_image: impl Fn(ConvertedImage), allow_managed_refresh: bool) -> Result<ConversionResult, String> {
+    fn convert_internal(&mut self, options: &ConversionOptions, cancel: &AtomicBool, progress: impl Fn(Progress), on_image: impl Fn(ConvertedImage), allow_managed_refresh: bool, force: bool) -> Result<ConversionResult, String> {
         conversion::validate(options)?;
         let selected: HashSet<&str> = options.image_ids.iter().map(String::as_str).collect();
         if selected.is_empty() { return Err("请先选择图片".into()); }
@@ -329,7 +398,7 @@ impl Workspace {
                     pdf_hash: digest(&rendered.pdf), key: rendered.key,
                     dependencies: rendered.dependencies.iter().map(|(p, h)| Ok((journal::relative(&root, p)?, h.clone()))).collect::<Result<_, String>>()? };
                 journal.valid_sources(&root, &managed)?;
-                let cached = journal.outputs.get(&output_relative).is_some_and(|old| old.key == managed.key && journal.valid(&root, &output_relative, old));
+                let cached = !force && journal.outputs.get(&output_relative).is_some_and(|old| old.key == managed.key && journal.valid(&root, &output_relative, old));
                 if !cached {
                     if preserving_standalone { transaction::validate_standalone_refresh(&self.scan.project)?; }
                     journal.write(&root, batch, &output_relative, managed, &rendered.pdf)?;
@@ -368,11 +437,27 @@ impl Workspace {
     /// Empty selection means every pending image; explicit IDs support selection mode.
     pub fn update_pending_with_results(&mut self, options: &ConversionOptions, cancel: &AtomicBool,
         progress: impl Fn(Progress), on_image: impl Fn(ConvertedImage)) -> Result<ConversionResult, String> {
+        self.convert_grouped(options, ConversionIntent::Pending, cancel, progress, on_image)
+    }
+
+    /// A recommendation does not remove explicit user control. Manual intents may
+    /// include completed/ignored assets, but retain every file and journal check.
+    pub fn convert_with_intent(&mut self, options: &ConversionOptions, intent: ConversionIntent, allow_unreviewed: bool,
+        cancel: &AtomicBool, progress: impl Fn(Progress), on_image: impl Fn(ConvertedImage)) -> Result<ConversionResult, String> {
+        self.update_status();
+        self.ensure_can_convert(allow_unreviewed)?;
+        self.convert_grouped(options, intent, cancel, progress, on_image)
+    }
+
+    fn convert_grouped(&mut self, options: &ConversionOptions, intent: ConversionIntent, cancel: &AtomicBool,
+        progress: impl Fn(Progress), on_image: impl Fn(ConvertedImage)) -> Result<ConversionResult, String> {
         conversion::validate(options)?;
         if let Some(reason) = &self.project().status.blocking_reason { return Err(reason.clone()); }
-        let ids = if options.image_ids.is_empty() { self.project().status.pending_image_ids.clone() } else { options.image_ids.clone() };
+        let ids = if intent == ConversionIntent::Pending {
+            self.project().status.pending_image_ids.iter().filter(|id| options.image_ids.is_empty() || options.image_ids.contains(id)).cloned().collect()
+        } else { options.image_ids.clone() };
         let selected: HashSet<_> = ids.iter().cloned().collect();
-        if selected.iter().any(|id| self.ignored.contains(id) || !self.project().images.iter().any(|asset| &asset.id == id && asset.status == "ready")) {
+        if selected.iter().any(|id| (intent == ConversionIntent::Pending && self.ignored.contains(id)) || !self.project().status.convertible_image_ids.contains(id)) {
             return Err("所选图片不存在、已忽略或无法更新，请重新扫描".into());
         }
         let root = PathBuf::from(&self.project().root);
@@ -402,7 +487,7 @@ impl Workspace {
                 event.current += offset;
                 event.total = total;
                 progress(event);
-            }, &on_image, true);
+            }, &on_image, true, intent != ConversionIntent::Pending);
             self.update_status();
             let converted = converted?;
             result.images.extend(converted.images);

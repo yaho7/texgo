@@ -11,12 +11,12 @@ vi.mock("../src/PdfPreview", () => ({ default: () => <div aria-label="PDF 预览
 const imageData = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=";
 const reference = { file: "/paper/main.tex", line: 8, original: "figures/alpha.png", start: 40, end: 57 };
 const initial: Project = {
-  mainFile: "/paper/main.tex", root: "/paper", texFiles: ["/paper/main.tex"], warnings: ["有图片引用未找到文件"], undoAvailable: false, convertedImages: [],
-  status: { pendingImages: 2, pendingReferences: 0, problemCount: 2, ignoredCount: 0, completedImages: 1, totalImages: 5,
+  stateFingerprint: "scan-state", mainFile: "/paper/main.tex", root: "/paper", texFiles: ["/paper/main.tex"], warnings: ["有图片引用未找到文件"], undoAvailable: false, convertedImages: [],
+  status: { convertibleImageIds: ["a", "b"], pendingImages: 2, pendingReferences: 0, problemCount: 2, ignoredCount: 0, completedImages: 1, totalImages: 5,
     pendingImageIds: ["a", "b"], problemIds: ["missing", "unsupported"], ignoredImageIds: [], completedImageIds: ["pdf"], nextAction: "convertImages", blockingReason: null },
   images: [
-    { id: "a", path: "/paper/figures/alpha.png", relativePath: "figures/alpha.png", format: "png", width: 1200, height: 800, bytes: 120000, status: "ready", message: null, references: [reference] },
-    { id: "b", path: "/paper/figures/beta.jpg", relativePath: "figures/beta.jpg", format: "jpeg", width: 900, height: 600, bytes: 80000, status: "ready", message: null, references: [{ ...reference, line: 10, original: "figures/beta.jpg" }] },
+    { id: "a", path: "/paper/figures/alpha.png", relativePath: "figures/alpha.png", format: "png", width: 1200, height: 800, bytes: 120000, status: "ready", canRename: true, ignoreMode: "none", message: null, references: [reference] },
+    { id: "b", path: "/paper/figures/beta.jpg", relativePath: "figures/beta.jpg", format: "jpeg", width: 900, height: 600, bytes: 80000, status: "ready", canRename: true, ignoreMode: "none", message: null, references: [{ ...reference, line: 10, original: "figures/beta.jpg" }] },
     { id: "missing", path: null, relativePath: "figures/lost.png", format: "png", width: null, height: null, bytes: null, status: "missing", message: "文件不存在", references: [{ ...reference, line: 12 }] },
     { id: "unsupported", path: "/paper/animation.gif", relativePath: "animation.gif", format: "gif", width: 20, height: 20, bytes: 500, status: "unsupported", message: "不支持此格式", references: [] },
     { id: "pdf", path: "/paper/plot.pdf", relativePath: "plot.pdf", format: "pdf", width: null, height: null, bytes: 4000, status: "pdf", message: null, references: [] },
@@ -69,8 +69,10 @@ beforeEach(() => {
     undo_replacements: () => { backend.undoAvailable = false; return { filesChanged: 1, referencesChanged: 1 }; },
     undo_conversion: () => { backend = structuredClone(initial); entries = [{ ...record, undone: true, canUndo: false }]; return structuredClone(backend); },
     repair_candidates: () => [],
-    ignore_asset: ({ imageId, ignored }) => {
+    ignore_asset: ({ imageId, mode }) => {
       const id = imageId as string;
+      const ignored = mode !== "none";
+      const asset = backend.images.find((image) => image.id === id); if (asset) asset.ignoreMode = mode as "none" | "session" | "permanent";
       setStatus({ ignoredImageIds: ignored ? [...backend.status.ignoredImageIds, id] : backend.status.ignoredImageIds.filter((value) => value !== id), problemIds: ignored ? backend.status.problemIds.filter((value) => value !== id) : [...backend.status.problemIds, id] });
       return structuredClone(backend);
     },
@@ -90,8 +92,12 @@ async function menu(user: ReturnType<typeof userEvent.setup>, name: string) {
   await user.click(screen.getByRole("button", { name: "更多操作" }));
   await user.click(await screen.findByRole("menuitem", { name: new RegExp(`^${name}`) }));
 }
+async function selectPartial(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "更多转换操作" }));
+  await user.click(await screen.findByRole("menuitem", { name: "选择图片转换…" }));
+}
 async function convertAndReview(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: "更新 2 张图片" }));
+  await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
   return screen.findByRole("dialog", { name: "检查引用变更" }, { timeout: 3000 });
 }
 
@@ -116,17 +122,17 @@ describe("LaTeX 项目唯一工作流", () => {
   it("uses the Rust pending snapshot instead of inferring candidates from image format", async () => {
     setStatus({ pendingImageIds: ["b"] });
     const user = await openProject();
-    await user.click(screen.getByRole("button", { name: "更新 1 张图片" }));
+    await user.click(screen.getByRole("button", { name: "转换 1 张图片" }));
     await screen.findByRole("dialog", { name: "检查引用变更" });
     expect(calls.find((call) => call.command === "convert_images")?.args.options).toMatchObject({ imageIds: ["b"] });
   });
   it("supports a temporary partial selection mode and Esc exits it without resetting search", async () => {
     const user = await openProject();
-    await user.click(screen.getByRole("button", { name: "选择部分图片…" }));
+    await selectPartial(user);
     expect(screen.getByRole("checkbox", { name: "选择当前列表" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "更新已选 0 张" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "转换 0 张图片" })).toBeDisabled();
     await user.click(screen.getByRole("checkbox", { name: "选择 figures/beta.jpg" }));
-    await user.click(screen.getByRole("button", { name: "更新已选 1 张" }));
+    await user.click(screen.getByRole("button", { name: "转换 1 张图片" }));
     await screen.findByRole("dialog", { name: "检查引用变更" });
     expect(calls.find((call) => call.command === "convert_images")?.args.options).toMatchObject({ imageIds: ["b"] });
     await user.click(screen.getByRole("button", { name: "返回" }));
@@ -138,9 +144,9 @@ describe("LaTeX 项目唯一工作流", () => {
     const search = screen.getByRole("searchbox", { name: "搜索图片" });
     await user.type(search, "alpha");
     await user.click(screen.getByRole("radio", { name: "待处理 2" }));
-    await user.click(screen.getByRole("button", { name: "选择部分图片…" }));
+    await selectPartial(user);
     await user.click(screen.getByRole("checkbox", { name: "选择当前列表" }));
-    expect(screen.getByRole("button", { name: "更新已选 1 张" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "转换 1 张图片" })).toBeEnabled();
     screen.getByRole("main").focus(); await user.keyboard("{Escape}");
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     expect(search).toHaveValue("alpha");
@@ -149,7 +155,7 @@ describe("LaTeX 项目唯一工作流", () => {
   it("Escape exits selection even when the comparison Inspector has keyboard focus", async () => {
     backend.convertedImages = [{ id: "a", pdfPath: "/paper/pdf/a.pdf", bytes: 10, cached: true, error: null }];
     const user = await openProject();
-    await user.click(screen.getByRole("button", { name: "选择部分图片…" }));
+    await selectPartial(user);
     await user.click(screen.getByRole("radio", { name: "对比" }));
     screen.getByRole("region", { name: "图片预览" }).focus();
     await user.keyboard("{Escape}");
@@ -159,7 +165,7 @@ describe("LaTeX 项目唯一工作流", () => {
   it("does not open ReviewDialog when an update keeps the same PDF references", async () => {
     handlers.convert_images = ({ options }) => convertResponse((options as ConversionOptions).imageIds, false);
     const user = await openProject();
-    await user.click(screen.getByRole("button", { name: "更新 2 张图片" }));
+    await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
     await screen.findByRole("button", { name: "处理问题" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(calls.some((call) => call.command === "preview_changes")).toBe(false);
@@ -169,7 +175,7 @@ describe("LaTeX 项目唯一工作流", () => {
     convertResponse(["a"]);
     const user = await openProject();
     expect(screen.getByRole("button", { name: "检查 1 处引用" })).toBeEnabled();
-    expect(screen.queryByRole("button", { name: "更新 1 张图片" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "转换 1 张图片" })).not.toBeInTheDocument();
     await user.keyboard("{Control>}{Enter}{/Control}");
     await screen.findByRole("dialog", { name: "检查引用变更" });
     expect(calls.some((call) => call.command === "convert_images")).toBe(false);
@@ -250,7 +256,7 @@ describe("LaTeX 项目唯一工作流", () => {
   });
   it("polls silently and preserves partial selection and context", async () => {
     const user = await openProject();
-    await user.click(screen.getByRole("button", { name: "选择部分图片…" }));
+    await selectPartial(user);
     await user.click(screen.getByRole("checkbox", { name: "选择 figures/alpha.png" }));
     await user.type(screen.getByRole("searchbox", { name: "搜索图片" }), "alpha");
     backend.images[0].updateAvailable = true; handlers.poll_workspace = () => structuredClone(backend);
@@ -262,7 +268,7 @@ describe("LaTeX 项目唯一工作流", () => {
   });
   it("keeps browsing enabled during updates, streams progress, and can cancel", async () => {
     const pending = deferred<ConversionResult>(); handlers.convert_images = () => pending.promise;
-    const user = await openProject(); await user.click(screen.getByRole("button", { name: "更新 2 张图片" }));
+    const user = await openProject(); await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
     await waitFor(() => expect(calls.some((call) => call.command === "convert_images")).toBe(true));
     await act(async () => { await emit("conversion-progress", { current: 1, total: 2, name: "alpha.png", status: "done" }); });
     expect(screen.getByRole("button", { name: "正在更新 1 / 2" })).toBeDisabled();
@@ -272,7 +278,7 @@ describe("LaTeX 项目唯一工作流", () => {
     await user.click(screen.getByRole("button", { name: "取消更新" }));
     expect(calls.some((call) => call.command === "cancel_conversion")).toBe(true);
     await act(async () => pending.resolve({ images: [], cancelled: true }));
-    await screen.findByRole("button", { name: "更新 2 张图片" });
+    await screen.findByRole("button", { name: "转换 2 张图片" });
   });
   it("the Command Bar follows background Smart Convert status and does not steal active selection", async () => {
     const user = await openProject();
@@ -331,7 +337,7 @@ describe("LaTeX 项目唯一工作流", () => {
     const user = await openProject();
     await user.click(screen.getByRole("button", { name: "预览 figures/alpha.png" }));
     await user.click(screen.getByRole("button", { name: "重试此图片" }));
-    await screen.findByRole("button", { name: "更新 2 张图片" });
+    await screen.findByRole("button", { name: "转换 2 张图片" });
     expect(calls.some((call) => call.command === "convert_images")).toBe(false);
   });
   it("reconciles partial background writes from a recovery snapshot when watcher is disabled", async () => {
@@ -341,12 +347,12 @@ describe("LaTeX 项目唯一工作流", () => {
     backend.convertedImages = [{ id: "a", pdfPath: "/paper/pdf/a.pdf", bytes: 123, cached: false, error: null }];
     setStatus({ pendingImageIds: ["b"], completedImageIds: ["pdf", "a"], nextAction: "convertImages" });
     await act(async () => { await emit("workspace-updated", structuredClone(backend)); await emit("background-idle", null); });
-    expect(await screen.findByRole("button", { name: "更新 1 张图片" })).toBeEnabled();
+    expect(await screen.findByRole("button", { name: "转换 1 张图片" })).toBeEnabled();
     expect(screen.getByRole("radio", { name: "已完成 2" })).toBeInTheDocument();
   });
   it("retains queued automatic review while settings is open", async () => {
     const user = await openProject();
-    await user.click(screen.getByRole("button", { name: "更新 2 张图片" }));
+    await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
     await user.click(screen.getByRole("button", { name: "设置" }));
     await screen.findByRole("main", { name: "设置" });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 750)); });
@@ -376,5 +382,79 @@ describe("LaTeX 项目唯一工作流", () => {
     await user.keyboard("{Escape}");
     expect(screen.getByRole("searchbox", { name: "搜索图片" })).toBeInTheDocument();
     expect(calls.some((call) => call.command === "close_workspace")).toBe(false);
+  });
+});
+
+describe("explicit asset control", () => {
+  it("keeps manual conversion available when up to date and sends reconvert intent", async () => {
+    setStatus({ pendingImageIds: [], problemIds: [], ignoredImageIds: ["missing", "unsupported"], completedImageIds: ["a", "b", "pdf"], nextAction: "upToDate" });
+    handlers.convert_images = ({ options }) => convertResponse((options as ConversionOptions).imageIds, false);
+    const user = await openProject();
+    await user.click(screen.getByRole("button", { name: "转换…" }));
+    await user.click(screen.getByRole("button", { name: "开始转换" }));
+    await waitFor(() => expect(calls.find((call) => call.command === "convert_images")?.args).toMatchObject({ intent: "reconvert", options: { imageIds: ["a"] } }));
+    await waitFor(() => expect(calls.some((call) => call.command === "refresh_workspace")).toBe(true));
+    expect(screen.queryByRole("dialog", { name: "检查引用变更" })).not.toBeInTheDocument();
+  });
+  it("explains pending-reference safety when a user explicitly asks to convert", async () => {
+    convertResponse(["a", "b"]);
+    const user = await openProject();
+    await user.click(screen.getByRole("button", { name: "转换…" }));
+    await user.click(screen.getByRole("button", { name: "开始转换" }));
+    const dialog = await screen.findByRole("dialog", { name: "请先审核引用" });
+    expect(within(dialog).getByText(/当前有 2 处引用尚未审核/)).toBeInTheDocument();
+    expect(calls.some((call) => call.command === "convert_images")).toBe(false);
+    await user.click(within(dialog).getByRole("button", { name: "检查引用" }));
+    expect(await screen.findByRole("dialog", { name: "检查引用变更" })).toBeInTheDocument();
+  });
+  it("allows explicit reconversion with pending references when the advanced policy is enabled", async () => {
+    convertResponse(["a", "b"]);
+    handlers.get_preferences = () => ({ ...defaultPreferences, autoUpdate: false, allowUnreviewed: true });
+    const user = await openProject();
+    await user.click(screen.getByRole("button", { name: "转换…" }));
+    await user.click(screen.getByRole("button", { name: "开始转换" }));
+    await waitFor(() => expect(calls.some((call) => call.command === "convert_images" && call.args.intent === "reconvert")).toBe(true));
+    expect(screen.queryByRole("dialog", { name: "请先审核引用" })).not.toBeInTheDocument();
+  });
+  it("persists explicit ignore mode and retains the manual conversion fallback", async () => {
+    const user = await openProject();
+    await user.click(screen.getByRole("button", { name: "更多操作 figures/alpha.png" }));
+    await user.click(await screen.findByRole("menuitem", { name: "始终忽略" }));
+    await waitFor(() => expect(calls.find((call) => call.command === "ignore_asset")?.args).toMatchObject({ imageId: "a", mode: "permanent" }));
+    await user.click(screen.getByRole("button", { name: "更多操作 figures/alpha.png" }));
+    await user.click(await screen.findByRole("menuitem", { name: "手动转换一次" }));
+    await waitFor(() => expect(calls.some((call) => call.command === "convert_images" && call.args.intent === "reconvert")).toBe(true));
+    expect(calls.filter((call) => call.command === "ignore_asset")).toHaveLength(1);
+  });
+  it("migrates the active image ID after backend rename while keeping search and preview context", async () => {
+    handlers.rename_asset = ({ imageId, newBaseName, expectedFingerprint }) => {
+      expect(imageId).toBe("a"); expect(expectedFingerprint).toBe("scan-state");
+      const asset = backend.images.find((image) => image.id === "a")!;
+      asset.id = "a-renamed"; asset.relativePath = `figures/${newBaseName}.png`; asset.path = `/paper/${asset.relativePath}`;
+      setStatus({ pendingImageIds: ["a-renamed", "b"], convertibleImageIds: ["a-renamed", "b"] });
+      return { oldImageId: "a", newImageId: "a-renamed", project: structuredClone(backend) };
+    };
+    const user = await openProject();
+    await user.type(screen.getByRole("searchbox"), "figures");
+    await user.dblClick(screen.getByText("alpha.png"));
+    const input = await screen.findByRole("textbox", { name: "图片新名称" });
+    await user.clear(input); await user.type(input, "pressure-map{Enter}");
+    expect(await screen.findByRole("button", { name: "预览 figures/pressure-map.png" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("searchbox")).toHaveValue("figures");
+    expect(screen.queryByRole("textbox", { name: "图片新名称" })).not.toBeInTheDocument();
+  });
+  it("F2 requests rename only outside text fields and errors remain inline", async () => {
+    handlers.rename_asset = () => { throw new Error("该文件名已存在"); };
+    const user = await openProject();
+    const search = screen.getByRole("searchbox"); await user.click(search); fireEvent.keyDown(search, { key: "F2" });
+    expect(screen.queryByRole("textbox", { name: "图片新名称" })).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "F2" });
+    const input = await screen.findByRole("textbox", { name: "图片新名称" });
+    await user.clear(input); await user.type(input, "duplicate{Enter}");
+    expect(await screen.findByText("该文件名已存在")).toBeInTheDocument();
+    expect(input).toHaveValue("duplicate");
+    expect(screen.queryByText("操作未完成")).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("textbox", { name: "图片新名称" })).not.toBeInTheDocument();
   });
 });

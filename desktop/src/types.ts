@@ -9,6 +9,8 @@ export interface Reference {
 export type AssetStatus = "ready" | "missing" | "unsupported" | "ambiguous" | "pdf";
 
 export interface ImageAsset {
+  ignoreMode?: IgnoreMode;
+  canRename?: boolean;
   id: string;
   path: string | null;
   relativePath: string;
@@ -23,9 +25,12 @@ export interface ImageAsset {
 }
 
 export type NextAction = "reviewReferences" | "convertImages" | "resolveProblems" | "upToDate";
+export type IgnoreMode = "none" | "session" | "permanent";
+export type ConversionIntent = "pending" | "selected" | "reconvert";
 
 // Rust owns the classification and action priority. React only presents this snapshot.
 export interface WorkspaceStatus {
+  convertibleImageIds?: string[];
   pendingImages: number;
   pendingReferences: number;
   problemCount: number;
@@ -41,6 +46,7 @@ export interface WorkspaceStatus {
 }
 
 export interface Project {
+  stateFingerprint?: string;
   status: WorkspaceStatus;
   convertedImages: ConvertedImage[];
   mainFile: string;
@@ -60,6 +66,7 @@ export interface ConversionOptions {
 }
 
 export interface ConversionHistoryEntry {
+  rename?: { oldSource: string; newSource: string; oldPdf?: string | null; newPdf?: string | null; referencesChanged: number; pdfCount?: number } | null;
   id: string;
   createdAt: number;
   outputDir: string;
@@ -72,6 +79,12 @@ export interface ConversionHistoryEntry {
   undoReason?: string | null;
   referencesChanged?: number;
   filesChanged?: number;
+}
+
+export interface RenameResult {
+  project: Project;
+  oldImageId: string;
+  newImageId: string;
 }
 
 export interface ConvertedImage {
