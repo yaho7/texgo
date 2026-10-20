@@ -1,6 +1,9 @@
-import css from "../src/styles.css?raw";
-import tokens from "../src/theme.css?raw";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { expect, it } from "vitest";
+const root = existsSync(resolve(process.cwd(), "src/theme.css")) ? process.cwd() : resolve(process.cwd(), "desktop");
+const css = readFileSync(resolve(root, "src/styles.css"), "utf8");
+const tokens = readFileSync(resolve(root, "src/theme.css"), "utf8");
 it("shares motion tokens across workflow, sidebar, badges and overlay surfaces", () => {
   for (const name of ["--motion-fast", "--motion-normal", "--motion-slow", "--ease-standard", "--ease-out"]) expect(tokens).toContain(name);
   for (const name of ["command-enter", "command-exit", "complete-enter", "surface-enter", "dialog-enter"]) expect(css).toContain(`@keyframes ${name}`);
