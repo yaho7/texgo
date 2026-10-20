@@ -323,9 +323,11 @@ export default function App() {
     operationRef.current = "renaming"; setOperation("renaming"); setError(null);
     try {
       const result = await invoke<RenameResult>("rename_asset", { imageId, newBaseName, expectedFingerprint: current.stateFingerprint ?? "" });
-      await acceptProject(result.project, true);
+      // Migrate identity before accepting the snapshot; loading operation history
+      // must never briefly select a fallback image or discard a selected asset.
       setActiveId(result.newImageId);
       setSelected((previous) => new Set([...previous].map((id) => id === result.oldImageId ? result.newImageId : id).filter((id) => (result.project.status.convertibleImageIds ?? []).includes(id))));
+      await acceptProject(result.project, true);
       const entry = result.project.images.find((image) => image.id === result.newImageId);
       setNotice(`已重命名${entry?.references.length ? `，并更新 ${entry.references.length} 处 LaTeX 引用` : ""}`);
     } finally { operationRef.current = null; setOperation(null); }
@@ -357,6 +359,11 @@ export default function App() {
       const preview = await invoke<ChangePreview>("preview_repair", { imageId, target });
       setReviewKind("repair"); setProblemId(null); setReview(preview);
     });
+  }
+
+  function allowManualConversionPanel() {
+    if (canReview && !preferences.allowUnreviewed) { rememberFocus(); setConversionBlocked(true); return false; }
+    return true;
   }
 
   function convert(intent: ConversionIntent = selectionMode ? "selected" : "pending", explicitIds?: string[]) {
@@ -471,6 +478,13 @@ export default function App() {
         restoreFocus();
         throw reason;
       }
+      if (undoEntry.rename && activeAsset?.relativePath === undoEntry.rename.newSource) {
+        const restored = next.images.find((image) => image.relativePath === undoEntry.rename?.oldSource);
+        if (restored) {
+          setActiveId(restored.id);
+          setSelected((previous) => new Set([...previous].map((id) => id === activeAsset.id ? restored.id : id)));
+        }
+      }
       setUndoEntry(null);
       await acceptProject(next, true, "已撤销此次操作");
     });
@@ -534,7 +548,7 @@ export default function App() {
   desktopAction.current = (action) => {
     if (action === "settings") { setSettingsPage(true); setDrawerOpen(false); return; }
     if (action === "check-updates") { setUpdateOpen(true); return; }
-    if (operationRef.current || review || undoEntry || updateOpen || problemId) return;
+    if (operationRef.current || review || undoEntry || updateOpen || problemId || conversionBlocked) return;
     if (action === "open-project") openProject();
     else if (action === "close-project") closeProject();
     else if (action === "refresh" && project) void execute("opening", () => refresh());
@@ -547,7 +561,7 @@ export default function App() {
     }
   };
   dropFiles.current = (paths) => {
-    if (operationRef.current || review || undoEntry || updateOpen || problemId) return;
+    if (operationRef.current || review || undoEntry || updateOpen || problemId || conversionBlocked) return;
     const tex = paths.filter((path) => /\.tex$/i.test(path));
     if (tex.length !== 1) { setError("请一次拖入一个 .tex 主文件"); return; }
     void execute("opening", async () => acceptProject(await invoke<Project>("open_project", { mainFile: tex[0] }), false));
@@ -636,7 +650,7 @@ export default function App() {
           <div className="history-view page-enter" hidden={view !== "history"}><ConversionHistory highlightId={highlightBatch} entries={history} busy={busy} onUndo={(entry) => { rememberFocus(); setError(null); setUndoEntry(entry); }} /></div>
         </main>
         <div hidden={settingsPage}><CommandBar status={project.status} settings={settings} selectionMode={selectionMode} selectedCount={selected.size} busy={busy} converting={operation === "converting"} progress={progress} completion={completion} cancelRequested={cancelRequested}
-          onAction={nextAction} onConvert={convert} currentImageId={activeId} convertibleIds={[...convertibleIds]} onSettings={updateSettings} onSelectionMode={(enabled) => { setView("assets"); setSelectionMode(enabled); if (!enabled) setSelected(new Set()); }} onCancel={() => { void cancelConversion(); }} /></div>
+          onAction={nextAction} onConvert={convert} onManualOpen={allowManualConversionPanel} currentImageId={activeId} convertibleIds={[...convertibleIds]} onSettings={updateSettings} onSelectionMode={(enabled) => { setView("assets"); setSelectionMode(enabled); if (!enabled) setSelected(new Set()); }} onCancel={() => { void cancelConversion(); }} /></div>
       </>}
       <footer className="status-bar"><div className="status-text" role="status" aria-live="polite">{operation === "opening" ? <LoaderCircle className="spin" aria-hidden="true" /> : project ? <Check aria-hidden="true" /> : <span className="status-dot" />}<span>{operation && operation !== "converting" ? operationLabels[operation] : notice}</span></div></footer>
       </div>

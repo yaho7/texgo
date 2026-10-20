@@ -400,7 +400,6 @@ describe("explicit asset control", () => {
     convertResponse(["a", "b"]);
     const user = await openProject();
     await user.click(screen.getByRole("button", { name: "转换…" }));
-    await user.click(screen.getByRole("button", { name: "开始转换" }));
     const dialog = await screen.findByRole("dialog", { name: "请先审核引用" });
     expect(within(dialog).getByText(/当前有 2 处引用尚未审核/)).toBeInTheDocument();
     expect(calls.some((call) => call.command === "convert_images")).toBe(false);
@@ -457,4 +456,25 @@ describe("explicit asset control", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("textbox", { name: "图片新名称" })).not.toBeInTheDocument();
   });
+});
+
+it("never shows a fallback image while rename history is still loading", async () => {
+  const historyLoad = deferred<ConversionHistoryEntry[]>();
+  let historyCalls = 0;
+  handlers.conversion_history = () => ++historyCalls === 1 ? [] : historyLoad.promise;
+  handlers.rename_asset = () => {
+    const asset = backend.images.find((image) => image.id === "b")!;
+    asset.id = "b-renamed"; asset.relativePath = "figures/renamed-beta.jpg"; asset.path = "/paper/figures/renamed-beta.jpg";
+    setStatus({ pendingImageIds: ["a", "b-renamed"], convertibleImageIds: ["a", "b-renamed"] });
+    return { oldImageId: "b", newImageId: "b-renamed", project: structuredClone(backend) };
+  };
+  const user = await openProject();
+  await user.click(screen.getByRole("button", { name: "预览 figures/beta.jpg" }));
+  fireEvent.keyDown(document.body, { key: "F2" });
+  const input = await screen.findByRole("textbox", { name: "图片新名称" });
+  await user.clear(input); await user.type(input, "renamed-beta{Enter}");
+  await waitFor(() => expect(screen.getByRole("button", { name: "预览 figures/renamed-beta.jpg" })).toHaveAttribute("aria-pressed", "true"));
+  expect(screen.getByRole("button", { name: "预览 figures/alpha.png" })).toHaveAttribute("aria-pressed", "false");
+  await act(async () => { historyLoad.resolve([]); });
+  await waitFor(() => expect(screen.getByRole("button", { name: "转换 2 张图片" })).toBeEnabled());
 });
