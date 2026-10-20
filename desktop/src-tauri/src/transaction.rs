@@ -282,6 +282,7 @@ pub(crate) fn undo_batch_locked(project: &Project, batch_id: &str) -> Result<(),
     let root = Path::new(&project.root);
     archive_linked_legacy(root)?;
     let mut journal = crate::journal::Journal::load(root)?;
+    if journal.is_rename(batch_id) { return crate::rename::undo_locked(project, batch_id); }
     if journal.cleanup_completed_references(root, batch_id)? { return Ok(()); }
     if let Some(record) = batch_record(root, batch_id)? {
         if record.main_file != project.main_file { return Err("撤销记录不属于当前主文件".into()); }
@@ -378,7 +379,7 @@ mod batch_workflow {
         let root = dir.path().canonicalize().unwrap();
         fs::write(root.join("main.tex"), b"old").unwrap();
         fs::write(root.join("a.png"), b"source").unwrap();
-        let project = Project { status: Default::default(), converted_images: vec![], main_file: root.join("main.tex").to_string_lossy().into(), root: root.to_string_lossy().into(), tex_files: vec![], images: vec![], warnings: vec![], undo_available: false };
+        let project = Project { state_fingerprint: String::new(), status: Default::default(), converted_images: vec![], main_file: root.join("main.tex").to_string_lossy().into(), root: root.to_string_lossy().into(), tex_files: vec![], images: vec![], warnings: vec![], undo_available: false };
         let _lock = lock_project(&root).unwrap();
         let mut journal = Journal::load(&root).unwrap();
         let batch = journal.begin(&root, &ConversionOptions { image_ids: vec![], quality: "custom".into(), dpi: 150, jpeg_quality: 100, output_dir: "out".into() }).unwrap();
@@ -583,7 +584,7 @@ mod batch_workflow {
         fs::write(&tex, b"old old").unwrap();
         let sources = BTreeMap::from([(tex.clone(), b"old old".to_vec())]);
         project.images.push(crate::models::ImageAsset {
-            id: "a".into(), path: Some(root.join("a.png").to_string_lossy().into()), relative_path: "a.png".into(), format: "png".into(), width: None, height: None, bytes: None, status: "ready".into(), update_available: false, message: None,
+            id: "a".into(), ignore_mode: Default::default(), can_rename: true, path: Some(root.join("a.png").to_string_lossy().into()), relative_path: "a.png".into(), format: "png".into(), width: None, height: None, bytes: None, status: "ready".into(), update_available: false, message: None,
             references: [0, 4].into_iter().map(|start| crate::models::Reference { file: tex.to_string_lossy().into(), line: 1, original: "old".into(), start, end: start + 3 }).collect(),
         });
         let converted = BTreeMap::from([("a".into(), StoredConversion { path: root.join("out/a.pdf"), source_hash: digest(b"source"), pdf_hash: digest(b"pdf"), dependencies: vec![] })]);

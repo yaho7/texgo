@@ -1,4 +1,4 @@
-use crate::models::{ConversionHistoryEntry, ConversionHistoryFile, ConversionOptions};
+use crate::models::{ConversionHistoryEntry, ConversionHistoryFile, ConversionOptions, RenameHistory};
 use crate::workspace::{digest, save_atomic};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -15,7 +15,7 @@ pub(crate) struct Managed {
     pub dependencies: Vec<(String, String)>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct Change {
     output: String,
     before: Option<Managed>,
@@ -34,7 +34,7 @@ enum ReferencePhase {
     Complete,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct Batch {
     entry: ConversionHistoryEntry,
     changes: Vec<Change>,
@@ -44,6 +44,8 @@ struct Batch {
     references_applying: bool,
     #[serde(default)]
     reference_phase: Option<ReferencePhase>,
+    #[serde(default)]
+    rename_fingerprint: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -142,6 +144,49 @@ impl Journal {
         Ok(journal)
     }
 
+
+    pub(crate) fn serialized(&self) -> Result<Vec<u8>, String> { serde_json::to_vec_pretty(self).map_err(|e|e.to_string()) }
+
+    pub(crate) fn from_optional_bytes(bytes: Option<&[u8]>) -> Result<Self, String> {
+        let value = if let Some(bytes)=bytes { serde_json::from_slice(bytes).map_err(|e|format!("Conversion journal is damaged: {e}"))? }
+            else { Self{version:1,outputs:BTreeMap::new(),directories:Vec::new(),batches:Vec::new()} };
+        if value.version!=1 { return Err("Unsupported conversion journal version".into()); }
+        Ok(value)
+    }
+
+    pub(crate) fn is_rename(&self,id:&str)->bool { self.batches.iter().any(|b|b.entry.id==id && b.entry.rename.is_some()) }
+
+    pub(crate) fn rename_undone(&self,id:&str)->bool { self.batches.iter().any(|b|b.entry.id==id && b.entry.rename.is_some() && b.entry.undone) }
+
+    pub(crate) fn rename_fingerprint(&self,id:&str)->Option<&str> { self.batches.iter().find(|b|b.entry.id==id).and_then(|b|b.rename_fingerprint.as_deref()) }
+
+    pub(crate) fn migrate_asset(&mut self,moves:&[(String,String)],old:&str,new:&str)->Result<(),String> {
+        for (from,to) in moves.iter().skip(1) {
+            let mut managed=self.outputs.remove(from).ok_or("托管 PDF 归属记录已经变化")?;
+            managed.source=new.into();
+            // The path participates in cache identity; preserve content hashes,
+            // invalidate the old path key, and keep the output a current PDF.
+            managed.key=digest(format!("rename:{}:{new}",managed.key).as_bytes());
+            for (path,_) in &mut managed.dependencies { if path==old { *path=new.into(); } }
+            self.outputs.insert(to.clone(),managed);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn record_rename(&mut self,id:&str,created_at:u64,rename:RenameHistory,references:usize,files:usize,fingerprint:String) {
+        self.batches.push(Batch{entry:ConversionHistoryEntry{id:id.into(),created_at,output_dir:String::new(),dpi:0,jpeg_quality:0,files:Vec::new(),undone:false,can_undo:false,cancelled:false,undo_reason:None,references_changed:references,files_changed:files,rename:Some(rename)},changes:Vec::new(),undoing:false,references_applying:false,reference_phase:None,rename_fingerprint:Some(fingerprint)});
+    }
+
+    pub(crate) fn append_undone_rename(&mut self,current:&Self,id:&str)->Result<(),String> {
+        let mut batch=current.batches.iter().find(|b|b.entry.id==id && b.entry.rename.is_some()).ok_or("重命名历史记录丢失")?.clone();
+        batch.entry.undone=true; batch.undoing=false;
+        // Retain later already-undone entries so operation history remains stable.
+        let position=current.batches.iter().position(|b|b.entry.id==id).ok_or("重命名历史记录丢失")?;
+        self.batches.push(batch);
+        self.batches.extend(current.batches.iter().skip(position+1).filter(|b|b.entry.undone).cloned());
+        Ok(())
+    }
+
     pub fn save(&self, root: &Path) -> Result<(), String> {
         let path = root.join(".texgo/conversions.json");
         safe_path(root, &path)?;
@@ -200,8 +245,8 @@ impl Journal {
         self.batches.push(Batch {
             entry: ConversionHistoryEntry { id, created_at, output_dir: options.output_dir.clone(),
                 dpi: options.dpi, jpeg_quality: options.jpeg_quality, files: Vec::new(), undone: false, can_undo: false, cancelled: false, undo_reason: None,
-                references_changed: 0, files_changed: 0 },
-            changes: Vec::new(), undoing: false, references_applying: false, reference_phase: None,
+                references_changed: 0, files_changed: 0, rename: None },
+            changes: Vec::new(), undoing: false, references_applying: false, reference_phase: None, rename_fingerprint: None,
         });
         self.save(root)?;
         Ok(self.batches.len() - 1)
@@ -325,10 +370,11 @@ impl Journal {
     }
 
     fn latest(&self) -> Option<usize> {
-        self.batches.iter().rposition(|batch| !batch.entry.undone && (!batch.changes.is_empty() || batch.entry.references_changed > 0))
+        self.batches.iter().rposition(|batch| !batch.entry.undone && (!batch.changes.is_empty() || batch.entry.references_changed > 0 || batch.entry.rename.is_some()))
     }
 
     fn undo_preflight(&self, root: &Path, index: usize) -> Result<(), String> {
+        if self.batches[index].entry.rename.is_some() { return crate::rename::preflight_undo(root, &self.batches[index].entry.id); }
         self.preflight_references(root, &self.batches[index].entry.id)?;
         for change in &self.batches[index].changes {
             let path = root.join(&change.output);
@@ -402,6 +448,7 @@ impl Journal {
         let durable = Self::load(root)?;
         let batch = durable.batches.iter().find(|batch| batch.entry.id == id).ok_or("找不到转换批次")?;
         if !batch.entry.undone { return Ok(false); }
+        if batch.entry.rename.is_some() { return Ok(true); }
         if batch.entry.references_changed > 0 && !matches!(batch.reference_phase, Some(ReferencePhase::Complete) | None) {
             return Err("批次完成标记与引用恢复阶段不一致".into());
         }
@@ -413,7 +460,7 @@ impl Journal {
 
     pub fn cleanup_finished_references(&self, root: &Path) -> Result<(), String> {
         for batch in self.batches.iter().filter(|batch| batch.entry.undone) {
-            self.cleanup_completed_references(root, &batch.entry.id)?;
+            if batch.entry.rename.is_none() { self.cleanup_completed_references(root, &batch.entry.id)?; }
         }
         Ok(())
     }
@@ -455,7 +502,7 @@ impl Journal {
         self.batches.iter().enumerate().rev().map(|(index, batch)| {
             let mut entry = batch.entry.clone();
             let status = if entry.undone { Err("此批次已撤销".to_string()) }
-                else if batch.changes.is_empty() && entry.references_changed == 0 { Err("此批次未写入新文件".to_string()) }
+                else if batch.changes.is_empty() && entry.references_changed == 0 && entry.rename.is_none() { Err("此批次未写入新文件".to_string()) }
                 else if Some(index) != latest { Err("请先撤销更新的转换批次".to_string()) }
                 else { self.undo_preflight(root, index) };
             entry.can_undo = status.is_ok();
