@@ -39,6 +39,7 @@ pub(crate) fn scan(main: &Path) -> Result<Scan, String> {
     let root = main.parent().ok_or("主文件没有父目录")?.to_path_buf();
     let mut scanner = Scanner {
         project: Project {
+            state_fingerprint: String::new(),
             status: Default::default(), converted_images: Vec::new(),
             main_file: main.to_string_lossy().into(),
             root: root.to_string_lossy().into(),
@@ -166,18 +167,35 @@ impl Scanner {
             message = Some("引用包含宏、条件或多行路径，需要手动确认".into());
         } else {
             let bases = std::iter::once(self.root.clone()).chain(self.graphics_dirs.clone()).chain(std::iter::once(file.parent().unwrap().to_path_buf()));
+            let mut unsafe_candidate = false;
             for base in bases {
                 let path = base.join(arg);
                 let paths = if path.extension().is_some() { vec![path] }
                     else { EXTENSIONS.iter().map(|ext| path.with_extension(ext)).collect() };
                 for candidate in paths {
+                    // Validate the path TeX actually named before canonicalize
+                    // removes symlink identity. Dot components are normalized
+                    // by Path::components; parent traversal remains forbidden.
+                    if crate::journal::safe_path(&self.root, &candidate).is_err() {
+                        unsafe_candidate = true;
+                        continue;
+                    }
                     if let Ok(real) = candidate.canonicalize() {
-                        if real.is_file() && real.starts_with(&self.root) && !candidates.contains(&real) { candidates.push(real); }
+                        if !real.starts_with(&self.root) || crate::journal::safe_path(&self.root, &candidate).is_err() {
+                            unsafe_candidate = true;
+                            continue;
+                        }
+                        if real.is_file() && !candidates.contains(&real) { candidates.push(real); }
                     }
                 }
-                if !candidates.is_empty() { break; }
+                if unsafe_candidate || !candidates.is_empty() { break; }
             }
-            if candidates.is_empty() { status = "missing"; message = Some("找不到图片，或图片位于项目目录之外".into()); }
+            if unsafe_candidate {
+                candidates.clear();
+                status = "unsupported";
+                message = Some("图片路径包含符号链接或不安全路径，请引用项目内的真实文件".into());
+            }
+            else if candidates.is_empty() { status = "missing"; message = Some("找不到图片，或图片位于项目目录之外".into()); }
             else if candidates.len() > 1 { status = "ambiguous"; message = Some("找到多个同名图片，请在 TeX 中明确扩展名后重新扫描".into()); }
         }
         let path = if candidates.len() == 1 { candidates.pop() } else { None };
@@ -200,6 +218,7 @@ impl Scanner {
             .map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_else(|| arg.to_string());
         self.indices.insert(key.clone(), self.project.images.len());
         self.project.images.push(ImageAsset {
+            ignore_mode: Default::default(), can_rename: false,
             id: digest(key.as_bytes()), path: path.map(|p| p.to_string_lossy().into()), relative_path,
             format, width: dimensions.map(|d| d.0), height: dimensions.map(|d| d.1), bytes,
             status: status.into(), update_available: false, message, references: vec![reference],

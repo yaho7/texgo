@@ -462,3 +462,54 @@ fn undo_recreated_output_restores_absence_instead_of_stale_ownership() {
     assert!(journal["outputs"].as_object().unwrap().is_empty());
     assert!(!dir.path().join("output/a.pdf").exists());
 }
+
+#[test]
+fn scanning_normal_dot_relative_paths_keeps_real_images_convertible() {
+    let dir = tempfile::tempdir().unwrap();
+    png(dir.path(), "figures/plot.png", 1);
+    fs::write(dir.path().join("main.tex"), "\\includegraphics{./figures/./plot.png}").unwrap();
+    let ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    assert_eq!(ws.project().images[0].status, "ready");
+    assert_eq!(ws.project().images[0].relative_path, "figures/plot.png");
+    assert_eq!(ws.project().status.pending_images, 1);
+}
+
+#[cfg(unix)]
+#[test]
+fn scanner_rejects_image_leaf_symlinks_even_when_target_is_inside_project() {
+    use std::os::unix::fs::symlink;
+    let dir = tempfile::tempdir().unwrap();
+    png(dir.path(), "real.png", 1);
+    symlink(dir.path().join("real.png"), dir.path().join("linked.png")).unwrap();
+    fs::write(dir.path().join("main.tex"), "\\includegraphics{linked.png}").unwrap();
+    let ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    assert_eq!(ws.project().images[0].status, "unsupported");
+    assert!(ws.project().images[0].path.is_none());
+    assert!(ws.project().images[0].message.as_ref().unwrap().contains("符号链接"));
+    assert_eq!(ws.project().status.pending_images, 0);
+    assert_eq!(ws.project().status.problem_count, 1);
+    assert!(!ws.project().images[0].can_rename);
+}
+
+#[cfg(unix)]
+#[test]
+fn scanner_rejects_symlink_parent_and_graphicspath_without_hiding_safe_images() {
+    use std::os::unix::fs::symlink;
+    let dir = tempfile::tempdir().unwrap();
+    png(dir.path(), "figures/plot.png", 1);
+    png(dir.path(), "normal.png", 2);
+    symlink(dir.path().join("figures"), dir.path().join("alias")).unwrap();
+    for tex in [
+        "\\includegraphics{alias/plot.png}\n\\includegraphics{normal.png}",
+        "\\graphicspath{{./alias/}}\n\\includegraphics{plot}\n\\includegraphics{normal.png}",
+    ] {
+        fs::write(dir.path().join("main.tex"), tex).unwrap();
+        let ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+        assert_eq!(ws.project().images.len(), 2);
+        assert_eq!(ws.project().images[0].status, "unsupported");
+        assert!(ws.project().images[0].path.is_none());
+        assert_eq!(ws.project().images[1].status, "ready");
+        assert_eq!(ws.project().status.pending_images, 1);
+        assert_eq!(ws.project().status.problem_count, 1);
+    }
+}
