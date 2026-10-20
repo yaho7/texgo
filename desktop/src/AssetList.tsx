@@ -59,6 +59,8 @@ export default function AssetList(props: Props) {
   const latestImages = useRef(props.allImages ?? props.images);
   latestImages.current = props.allImages ?? props.images;
   const savingRename = useRef(false);
+  const renameIdentity = useRef<{ oldId: string; newPath: string } | null>(null);
+  const rowKeys = useRef(new Map<string, string>());
   const [renamedPath, setRenamedPath] = useState<string | null>(null);
   const [renamedId, setRenamedId] = useState<string | null>(null);
   function beginRename(asset: ImageAsset) {
@@ -90,11 +92,12 @@ export default function AssetList(props: Props) {
       const oldPath = oldAsset?.relativePath.replaceAll("\\", "/") ?? "";
       const filename = oldPath.split("/").pop() ?? "";
       const newPath = oldPath.slice(0, oldPath.length - filename.length) + name + filename.slice(filename.lastIndexOf("."));
+      renameIdentity.current = { oldId: rename.id, newPath };
       await props.onRename(rename.id, name);
       const renamed = latestImages.current.find((image) => image.relativePath.replaceAll("\\", "/") === newPath);
       setRenamedId(renamed?.id ?? rename.id); setRenamedPath(renamed ? null : newPath); setRename(null);
     }
-    catch (reason) { setRename({ ...rename, saving: false, error: errorMessage(reason, "无法安全重命名，请重新扫描后重试") }); requestAnimationFrame(() => renameRef.current?.focus()); }
+    catch (reason) { renameIdentity.current = null; setRename({ ...rename, saving: false, error: errorMessage(reason, "无法安全重命名，请重新扫描后重试") }); requestAnimationFrame(() => renameRef.current?.focus()); }
     finally { savingRename.current = false; }
   }
   const pageSize = 40;
@@ -108,12 +111,14 @@ export default function AssetList(props: Props) {
   const checkedCount = readyIds.filter((id) => props.selected.has(id)).length;
   const allChecked = readyIds.length > 0 && checkedCount === readyIds.length;
   const sourceImages = props.allImages ?? props.images;
+  const migrated = renameIdentity.current ? sourceImages.find((image) => image.relativePath.replaceAll("\\", "/") === renameIdentity.current!.newPath) : undefined;
+  if (migrated && renameIdentity.current && migrated.id !== renameIdentity.current.oldId) rowKeys.current.set(migrated.id, rowKeys.current.get(renameIdentity.current.oldId) ?? renameIdentity.current.oldId);
   const pageImageKey = pageImages.map((image) => image.id).join("\0");
   const presenceKey = `${pageKey}\0${page}`;
   const [presence, setPresence] = useState({ key: presenceKey, ids: pageImageKey, previous: pageImages, exiting: [] as { asset: ImageAsset; index: number }[] });
   let exiting = presence.exiting;
   if (presence.key !== presenceKey || presence.ids !== pageImageKey) {
-    const removed = presence.key === presenceKey ? presence.previous.flatMap((asset, index) => sourceImages.some((current) => current.id === asset.id) ? [] : [{ asset, index }]) : [];
+    const removed = presence.key === presenceKey ? presence.previous.flatMap((asset, index) => (sourceImages.some((current) => current.id === asset.id) || (migrated && renameIdentity.current?.oldId === asset.id)) ? [] : [{ asset, index }]) : [];
     exiting = presence.key === presenceKey ? [...presence.exiting, ...removed].filter((image, index, items) => items.findIndex((other) => other.asset.id === image.asset.id) === index) : [];
     setPresence({ key: presenceKey, ids: pageImageKey, previous: pageImages, exiting });
   }
@@ -205,7 +210,7 @@ export default function AssetList(props: Props) {
               const filename = normalizedPath.slice(slash + 1);
               const folder = slash < 0 ? "." : normalizedPath.slice(0, slash);
               return (
-                <TableRow key={asset.id} data-state={props.activeId === asset.id ? "selected" : undefined} data-exiting={isExiting || undefined} aria-hidden={isExiting || undefined} data-disabled={Boolean(props.previewDisabled) || isExiting} data-highlight={renamedId === asset.id ? "success" : highlights[asset.id]} className="asset-row h-[60px]">
+                <TableRow key={rowKeys.current.get(asset.id) ?? asset.id} data-state={props.activeId === asset.id ? "selected" : undefined} data-exiting={isExiting || undefined} aria-hidden={isExiting || undefined} data-disabled={Boolean(props.previewDisabled) || isExiting} data-highlight={renamedId === asset.id ? "success" : highlights[asset.id]} className="asset-row h-[60px]">
                   {props.selectionMode && <TableCell className="asset-selection-cell">
                     <label className="asset-selection-target"><Checkbox aria-label={`选择 ${asset.relativePath}`} checked={props.selected.has(asset.id)} disabled={props.busy || isExiting || !convertible.has(asset.id)} onCheckedChange={() => props.onSelect(asset.id)} /></label>
                   </TableCell>}

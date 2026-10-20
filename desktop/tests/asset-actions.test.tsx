@@ -50,3 +50,16 @@ it("allows selecting completed and ignored convertible images without selecting 
   await user.click(screen.getByRole("checkbox", { name: "选择当前列表" })); expect(p.onSelectAll).toHaveBeenCalledWith(["plot"], true);
   expect(within(screen.getByRole("row", { name: /plot.png/ })).getByRole("checkbox")).toBeEnabled();
 });
+
+it("keeps the same row in place when a rename returns a new asset ID", async () => {
+  const user = userEvent.setup(); const p = props();
+  const renamed = { ...image, id: "pressure", path: "/paper/figures/pressure-map.png", relativePath: "figures/pressure-map.png" };
+  const view = render(<AssetList {...p} />);
+  const row = screen.getByRole("button", { name: "预览 figures/plot.png" }).closest("tr");
+  p.onRename.mockImplementation(async () => { view.rerender(<AssetList {...p} images={[renamed]} allImages={[renamed]} activeId={renamed.id} />); });
+  view.rerender(<AssetList {...p} />);
+  await user.dblClick(screen.getByText("plot.png")); await user.keyboard("pressure-map{Enter}");
+  expect(await screen.findByRole("button", { name: "预览 figures/pressure-map.png" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "预览 figures/pressure-map.png" }).closest("tr")).toBe(row);
+  expect(screen.getAllByRole("row")).toHaveLength(2);
+});
