@@ -252,7 +252,7 @@ impl IgnoreStore {
 mod tests {
 use std::fs;
 use super::IgnoreStore;
-use crate::Workspace;
+use crate::workspace::Workspace;
 
 fn fixture() -> (tempfile::TempDir, std::path::PathBuf) {
     let dir = tempfile::tempdir().unwrap();
