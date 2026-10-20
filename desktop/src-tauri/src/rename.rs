@@ -153,6 +153,7 @@ pub(crate) fn rename_locked(project:&Project,sources:&BTreeMap<PathBuf,Vec<u8>>,
     }
     let asset=project.images.iter().find(|a|a.id==id).ok_or("找不到图片")?;
     let mut fresh=crate::scanner::scan(Path::new(&project.main_file))?.project;
+    let original_targets:BTreeMap<_,_>=fresh.images.iter().flat_map(|asset|asset.references.iter().filter_map(|r|asset.path.as_ref().map(|p|((r.file.clone(),r.start),p.clone())))).collect();
     crate::manifest::restore_sources(&mut fresh);
     let current=fresh.images.iter().find(|a|a.id==id).ok_or("图片解析结果已经变化，请重新扫描")?;
     if current.status!=asset.status || current.relative_path!=asset.relative_path || current.references.len()!=asset.references.len()
@@ -182,21 +183,18 @@ pub(crate) fn rename_locked(project:&Project,sources:&BTreeMap<PathBuf,Vec<u8>>,
     // SVG resources owned by another managed source need an explicit resource
     // edit operation; moving them here would silently invalidate that source.
     if journal.outputs.values().any(|m|m.source!=old_rel && m.dependencies.iter().any(|(p,_)|p==&old_rel)) { return Err("其他 SVG 依赖此图片，请先调整资源引用后重命名".into()); }
-    for (old_path,new_path) in &moves {
+    for (_,new_path) in &moves {
         let target=root.join(new_path);
         let target_name=target.file_name().and_then(|n|n.to_str()).ok_or("文件名不是有效 UTF-8")?;
         for entry in fs::read_dir(target.parent().unwrap()).map_err(|e|e.to_string())? {
             let entry=entry.map_err(|e|e.to_string())?;
             if entry.file_name().to_string_lossy().eq_ignore_ascii_case(target_name) { return Err(format!("同目录下已经存在 {new_path}")); }
-            if asset.references.iter().any(|r|Path::new(r.original.trim()).extension().is_none())
-                && entry.path().file_stem()==target.file_stem() && entry.path()!=root.join(old_path) {
-                return Err("省略扩展名的引用会出现同名冲突，请使用其他名称".into());
-            }
         }
     }
     let mut files=Vec::new(); for (old,new) in &moves { move_files(root,&mut files,old,new)?; }
     let mut edits:BTreeMap<PathBuf,Vec<(usize,usize,String,String)>>=BTreeMap::new();
     let mut reference_migrations=Vec::new();
+    let mut expected_targets:BTreeMap<(String,usize,String,String),usize>=BTreeMap::new();
     for reference in &asset.references {
         let original=reference.original.trim();
         let original_path=Path::new(original);
@@ -215,6 +213,9 @@ pub(crate) fn rename_locked(project:&Project,sources:&BTreeMap<PathBuf,Vec<u8>>,
         // with_file_name preserves directory/graphicspath spelling and extensionless style.
         let path=PathBuf::from(&reference.file); journal::safe_path(root,&path)?;
         edits.entry(path.clone()).or_default().push((reference.start,reference.end,reference.original.clone(),replacement.clone()));
+        let original_target=original_targets.get(&(reference.file.clone(),reference.start)).ok_or("引用解析记录已变化")?;
+        let target=moves.iter().find(|(old,_)|root.join(old)==Path::new(original_target)).map(|(_,new)|root.join(new)).ok_or("引用不属于当前图片或托管 PDF")?;
+        *expected_targets.entry((reference.file.clone(),reference.line,replacement.clone(),target.to_string_lossy().into())).or_default()+=1;
         reference_migrations.push((journal::relative(root,&path)?,reference.original.clone(),replacement));
     }
     let reference_count=asset.references.len();
@@ -231,6 +232,19 @@ pub(crate) fn rename_locked(project:&Project,sources:&BTreeMap<PathBuf,Vec<u8>>,
         for (start,end,_,replacement) in changes.into_iter().rev() { after.replace_range(start..end,&replacement); }
         files.push(state(journal::relative(root,&path)?,Some(before.clone()),Some(after.into_bytes())));
     }
+    let tex_overrides=files.iter().filter(|f|Path::new(&f.path).extension().is_some_and(|e|e=="tex"))
+        .map(|f|decode(&f.after).map(|bytes|(root.join(&f.path),bytes.unwrap_or_default()))).collect::<Result<BTreeMap<_,_>,_>>()?;
+    let preview=crate::scanner::scan_renamed(Path::new(&project.main_file),tex_overrides,moves.iter().map(|(a,b)|(root.join(a),root.join(b))).collect())?;
+    let mut actual_targets:BTreeMap<(String,usize,String,String),usize>=BTreeMap::new();
+    for preview_asset in &preview.images {
+        if !matches!(preview_asset.status.as_str(),"ready"|"pdf") { continue; }
+        let Some(path)=&preview_asset.path else { continue; };
+        for reference in &preview_asset.references {
+            let key=(reference.file.clone(),reference.line,reference.original.clone(),path.clone());
+            if expected_targets.contains_key(&key) { *actual_targets.entry(key).or_default()+=1; }
+        }
+    }
+    if actual_targets!=expected_targets { return Err("新名称会使 LaTeX 引用出现歧义或指向其他图片，请使用其他名称".into()); }
     let mut ignores=crate::ignore::IgnoreStore::load(root)?;
     let before_ignores=ignores.serialized()?;
     ignores.migrate_paths(&moves)?; ignores.migrate_references(&reference_migrations)?;

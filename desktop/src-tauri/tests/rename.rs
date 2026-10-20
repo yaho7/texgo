@@ -208,3 +208,33 @@ fn tampered_undo_record_is_rejected_without_restoring_any_file() {
     assert!(!dir.path().join("result.png").exists());
     assert!(dir.path().join("map.png").exists());
 }
+#[test]
+fn extensionless_target_collisions_are_rejected_but_explicit_extensions_remain_valid() {
+    for extension in ["jpg","pdf"] {
+        let (dir,mut ws)=fixture(r"\includegraphics{result}");
+        fs::write(dir.path().join(format!("map.{extension}")),b"existing image").unwrap();
+        assert!(rename(&mut ws,"map").is_err());
+        assert!(dir.path().join("result.png").exists());
+        assert!(!dir.path().join("map.png").exists());
+    }
+    let (dir,mut ws)=fixture(r"\includegraphics{result.png}");
+    fs::write(dir.path().join("map.jpg"),b"existing image").unwrap();
+    rename(&mut ws,"map").unwrap();
+    assert!(dir.path().join("map.png").exists());
+    assert_eq!(fs::read(dir.path().join("map.jpg")).unwrap(),b"existing image");
+}
+#[test]
+fn graphicspath_rename_refuses_a_new_name_that_root_resolution_would_capture() {
+    let dir=tempfile::tempdir().unwrap();
+    fs::create_dir(dir.path().join("figures")).unwrap();
+    image::RgbImage::new(20,10).save(dir.path().join("figures/result.png")).unwrap();
+    fs::write(dir.path().join("main.tex"),r"\graphicspath{{figures/}}\includegraphics{result}").unwrap();
+    let mut ws=Workspace::open(&dir.path().join("main.tex")).unwrap();
+    let expected=ws.project().state_fingerprint.clone();let id=ws.project().images[0].id.clone();
+    fs::write(dir.path().join("map.jpg"),b"root image").unwrap();
+    let before=fs::read(dir.path().join("main.tex")).unwrap();
+    assert!(ws.rename_asset(&id,"map",&expected).is_err());
+    assert_eq!(fs::read(dir.path().join("main.tex")).unwrap(),before);
+    assert!(dir.path().join("figures/result.png").exists());
+    assert!(!dir.path().join("figures/map.png").exists());
+}

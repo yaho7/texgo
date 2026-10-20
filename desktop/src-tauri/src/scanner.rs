@@ -21,6 +21,8 @@ struct Scanner {
     graphics_dirs: Vec<PathBuf>,
     contexts: HashMap<PathBuf, Vec<PathBuf>>,
     unsafe_context: bool,
+    renamed_files: Vec<(PathBuf, PathBuf)>,
+    tex_overrides: BTreeMap<PathBuf, Vec<u8>>,
 }
 
 struct Command {
@@ -32,6 +34,16 @@ struct Command {
 }
 
 pub(crate) fn scan(main: &Path) -> Result<Scan, String> {
+    scan_with_files(main, BTreeMap::new(), Vec::new())
+}
+
+/// Preview a rename without creating, removing, or changing any project file.
+/// The same resolver validates graphicspath, extension priority and symlinks.
+pub(crate) fn scan_renamed(main: &Path, tex: BTreeMap<PathBuf, Vec<u8>>, moves: Vec<(PathBuf, PathBuf)>) -> Result<Project, String> {
+    scan_with_files(main, tex, moves).map(|scan|scan.project)
+}
+
+fn scan_with_files(main: &Path, tex_overrides: BTreeMap<PathBuf, Vec<u8>>, renamed_files: Vec<(PathBuf, PathBuf)>) -> Result<Scan, String> {
     let main = main.canonicalize().map_err(|e| format!("无法打开主文件：{e}"))?;
     if main.extension().and_then(|s| s.to_str()) != Some("tex") {
         return Err("请选择 .tex 主文件".into());
@@ -46,7 +58,7 @@ pub(crate) fn scan(main: &Path) -> Result<Scan, String> {
             tex_files: Vec::new(), images: Vec::new(), warnings: Vec::new(), undo_available: false,
         },
         root, sources: BTreeMap::new(), indices: HashMap::new(), active: HashSet::new(), graphics_dirs: Vec::new(),
-        contexts: HashMap::new(), unsafe_context: false,
+        contexts: HashMap::new(), unsafe_context: false, renamed_files, tex_overrides,
     };
     scanner.visit(&main, 0)?;
     if scanner.unsafe_context {
@@ -105,7 +117,7 @@ impl Scanner {
             return Ok(());
         }
         if self.sources.len() >= 1024 { return Err("项目包含超过 1024 个 TeX 文件，请缩小项目范围".into()); }
-        let bytes = fs::read(file).map_err(|e| format!("读取 {} 失败：{e}", file.display()))?;
+        let bytes = if let Some(bytes) = self.tex_overrides.get(file) { bytes.clone() } else { fs::read(file).map_err(|e| format!("读取 {} 失败：{e}", file.display()))? };
         if bytes.len() > 16 * 1024 * 1024 { return Err(format!("TeX 文件过大：{}", file.display())); }
         let text = String::from_utf8(bytes.clone()).map_err(|_| format!("{} 不是 UTF-8 文件，请先转换编码", file.display()))?;
         let masked = mask_non_code(&text);
