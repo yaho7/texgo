@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -24,6 +25,9 @@ interface Props {
   completion: number | null;
   cancelRequested: boolean;
   onAction: () => void;
+  onConvert?: (intent: "pending" | "selected" | "reconvert", imageIds?: string[]) => void;
+  currentImageId?: string | null;
+  convertibleIds?: string[];
   onSettings: (settings: ConversionSettings) => void;
   onSelectionMode: (enabled: boolean) => void;
   onCancel: () => void;
@@ -33,6 +37,18 @@ interface Props {
 export default function CommandBar(props: Props) {
   const { status, settings } = props;
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualScope, setManualScope] = useState("current");
+  const convertibleIds = props.convertibleIds ?? status.pendingImageIds;
+  const currentConvertible = Boolean(props.currentImageId && convertibleIds.includes(props.currentImageId));
+  const recommendedConvert = props.selectionMode || status.nextAction === "convertImages";
+  const working = props.busy || props.completion !== null;
+  function convert(intent: "pending" | "selected" | "reconvert", ids?: string[]) {
+    if (working) return;
+    if (Object.keys(issues).length) { setSettingsOpen(true); return; }
+    setManualOpen(false);
+    if (props.onConvert) props.onConvert(intent, ids); else props.onAction();
+  }
   const preset = conversionPreset(Number(settings.dpi), Number(settings.jpegQuality));
   const presetLabel = preset?.label ?? "自定义";
   const count = props.selectionMode ? props.selectedCount : status.pendingImages;
@@ -41,16 +57,18 @@ export default function CommandBar(props: Props) {
   const label = props.converting ? `正在更新 ${props.progress?.current ?? 0} / ${props.progress?.total ?? count}`
     : props.completion !== null ? `已更新 ${props.completion} 张`
     : blocked ? "请先解决安全问题"
+    : props.selectionMode ? `转换 ${count} 张图片`
     : status.nextAction === "reviewReferences" ? `检查 ${status.pendingReferences} 处引用`
-    : status.nextAction === "convertImages" ? props.selectionMode ? `更新已选 ${count} 张` : `更新 ${count} 张图片`
+    : recommendedConvert ? `转换 ${count} 张图片`
     : status.nextAction === "resolveProblems" ? "处理问题" : "项目已是最新状态";
   const message = props.converting ? props.progress?.name || "正在准备更新图片…"
     : props.completion !== null ? "图片已更新"
     : blocked ? "暂时无法安全更新项目"
+    : props.selectionMode ? `已选择 ${props.selectedCount} 张`
     : status.nextAction === "reviewReferences" ? `${status.pendingReferences} 处引用等待确认`
     : status.nextAction === "convertImages" ? `${status.pendingImages} 张图片需要更新`
     : status.nextAction === "resolveProblems" ? `${status.problemCount} 个问题需要处理` : "项目已是最新状态";
-  const transitionKey = props.converting ? "converting" : props.completion !== null ? "complete" : blocked ? "blocked" : status.nextAction;
+  const transitionKey = props.converting ? "converting" : props.completion !== null ? "complete" : blocked ? "blocked" : props.selectionMode ? "selection" : status.nextAction;
   // Retain the departing message for one token duration; it never creates a second action.
   const [departing, setDeparting] = useState<string | null>(null);
   const previous = useRef({ key: transitionKey, message, label });
@@ -66,15 +84,15 @@ export default function CommandBar(props: Props) {
     return () => window.clearTimeout(timer);
   }, [departing, departingLabel]);
   function submit() {
-    if (props.busy || props.completion !== null || blocked) return;
+    if (working || blocked) return;
     if (status.nextAction === "convertImages" && Object.keys(issues).length) {
       setSettingsOpen(true);
       requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[aria-invalid="true"]')?.focus());
       return;
     }
-    props.onAction();
+    if (recommendedConvert) convert(props.selectionMode ? "selected" : "pending"); else props.onAction();
   }
-  const idle = status.nextAction === "upToDate" && !props.busy && props.completion === null && !blocked;
+  const idle = status.nextAction === "upToDate" && !props.selectionMode && !props.busy && props.completion === null && !blocked;
   const progress = props.progress && props.progress.total > 0 ? props.progress.current / props.progress.total * 100 : 0;
   return <section className="command-bar" aria-label="项目下一步" data-state={transitionKey}>
     <div className="command-status">
@@ -88,8 +106,8 @@ export default function CommandBar(props: Props) {
       {props.converting && <Progress value={progress} aria-label="图片更新进度" className="command-progress" />}
     </div>
     <div className="command-actions">
-      {status.nextAction === "convertImages" && !props.converting && props.completion === null && !blocked && <>
-        <Button variant="ghost" size="sm" disabled={props.busy} onClick={() => props.onSelectionMode(!props.selectionMode)}>{props.selectionMode ? "退出选择" : "选择部分图片…"}</Button>
+      {!props.converting && props.completion === null && <>
+        {props.selectionMode && <Button variant="ghost" size="sm" disabled={props.busy} onClick={() => props.onSelectionMode(false)}>取消选择</Button>}
         <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
           <PopoverTrigger asChild><Button variant="ghost" size="sm" className="command-parameters" disabled={props.busy} aria-label={`输出参数：${presetLabel} · ${settings.dpi} DPI`}><SlidersHorizontal data-icon="inline-start" aria-hidden="true" />{presetLabel} · {settings.dpi} DPI<ChevronDown data-icon="inline-end" aria-hidden="true" /></Button></PopoverTrigger>
           <PopoverContent side="top" align="end" className="command-settings" aria-label="输出参数">
@@ -106,8 +124,24 @@ export default function CommandBar(props: Props) {
           </PopoverContent>
         </Popover>
       </>}
+      {!props.converting && props.completion === null && !props.selectionMode && <>
+        {recommendedConvert && !blocked ? <div className="command-split">
+          <Button className="command-action" disabled={working || count === 0} onClick={submit}>{label}</Button>
+          <DropdownMenu><DropdownMenuTrigger asChild><Button aria-label="更多转换操作" className="command-split-menu" size="icon" disabled={working}><ChevronDown aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" side="top"><DropdownMenuGroup>
+            <DropdownMenuItem disabled={!status.pendingImages} onSelect={() => convert("pending")}>转换需要更新的图片</DropdownMenuItem>
+            <DropdownMenuItem disabled={!convertibleIds.length} onSelect={() => props.onSelectionMode(true)}>选择图片转换…</DropdownMenuItem>
+            <DropdownMenuItem disabled={!currentConvertible} onSelect={() => convert("reconvert", [props.currentImageId!])}>重新转换当前图片</DropdownMenuItem>
+            <DropdownMenuItem disabled={!convertibleIds.length} onSelect={() => convert("reconvert", convertibleIds)}>重新转换全部图片</DropdownMenuItem>
+          </DropdownMenuGroup><DropdownMenuSeparator /><DropdownMenuGroup><DropdownMenuItem onSelect={() => setSettingsOpen(true)}>转换设置…</DropdownMenuItem></DropdownMenuGroup></DropdownMenuContent></DropdownMenu>
+        </div> : <Popover open={manualOpen} onOpenChange={(open) => { setManualOpen(open); if (open) setManualScope(currentConvertible ? "current" : "all"); }}><PopoverTrigger asChild><Button variant="outline" disabled={working} onClick={() => { if (!manualOpen) setManualScope(currentConvertible ? "current" : "all"); }}>转换…</Button></PopoverTrigger><PopoverContent align="end" side="top" className="command-manual" aria-label="手动转换图片"><FieldSet><FieldLegend>转换图片</FieldLegend><FieldGroup>
+          <ToggleGroup type="single" value={manualScope} onValueChange={(value) => { if (value) setManualScope(value); }} aria-label="转换范围" className="manual-scope" variant="outline"><ToggleGroupItem value="current" disabled={!currentConvertible}>当前图片</ToggleGroupItem><ToggleGroupItem value="selected" disabled={!convertibleIds.length}>选择图片…</ToggleGroupItem><ToggleGroupItem value="all" disabled={!convertibleIds.length}>全部可转换图片</ToggleGroupItem></ToggleGroup>
+          <Button variant="ghost" onClick={() => { setManualOpen(false); setSettingsOpen(true); }}>{presetLabel} · {settings.dpi} DPI · 转换设置…</Button>
+          {!convertibleIds.length && <p className="text-sm text-muted-foreground">当前没有可安全转换的源图片，请先处理问题。</p>}
+          <Button variant="outline" disabled={!convertibleIds.length || (manualScope === "current" && !currentConvertible)} onClick={() => { if (manualScope === "selected") { setManualOpen(false); props.onSelectionMode(true); } else convert("reconvert", manualScope === "current" ? [props.currentImageId!] : convertibleIds); }}>{manualScope === "selected" ? "选择图片" : "开始转换"}</Button>
+        </FieldGroup></FieldSet></PopoverContent></Popover>}
+      </>}
       {props.converting && <Button variant="outline" size="sm" disabled={props.cancelRequested} onClick={props.onCancel}><Square data-icon="inline-start" aria-hidden="true" />{props.cancelRequested ? "等待取消…" : "取消更新"}</Button>}
-      {!idle && <Button className="command-action" disabled={props.busy || props.completion !== null || blocked || (status.nextAction === "convertImages" && count === 0)} onClick={submit}>
+      {(!idle && (!recommendedConvert || blocked || props.converting || props.completion !== null || props.selectionMode)) && <Button className="command-action" disabled={props.busy || props.completion !== null || blocked || (recommendedConvert && count === 0)} onClick={submit}>
         {props.converting ? <LoaderCircle data-icon="inline-start" className="spin" aria-hidden="true" /> : props.completion !== null ? <Check data-icon="inline-start" aria-hidden="true" /> : status.nextAction === "reviewReferences" ? <FileCheck2 data-icon="inline-start" aria-hidden="true" /> : null}<span className="command-action-label-stage">{departingLabel && <span className="command-action-label-exit" aria-hidden="true">{departingLabel}</span>}<span key={transitionKey} className="command-action-label-enter">{label}</span></span>
       </Button>}
     </div>

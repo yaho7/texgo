@@ -189,11 +189,22 @@ it("only enters repair after an explicit inspector action", async () => {
   await userEvent.click(screen.getByRole("button", { name: "定位文件" }));
   expect(locate).toHaveBeenCalledWith("a");
   await userEvent.click(screen.getByRole("button", { name: "忽略本次" }));
-  expect(ignore).toHaveBeenCalledWith("a", true);
+  expect(ignore).toHaveBeenCalledWith("a", "session");
 });
 
 it("disables inspector mutations while the project is busy", () => {
   render(<AssetPreview asset={{ ...asset, status: "missing", path: null }} revision={1} busy onLocate={vi.fn()} onIgnore={vi.fn()} />);
   expect(screen.getByRole("button", { name: "定位文件" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "忽略本次" })).toBeDisabled();
+});
+
+
+it("retains permanent ignore while explicitly requesting one manual conversion", async () => {
+  const convert = vi.fn(); const ignore = vi.fn();
+  render(<AssetPreview asset={{ ...asset, ignoreMode: "permanent" }} revision={1} onIgnore={ignore} onManualConvert={convert} canConvert />);
+  await userEvent.click(screen.getByRole("button", { name: "当前图片操作" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "手动转换一次" }));
+  expect(convert).toHaveBeenCalledWith("a"); expect(ignore).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "恢复处理" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "始终忽略" })).not.toBeInTheDocument();
 });

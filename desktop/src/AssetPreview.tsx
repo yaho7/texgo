@@ -1,12 +1,13 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { FileImage, TriangleAlert } from "lucide-react";
+import { FileImage, TriangleAlert, MoreHorizontal } from "lucide-react";
 import type { AssetPreviewData, ImageAsset, ImageResult } from "./types";
 import { errorMessage, formatBytes } from "./utils";
 import { motionDuration } from "./motion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -28,7 +29,9 @@ interface Props {
   onLocate?: (id: string) => void;
   onInspect?: (id: string) => void;
   onRetry?: (id: string) => void;
-  onIgnore?: (id: string, ignored?: boolean) => void;
+  onIgnore?: (id: string, mode: "none" | "session" | "permanent") => void;
+  onManualConvert?: (id: string) => void;
+  canConvert?: boolean;
 }
 interface PreviewResponse { key: string; preview: AssetPreviewData; label: string; width: number; height: number }
 
@@ -83,7 +86,9 @@ function PreviewContent({ asset, converted, revision, pdfPath, overlay = false }
   </div>;
 }
 
-export default function AssetPreview({ asset, result, revision, busy = false, ignored, statusLabel, onLocate, onInspect, onIgnore, onRetry }: Props) {
+export default function AssetPreview({ asset, result, revision, busy = false, ignored, statusLabel, onLocate, onInspect, onIgnore, onRetry, onManualConvert, canConvert = false }: Props) {
+  const ignoreMode = asset?.ignoreMode ?? (ignored ? "session" : "none");
+  ignored = ignoreMode !== "none";
   const [mode, setMode] = useState("original");
   const unavailable = !asset?.path || ["missing", "ambiguous", "unsupported"].includes(asset.status);
   const hasConverted = Boolean(asset && !unavailable && result?.id === asset.id && result.pdfPath && !result.error && !result.cancelled);
@@ -133,6 +138,7 @@ export default function AssetPreview({ asset, result, revision, busy = false, ig
   return <section className="preview-panel" aria-label="图片预览" tabIndex={0} onKeyDown={keydown}>
     <div className="preview-heading">
       <div className="preview-heading-copy"><h2>图片预览</h2><div className="preview-filename" title={asset?.path ?? ""}>{asset?.relativePath ?? "未选择图片"}</div></div>
+      {asset && onManualConvert && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="当前图片操作" disabled={busy}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuGroup><DropdownMenuItem disabled={!canConvert} onSelect={() => onManualConvert(asset.id)}>{ignored ? "手动转换一次" : "重新转换此图片"}</DropdownMenuItem></DropdownMenuGroup></DropdownMenuContent></DropdownMenu>}
       <ToggleGroup type="single" value={compare ? "compare" : "original"} onValueChange={(value) => { if (value) setMode(value); }} variant="outline" size="sm" aria-label="预览版本">
         <ToggleGroupItem value="original" disabled={!asset}>原图</ToggleGroupItem><ToggleGroupItem value="compare" disabled={!hasConverted}>对比</ToggleGroupItem>
       </ToggleGroup>
@@ -161,6 +167,6 @@ export default function AssetPreview({ asset, result, revision, busy = false, ig
       {asset && <Popover><PopoverTrigger asChild><Button type="button" variant="link" size="sm" disabled={asset.references.length === 0} className="preview-reference-trigger">被引用 {asset.references.length} 次</Button></PopoverTrigger><PopoverContent className="preview-references" align="end" aria-label="引用位置"><h3 className="text-sm font-medium">引用位置</h3><ul>{asset.references.map((reference, index) => <li key={`${reference.file}:${reference.line}:${index}`}><span title={reference.file}>{reference.file.split(/[\\/]/).pop()}</span><span>第 {reference.line} 行</span></li>)}</ul></PopoverContent></Popover>}
       {saving !== null && <span className="preview-savings">{saving >= 0 ? `节省 ${Number(saving.toFixed(1))}%` : `增大 ${Number((-saving).toFixed(1))}%`}</span>}
     </div>
-    {asset && <div className="inspector-image-state"><Badge variant={problem && !ignored ? "destructive" : "secondary"}>{state}</Badge>{problem && <><p>{result?.error ?? asset.message}</p>{asset.status === "missing" && <p>LaTeX 引用了：<code>{asset.relativePath}</code></p>}</>}<div className="inspector-image-actions">{problem && asset.status === "ready" && !ignored && onRetry && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onRetry(asset.id)}>重试此图片</Button>}{problem && onLocate && ["missing", "ambiguous"].includes(asset.status) && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onLocate(asset.id)}>定位文件</Button>}{problem && onInspect && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onInspect(asset.id)}>{["missing", "ambiguous"].includes(asset.status) ? "修复" : "查看详情"}</Button>}{onIgnore && <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => onIgnore(asset.id, !ignored)}>{ignored ? "恢复处理" : "忽略本次"}</Button>}</div></div>}
+    {asset && <div className="inspector-image-state"><Badge variant={problem && !ignored ? "destructive" : "secondary"} title={ignored ? ignoreMode === "permanent" ? "始终忽略" : "仅本次忽略" : undefined}>{state}</Badge>{problem && <><p>{result?.error ?? asset.message}</p>{asset.status === "missing" && <p>LaTeX 引用了：<code>{asset.relativePath}</code></p>}</>}<div className="inspector-image-actions">{problem && asset.status === "ready" && !ignored && onRetry && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onRetry(asset.id)}>重试此图片</Button>}{problem && onLocate && ["missing", "ambiguous"].includes(asset.status) && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onLocate(asset.id)}>定位文件</Button>}{problem && onInspect && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onInspect(asset.id)}>{["missing", "ambiguous"].includes(asset.status) ? "修复" : "查看详情"}</Button>}{onIgnore && <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => onIgnore(asset.id, ignored ? "none" : "session")}>{ignored ? "恢复处理" : "忽略本次"}</Button>}{onIgnore && ignoreMode !== "permanent" && <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => onIgnore(asset.id, "permanent")}>始终忽略</Button>}</div></div>}
   </section>;
 }

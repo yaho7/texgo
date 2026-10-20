@@ -98,3 +98,14 @@ it("projects backend problems for ready assets even without an error result", ()
   expect(within(row).getByText(blocked.message)).toBeInTheDocument();
   expect(within(row).getByRole("button", { name: "更多操作 plot.png" })).toBeInTheDocument();
 });
+
+
+it("summarizes a rename and synchronized references without conversion parameters", async () => {
+  const entry: ConversionHistoryEntry = { id: "rename", createdAt: Date.now(), outputDir: "pdf", dpi: 300, jpegQuality: 90, files: [], undone: false, canUndo: true, rename: { oldSource: "figures/plot.png", newSource: "figures/pressure-map.png", oldPdf: "pdf/plot.pdf", newPdf: "pdf/pressure-map.pdf", referencesChanged: 3 } };
+  const undo = vi.fn(); render(<ConversionHistory entries={[entry]} busy={false} onUndo={undo} />);
+  expect(screen.getByText("重命名图片")).toBeInTheDocument();
+  expect(screen.getByText("figures/plot.png → figures/pressure-map.png")).toBeInTheDocument();
+  expect(screen.getByText("同步更新：1 张源图片、1 个 PDF、3 处 LaTeX 引用")).toBeInTheDocument();
+  expect(screen.queryByText(/300 DPI|未修改项目文件/)).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "撤销" })); expect(undo).toHaveBeenCalledWith(entry);
+});
