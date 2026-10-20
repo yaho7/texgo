@@ -192,11 +192,30 @@ impl Scanner {
                         unsafe_candidate = true;
                         continue;
                     }
+                    // A rename preview must resolve the future logical path
+                    // from its existing source without creating either file.
+                    // Canonicalize only the existing parent; the target leaf
+                    // deliberately does not exist until the transaction commits.
+                    let normalized = candidate.parent().and_then(|parent| parent.canonicalize().ok())
+                        .and_then(|parent| candidate.file_name().map(|name| parent.join(name)));
+                    if let Some((from, to)) = normalized.as_ref()
+                        .and_then(|path| self.renamed_files.iter().find(|(_, to)| to == path)) {
+                        if crate::journal::safe_path(&self.root, from).is_err()
+                            || crate::journal::safe_path(&self.root, to).is_err() {
+                            unsafe_candidate = true;
+                            continue;
+                        }
+                        if from.is_file() && !candidates.contains(to) { candidates.push(to.clone()); }
+                        continue;
+                    }
                     if let Ok(real) = candidate.canonicalize() {
                         if !real.starts_with(&self.root) || crate::journal::safe_path(&self.root, &candidate).is_err() {
                             unsafe_candidate = true;
                             continue;
                         }
+                        // The physical old file still exists during preview,
+                        // but it must disappear from the simulated filesystem.
+                        if self.renamed_files.iter().any(|(from, _)| from == &real) { continue; }
                         if real.is_file() && !candidates.contains(&real) { candidates.push(real); }
                     }
                 }
@@ -358,4 +377,50 @@ fn mask_non_code(text: &str) -> String {
         for byte in &mut masked[start..i] { if *byte != b'\n' && *byte != b'\r' { *byte = b' '; } }
     }
     String::from_utf8(masked).expect("mask preserves UTF-8")
+}
+
+#[cfg(test)]
+mod rename_preview_tests {
+    use super::*;
+
+    #[test]
+    fn preview_resolves_new_paths_hides_old_paths_and_never_writes_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let main = root.join("main.tex");
+        let source = root.join("result.png");
+        let target = root.join("map.png");
+        let original = br"\includegraphics{result.png}".to_vec();
+        fs::write(&main, &original).unwrap();
+        fs::write(&source, b"source bytes").unwrap();
+        let replacement = br"\includegraphics{map.png}\includegraphics{result.png}".to_vec();
+        let project = scan_renamed(&main, BTreeMap::from([(main.clone(), replacement)]), vec![(source.clone(), target.clone())]).unwrap();
+        let renamed = project.images.iter().find(|asset| asset.relative_path == "map.png").unwrap();
+        assert_eq!(renamed.status, "ready");
+        assert_eq!(renamed.path.as_deref(), target.to_str());
+        assert_eq!(project.images.iter().find(|asset| asset.relative_path == "result.png").unwrap().status, "missing");
+        assert_eq!(fs::read(&main).unwrap(), original);
+        assert_eq!(fs::read(&source).unwrap(), b"source bytes");
+        assert!(!target.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preview_does_not_follow_source_or_target_symlinks() {
+        use std::os::unix::fs::symlink;
+        for linked_source in [true, false] {
+            let dir = tempfile::tempdir().unwrap();
+            let root = dir.path().canonicalize().unwrap();
+            let main = root.join("main.tex");
+            let source = root.join("result.png");
+            let target = root.join("map.png");
+            fs::write(&main, br"\includegraphics{map.png}").unwrap();
+            fs::write(root.join("real.png"), b"source bytes").unwrap();
+            if linked_source { symlink(root.join("real.png"), &source).unwrap(); }
+            else { fs::write(&source,b"source bytes").unwrap(); symlink(root.join("real.png"), &target).unwrap(); }
+            let project = scan_renamed(&main, BTreeMap::new(), vec![(source, target)]).unwrap();
+            assert_eq!(project.images[0].status, "unsupported");
+            assert!(project.images[0].path.is_none());
+        }
+    }
 }
