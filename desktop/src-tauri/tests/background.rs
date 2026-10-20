@@ -246,8 +246,8 @@ fn explicit_selection_and_default_pending_update_keep_managed_paths_and_global_p
     let progress = RefCell::new(Vec::new());
     let result = ws.update_pending_with_results(&options, &AtomicBool::new(false), |event| progress.borrow_mut().push((event.current, event.total)), |_| {}).unwrap();
     assert_eq!(result.images.len(), 2);
-    assert!(result.images.iter().any(|image| image.pdf_path.as_ref().is_some_and(|path| path.ends_with("original-output/a.pdf"))));
-    assert!(result.images.iter().any(|image| image.pdf_path.as_ref().is_some_and(|path| path.ends_with("new-output/new.pdf"))));
+    assert!(result.images.iter().any(|image| image.pdf_path.as_ref().is_some_and(|path| std::path::Path::new(path).ends_with(std::path::Path::new("original-output").join("a.pdf")))));
+    assert!(result.images.iter().any(|image| image.pdf_path.as_ref().is_some_and(|path| std::path::Path::new(path).ends_with(std::path::Path::new("new-output").join("new.pdf")))));
     assert!(!dir.path().join("new-output/a.pdf").exists());
     assert!(progress.borrow().iter().all(|(_, total)| *total == 2));
     assert_eq!(progress.borrow().last(), Some(&(2, 2)));
