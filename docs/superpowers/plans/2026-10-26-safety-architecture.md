@@ -28,17 +28,18 @@ Files: `desktop/src/App.tsx`, new `desktop/src/state/operationMachine.ts`, new `
 - [x] Implement an explicit idle/running discriminated union with an operation token and owner (`foreground` / `background`). Keep the current operation label vocabulary during extraction; rename labels only once callers are migrated.
 - [x] Integrate acquisition/release in execute, rename and background handlers. Eliminate direct independent writes to state/ref pairs. Dialog state remains a separate migration unit.
 - [x] Run `npm run check` and `npm test`; inspect cancellation, background, review, rename and focus regressions. Parent independently verified 151 frontend tests and one PDF test; specification review passed.
-- [ ] Commit only this unit with `refactor: centralize operation ownership`.
+- [x] Commit only this unit with `refactor: centralize operation ownership` (`3e3e212`).
 
 ## Unit 3: Workspace, selection and history
 
 Files: `App.tsx`, `hooks/useWorkspace.ts`, `hooks/useAssetSelection.ts`, `hooks/useHistory.ts`, existing workflow tests plus focused hook tests.
 
-- [ ] Retain existing open/refresh/ignore/rename regression tests; add delayed old history response and workspace switch tests before extraction.
-- [ ] Move project acceptance, settings/recents restoration and snapshot identity into `useWorkspace`; expose semantic actions rather than the entire setter set.
-- [ ] Move selection/search/filter and ID migration into `useAssetSelection`; preserve surviving selections, keep ignore behavior and reset only on actual project change.
-- [ ] Move guarded history loading and Undo into `useHistory`; retain rename identity restoration and partial failure refresh.
-- [ ] Run frontend static and workflow checks, inspect all native invoke arguments for unchanged safety contracts, then commit the coherent extraction.
+- [x] Retain existing open/refresh/ignore/rename regression tests; add delayed old history response and workspace switch tests before extraction.
+- [x] Move project acceptance, settings/recents restoration and snapshot identity into `useWorkspace`; expose semantic actions rather than the entire setter set.
+- [x] Move selection/search/filter and ID migration into `useAssetSelection`; preserve surviving selections, keep ignore behavior and reset only on actual project change.
+- [x] Move guarded history loading and Undo into `useHistory`; retain rename identity restoration and partial failure refresh. Guard stale successful and failed refreshes, Undo and nested recovery across A→B→A sessions.
+- [x] Run frontend static and workflow checks, inspect all native invoke arguments for unchanged safety contracts. Independent specification and code-quality reviews passed; parent verified TypeScript, 165 frontend tests and one PDF test.
+- [ ] Commit the coherent workspace/selection/history extraction.
 
 ## Unit 4: Conversion, review and native adapters
 

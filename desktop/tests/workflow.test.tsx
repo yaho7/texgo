@@ -495,3 +495,17 @@ it("keeps foreground conversion ownership when background start and idle arrive"
   await act(async () => pending.resolve({ images: [], cancelled: true }));
   expect(await screen.findByRole("button", { name: "转换 2 张图片" })).toBeEnabled();
 });
+
+it("clears the previous project's history before the next project's history arrives", async () => {
+  entries = [record];
+  const user = await openProject();
+  await user.click(screen.getByRole("button", { name: "操作记录" }));
+  expect(document.getElementById(`operation-${record.id}`)).toBeInTheDocument();
+  const pending = deferred<ConversionHistoryEntry[]>();
+  handlers.conversion_history = () => pending.promise;
+  const next = { ...structuredClone(backend), root: "/other", mainFile: "/other/main.tex" };
+  await act(async () => { await emit("notification-navigate", { project: next, target: { path: next.mainFile, view: "history", batchId: null, imageId: null } }); });
+  expect(document.getElementById(`operation-${record.id}`)).not.toBeInTheDocument();
+  await act(async () => { pending.resolve([]); });
+  expect(await screen.findByRole("region", { name: "操作记录" })).toBeInTheDocument();
+});
