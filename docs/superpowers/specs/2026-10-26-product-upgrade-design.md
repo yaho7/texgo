@@ -2,9 +2,11 @@
 
 状态：用户已批准按设计实施；本文不是实现完成报告。
 
+范围更新（2026-10-27）：用户已取消新增 LaTeX 编译验证计划。Phase 5 及其关联设置、引擎选择、完成提示和历史验证记录不再实施；其他阶段继续。已有独立 engine 编译接口保留现有行为。
+
 ## 范围与现状
 
-按用户给定的九个 Phase 顺序实施。现有 Rust Workspace 是项目状态的权威来源；前端消费 `WorkspaceStatus.nextAction`，不另算一套待处理任务。保留 Transaction、Journal、Undo、引用审核、指纹校验、外部修改检测与 symlink 防护。
+按用户给定的 Phase 顺序实施，跳过已取消的 Phase 5。现有 Rust Workspace 是项目状态的权威来源；前端消费 `WorkspaceStatus.nextAction`，不另算一套待处理任务。保留 Transaction、Journal、Undo、引用审核、指纹校验、外部修改检测与 symlink 防护。
 
 本轮初步审阅已覆盖 App、CommandBar、Preview、History、Updater、Workspace 入口、桌面命令、后台任务、automation、observation、发布工作流及相关文档和测试。实施前继续完整阅读各阶段涉及模块；不把初步审阅表述为全仓库审计完成。
 
@@ -60,7 +62,7 @@
 | `hooks/useAppShortcuts.ts` | 快捷键优先级与 dialog/input 边界 |
 | `hooks/useBackgroundAutomation.ts` | 后台事件与前台协调、延迟接纳结果 |
 
-业务状态采用 discriminated union：idle、opening、scanning、converting、reviewing、applyingReferences、renaming、undoing、repairing、validating。进行中状态携带操作令牌和 workspace 代次，conversion 携带进度/取消，review 携带原始 preview。不能独立设置 `busy` 和业务 dialog 数据。
+业务状态采用 discriminated union：idle、opening、scanning、converting、reviewing、applyingReferences、renaming、undoing、repairing。进行中状态携带操作令牌和 workspace 代次，conversion 携带进度/取消，review 携带原始 preview。不能独立设置 `busy` 和业务 dialog 数据。
 
 UI 保留独立的小状态：页面、sidebar、drawer、settings、update、selection。完成反馈不是文件操作；其期间延迟自动审核。持有业务操作时原生事件只排队/合并项目快照，按 workspace 代次和操作所有权接纳，不能清除另一项操作。原生层仍串行化文件修改，前端状态机不代替文件安全检查。
 
@@ -82,19 +84,13 @@ Rust `watcher/` 管理 notify watcher 的启动、替换和销毁。打开或切
 
 保持分页，所有状态可通过键盘读取和操作；icon button、dialog title/description、aria-live、active row、reduced-motion 逐项检查。沿用中性色和现有布局，不重做 dashboard。
 
-## Phase 5：LaTeX 验证
+## Phase 5：已取消
 
-增加默认关闭的 `validateAfterConversion` 与默认 auto 的引擎选择。将 automation 编译服务扩展为 Desktop/CLI/RPC 共用入口；GUI 不启动独立 shell 编译实现。
-
-auto 不强制覆盖 latexmkrc 的引擎设置；显式 pdfLaTeX/XeLaTeX/LuaLaTeX 才传对应参数。优先使用用户已有合法项目配置；无配置时使用受约束的内存默认配置，不静默改写用户配置。
-
-同路径转换后可验证；有待审核引用时记录“等待引用审核”，用户完成应用后验证最终项目。取消或不应用引用时不能宣称最终项目已验证。记录验证所对应项目代次、批次和时间；后续文件变化令当前验证结果过期。
-
-结果区分通过、编译失败、缺少 latexmk、取消、执行失败。转换成功与编译失败分别表达，不回滚转换。History 展示结果和可打开的日志路径。子进程参数数组调用，设置超时/取消、输出体积约束；沿用输出目录与 symlink 安全检查。日志结果不改变 Undo 文件集合。
+按用户 2026-10-27 的指示，取消“转换后验证 LaTeX 项目”及配套的新编译配置、UI、历史记录与自动编译流程。此阶段不作为剩余交付项。后续从 Phase 4 直接进入 Phase 6。
 
 ## Phase 6：History / Errors / Settings
 
-时间线区分转换、引用应用、rename、验证。保留 Undo 具体阻止原因和可展开文件详情，旧 Journal 新字段需 serde 默认值兼容。rename 摘要从真实结果展示 PDF、引用、ignore 迁移，不凭 UI 猜测。
+时间线区分转换、引用应用与 rename。保留 Undo 具体阻止原因和可展开文件详情，旧 Journal 新字段需 serde 默认值兼容。rename 摘要从真实结果展示 PDF、引用、ignore 迁移，不凭 UI 猜测。
 
 错误按 status、inline、decision dialog、安全阻塞分层，保留原始技术详情但优先给出文件和恢复动作。结构化日志按 workspace/scanner/conversion/journal/watcher/automation/notification 分类；默认 warn/error，高级设置可启用 debug 和打开日志目录，不记录文件内容。
 

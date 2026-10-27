@@ -52,7 +52,7 @@ Files: `App.tsx`, `hooks/useConversion.ts`, `hooks/useReviewFlow.ts`, `hooks/use
 - [x] Extract desktop listeners and shortcut dispatch, sharing a single overlay/operation eligibility policy. Queue background snapshots while foreground decisions are active.
 - [x] Keep App limited to page/layout/dialog composition and hook connection; do not replace it with another monolithic hook. App is 328 lines; each new workflow hook is under 200 lines.
 - [x] Run all frontend/PDF/Rust checks, update `docs/background-workflow.md`, inspect conditional native behavior. Parent verified TypeScript, 182 frontend tests, one PDF test, production frontend build, 197 desktop Rust tests and 209 headless Rust tests. No Rust/platform conditional code changed in this phase. Specification and quality reviews passed after fixing delayed background errors and overlay focus.
-- [ ] Commit remaining workflow/event/decision extraction.
+- [x] Commit remaining workflow/event/decision extraction (`acd29cc`).
 
 ## Phase completion evidence
 
