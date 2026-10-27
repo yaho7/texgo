@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import AssetPreview from "../src/AssetPreview";
@@ -185,9 +185,9 @@ it("keeps a dimmed previous image until the next source has loaded", async () =>
   expect(screen.queryByAltText("上一张：a.png")).not.toBeInTheDocument();
 });
 
-it("shows reference locations in the inspector popover", async () => {
+it("shows reference locations in the inspector disclosure", async () => {
   render(<AssetPreview asset={{ ...asset, references: [{ file: "/project/chapter1.tex", line: 128, original: "a.png", start: 0, end: 5 }] }} revision={1} />);
-  await userEvent.click(screen.getByRole("button", { name: "被引用 1 次" }));
+  await userEvent.click(screen.getByText("引用位置（1）"));
   expect(await screen.findByText("chapter1.tex")).toBeInTheDocument();
   expect(screen.getByText("第 128 行")).toBeInTheDocument();
 });
@@ -352,4 +352,19 @@ it("retains natural dimensions for the prior unknown-size source while hiding th
   const hiddenIncoming = view.container.querySelector('.comparison-frame[data-native-known="false"] .preview-content-frame[data-stale="false"] .image-stage img');
   expect(hiddenIncoming).toBe(screen.getByAltText("原始：b.png"));
   expect(previous).not.toBe(hiddenIncoming);
+});
+
+
+it("groups references by full file path without losing line locations or inventing output for a failed conversion", async () => {
+  render(<AssetPreview asset={{ ...asset, references: [
+    { file: "/paper/a/chapter.tex", line: 2, original: "a.png", start: 0, end: 5 },
+    { file: "/paper/a/chapter.tex", line: 20, original: "a.png", start: 10, end: 15 },
+    { file: "/paper/b/chapter.tex", line: 9, original: "a.png", start: 0, end: 5 },
+  ] }} revision={1} result={{ ...result, error: "conversion failed" }} />);
+  await userEvent.click(screen.getByText("引用位置（3）"));
+  const references = screen.getByRole("region", { name: "引用与输出" });
+  expect(within(references).getAllByText("chapter.tex")).toHaveLength(2);
+  expect(within(references).getByText("第 2 行、第 20 行")).toBeInTheDocument();
+  expect(within(references).getByText("第 9 行")).toBeInTheDocument();
+  expect(screen.queryByText("PDF 输出")).not.toBeInTheDocument();
 });

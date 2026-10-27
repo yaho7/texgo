@@ -225,8 +225,7 @@ describe("LaTeX 项目唯一工作流", () => {
     await user.click(screen.getByRole("button", { name: "更多操作 figures/lost.png" }));
     await user.click(screen.getByRole("menuitem", { name: "忽略本次" }));
     await screen.findByRole("radio", { name: "问题 1" });
-    await user.click(screen.getByRole("button", { name: "更多筛选" }));
-    await user.click(screen.getByRole("menuitem", { name: "已忽略 1" }));
+    await user.click(screen.getByRole("radio", { name: "已忽略 1" }));
     expect(screen.getByRole("button", { name: "预览 figures/lost.png" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "预览 figures/alpha.png" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "更多操作 figures/lost.png" }));
@@ -448,7 +447,7 @@ describe("explicit asset control", () => {
     };
     const user = await openProject();
     await user.type(screen.getByRole("searchbox"), "figures");
-    await user.dblClick(screen.getByText("alpha.png"));
+    await user.dblClick(within(screen.getByRole("button", { name: "预览 figures/alpha.png" })).getByText("alpha.png"));
     const input = await screen.findByRole("textbox", { name: "图片新名称" });
     await user.clear(input); await user.type(input, "pressure-map{Enter}");
     expect(await screen.findByRole("button", { name: "预览 figures/pressure-map.png" })).toHaveAttribute("aria-pressed", "true");

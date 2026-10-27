@@ -1,0 +1,50 @@
+/* Workspace geometry is kept here; controls and content use Tailwind utilities.
+   The legacy stylesheet remains intact for secondary screens during migration. */
+.mac-workspace .workbench { padding: 0; background: #eceef1; }
+.mac-workspace .workspace-main { border: 0; border-left: 1px solid var(--border); border-radius: 0; box-shadow: none; }
+.mac-workspace .workspace-sidebar { width: 218px; background: #eceef1; }
+.mac-workspace .workspace-sidebar[data-collapsed="true"] { width: 0; }
+.mac-workspace .app-toolbar { min-height: 68px; padding: 10px 16px; gap: 12px; background: #f5f6f8; border-bottom: 1px solid var(--border); }
+.mac-workspace .project-title { padding-left: 0; }
+.mac-workspace .project-title h1 { font-size: 14px; }
+.mac-workspace .project-title p { margin-top: 2px; }
+.mac-workspace .project-file-count { display: none; }
+.mac-workspace .workspace-grid { border-top: 0; grid-template-columns: minmax(300px, min(var(--assets-width, 42%), 60%)) 6px minmax(0, 1fr); }
+.mac-workspace .asset-panel [data-slot="table-container"] { padding: 0 8px; }
+.mac-workspace .asset-panel table { border-spacing: 0 2px; }
+.mac-workspace .asset-panel thead { position: sticky; top: 0; z-index: 3; background: white; }
+.mac-workspace .asset-panel th { height: 34px; border-bottom: 1px solid var(--border); }
+.mac-workspace .asset-panel tbody td { border-bottom: 1px solid #f1f2f4; }
+.mac-workspace .asset-panel tbody td:first-child { border-radius: 5px 0 0 5px; }
+.mac-workspace .asset-panel tbody td:last-child { border-radius: 0 5px 5px 0; }
+.mac-workspace .asset-panel tbody tr[data-state="selected"] td,
+.mac-workspace .asset-panel tbody tr[data-state="selected"]:hover td { background: var(--primary); color: white; border-bottom-color: transparent; }
+.mac-workspace .asset-row[data-state="selected"] :is(.text-muted-foreground,.asset-preview-trigger,.asset-more,.status-badge) { color: white; }
+.mac-workspace .asset-row[data-state="selected"] :is(.asset-preview-trigger,.asset-more,.status-badge) { background: transparent; border-color: transparent; }
+.mac-workspace .asset-preview-trigger { min-height: 24px; }
+.mac-workspace .asset-rename-field input { height: 24px; padding-block: 1px; color: var(--foreground); }
+.mac-workspace .asset-inspector { background: #fafafb; }
+.mac-workspace .preview-panel { border-bottom: 0; }
+.mac-workspace .preview-heading { align-items: flex-start; flex-wrap: wrap; padding: 18px 18px 10px; gap: 12px; }
+.mac-workspace .preview-heading-copy { flex: 1; }
+.mac-workspace .preview-heading h2 { font-size: 17px; line-height: 1.4; overflow-wrap: anywhere; }
+.mac-workspace .preview-filename { font-size: 11px; }
+.mac-workspace .preview-heading > [data-slot="toggle-group"] { flex: 0 0 100%; justify-content: center; }
+.mac-workspace .preview-surface { margin-inline: 18px; border-color: var(--border); border-radius: 6px; background: #eceef1; min-height: 180px; }
+.mac-workspace .preview-scale-controls { padding-inline: 18px; }
+.mac-workspace .preview-metadata { padding-inline: 18px; gap: 8px; }
+.mac-workspace .status-bar { min-height: 32px; flex-wrap: wrap; background: #f5f6f8; padding: 6px 16px; }
+.mac-workspace .project-health { border: 0; padding: 0; }
+.mac-workspace .project-health dl { gap: 12px; }
+.mac-workspace .project-health dl > div { gap: 4px; }
+.mac-workspace .project-health :is(dt,dd) { font-size: 11px; }
+.mac-workspace .status-text { margin-left: auto; }
+.mac-workspace .command-bar { min-height: 64px; background: #f5f6f8; padding: 10px 16px; }
+@media (max-width: 760px) {
+  .mac-workspace .app-toolbar { gap: 6px; padding: 8px; }
+  .mac-workspace .workspace-grid { display: flex; }
+  .mac-workspace .project-title p { display: none; }
+  .mac-workspace .workspace-library { height: 360px; }
+  .mac-workspace .preview-panel { min-height: 480px; }
+}
+.mac-workspace .asset-row[data-state="selected"] .asset-preview-trigger:focus-visible::after { outline-color: white; }

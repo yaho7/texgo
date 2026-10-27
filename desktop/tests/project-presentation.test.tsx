@@ -7,7 +7,7 @@ import Home from "../src/Home";
 import WorkspaceSidebar from "../src/WorkspaceSidebar";
 import WorkbenchMenu from "../src/WorkbenchMenu";
 import { TooltipProvider } from "../src/controls/tooltip";
-import type { ConversionHistoryEntry, ImageAsset } from "../src/types";
+import type { ConversionHistoryEntry, ImageAsset, WorkspaceStatus } from "../src/types";
 
 const pending: ImageAsset = { id: "pending", path: "/paper/plot.png", relativePath: "plot.png", format: "png", width: 2400, height: 1600, bytes: 100, status: "ready", message: null, references: [] };
 const missing: ImageAsset = { ...pending, id: "missing", path: null, relativePath: "missing.png", status: "missing" };
@@ -133,4 +133,24 @@ it("summarizes a rename and synchronized references without conversion parameter
   expect(screen.getByText("同步更新：1 张源图片、1 个 PDF、3 处 LaTeX 引用")).toBeInTheDocument();
   expect(screen.queryByText(/300 DPI|未修改项目文件/)).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "撤销" })); expect(undo).toHaveBeenCalledWith(entry);
+});
+
+
+it("keeps native sidebar filters tied to backend counts and returns from history without opening a project", async () => {
+  const onView = vi.fn(); const onFilter = vi.fn(); const onOpen = vi.fn();
+  const status: WorkspaceStatus = { totalImages: 26, pendingImages: 3, pendingReferences: 4, problemCount: 1, ignoredCount: 2, completedImages: 20, pendingImageIds: [], problemIds: [], ignoredImageIds: [], completedImageIds: [], nextAction: "convertImages", blockingReason: null };
+  render(<WorkspaceSidebar busy={false} activeKey={null} projectPath="/paper/main.tex" view="history" recents={[]} failedRecent={null} onView={onView} onSettings={vi.fn()} onOpenTex={onOpen} onRecent={vi.fn()} onRemove={vi.fn()} status={status} filter="pending" onFilter={onFilter} />);
+  const filters = within(screen.getByRole("radiogroup", { name: "图片状态摘要" }));
+  expect(filters.getByRole("radio", { name: "已完成 20" })).toHaveAttribute("aria-checked", "false");
+  await userEvent.click(filters.getByRole("radio", { name: "已忽略 2" }));
+  expect(onView).toHaveBeenCalledWith("assets"); expect(onFilter).toHaveBeenCalledWith("ignored"); expect(onOpen).not.toHaveBeenCalled();
+});
+
+it("lets the workspace move search and filters out of the library while retaining the accessible table", () => {
+  render(<AssetList {...listProps()} showSearchAndFilters={false} />);
+  expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+  expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+  expect(screen.getByRole("table", { name: "项目图片及转换状态" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "格式" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "预览 plot.png" })).toBeInTheDocument();
 });

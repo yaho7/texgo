@@ -28,6 +28,7 @@ export const statusLabels: Record<AssetStatus, string> = {
 
 interface Props {
   images: ImageAsset[];
+  showSearchAndFilters?: boolean;
   selectionMode: boolean;
   pendingIds: Set<string>;
   problemIds: Set<string>;
@@ -218,7 +219,7 @@ export default function AssetList(props: Props) {
   }
   return (
     <section className="asset-panel @container flex min-h-0 min-w-0 flex-1 flex-col bg-background" aria-label="项目图片">
-      <header className="flex shrink-0 flex-col gap-3 px-4 py-3">
+      <header hidden={props.showSearchAndFilters === false} className="flex shrink-0 flex-col gap-3 px-4 py-3">
         <h2 className="sr-only">项目图片</h2>
         <div className="flex min-w-0 items-center gap-2">
           <InputGroup className="min-w-0 flex-1">
@@ -231,7 +232,7 @@ export default function AssetList(props: Props) {
           {summary.map((item) => <ToggleGroupItem key={item.value} value={item.value} aria-label={`${item.label} ${item.count}`}><span>{item.label}</span><span className="tabular-nums">{item.count}</span></ToggleGroupItem>)}
         </ToggleGroup>
       </header>
-      <Separator />
+      {props.showSearchAndFilters !== false && <Separator />}
       <div ref={scrollArea} className="asset-scroll min-h-0 flex-1 overflow-auto">
         <Table className="table-fixed asset-filter-content" data-filter={props.filter}>
           <TableCaption className="sr-only">项目图片及转换状态</TableCaption>
@@ -240,9 +241,10 @@ export default function AssetList(props: Props) {
               {props.selectionMode && <TableHead className="asset-selection-cell w-12">
                 <label className="asset-selection-target"><Checkbox aria-label="选择当前列表" checked={allChecked ? true : checkedCount > 0 ? "indeterminate" : false} disabled={props.busy || readyIds.length === 0} onCheckedChange={() => props.onSelectAll(readyIds, !allChecked)} /></label>
               </TableHead>}
-              <TableHead>图片</TableHead>
+              <TableHead>名称</TableHead>
+              <TableHead className="w-14">格式</TableHead>
               <TableHead className="w-20 text-right">大小</TableHead>
-              <TableHead className="w-28 pr-4 text-right">状态</TableHead>
+              <TableHead className="w-32 pr-2 text-right">状态</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -266,7 +268,7 @@ export default function AssetList(props: Props) {
                     event.preventDefault(); event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect();
                     event.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: rect.left + 20, clientY: rect.top + rect.height / 2 }));
                   }
-                }} data-state={props.activeId === asset.id ? "selected" : undefined} data-exiting={isExiting || undefined} aria-hidden={isExiting || undefined} data-disabled={Boolean(props.previewDisabled) || isExiting} data-highlight={renamedId === asset.id ? "success" : highlights[asset.id]} className="asset-row h-[60px]">
+                }} data-state={props.activeId === asset.id ? "selected" : undefined} data-exiting={isExiting || undefined} aria-hidden={isExiting || undefined} data-disabled={Boolean(props.previewDisabled) || isExiting} data-highlight={renamedId === asset.id ? "success" : highlights[asset.id]} className="asset-row h-[54px]">
                   {props.selectionMode && <TableCell className="asset-selection-cell">
                     <label className="asset-selection-target"><Checkbox aria-label={`选择 ${asset.relativePath}`} checked={props.selected.has(asset.id)} disabled={props.busy || isExiting || !convertible.has(asset.id)} onCheckedChange={() => props.onSelect(asset.id)} /></label>
                   </TableCell>}
@@ -289,12 +291,13 @@ export default function AssetList(props: Props) {
                       {asset.message && <p className={problem && !referenceProblem ? "break-words text-xs text-destructive" : "break-words text-xs text-muted-foreground"}>{asset.message}</p>}
                     </div>
                   </TableCell>
+                  <TableCell><span className="text-xs text-muted-foreground">{asset.format.toUpperCase()}</span></TableCell>
                   <TableCell className="text-right"><span className="text-xs tabular-nums text-muted-foreground">{formatBytes(asset.bytes)}</span></TableCell>
-                  <TableCell className="pr-4 text-right">
+                  <TableCell className="pr-2 text-right">
                     <Badge key={label} className={updatable && !problem ? "status-badge update-badge" : "status-badge"} variant={ignored ? "secondary" : problem ? referenceProblem ? "warning" : "destructive" : converted ? "success" : "secondary"} title={ignored ? ignoreMode === "permanent" ? "始终忽略" : "仅本次忽略" : updatable ? "源图片或 SVG 依赖已变化，可重新转换" : result?.pdfPath ?? undefined}>
                       {converted && !problem && !ignored && <CircleCheck data-icon="inline-start" aria-hidden="true" />}{updatable && !problem && !ignored && <RefreshCw data-icon="inline-start" aria-hidden="true" />}{label}
                     </Badge>
-                    <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" className="asset-more" aria-label={`更多操作 ${asset.relativePath}`} disabled={props.busy || isExiting || Boolean(rename)}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" onCloseAutoFocus={(event) => { if (renameHandoff.current || renameRef.current) event.preventDefault(); }}>{menuItems(asset, isExiting, false)}</DropdownMenuContent></DropdownMenu>
+                    <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" className="asset-more size-6! min-h-6! min-w-6!" aria-label={`更多操作 ${asset.relativePath}`} disabled={props.busy || isExiting || Boolean(rename)}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" onCloseAutoFocus={(event) => { if (renameHandoff.current || renameRef.current) event.preventDefault(); }}>{menuItems(asset, isExiting, false)}</DropdownMenuContent></DropdownMenu>
                   </TableCell>
                 </TableRow></ContextMenuTrigger><ContextMenuContent onCloseAutoFocus={(event) => { if (renameHandoff.current || renameRef.current) event.preventDefault(); }}>{menuItems(asset, isExiting, true)}</ContextMenuContent></ContextMenu>
               );

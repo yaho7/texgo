@@ -24,6 +24,8 @@ import CommandBar from "./CommandBar";
 import ErrorNotice from "./ErrorNotice";
 import Home from "./Home";
 import ProjectHealth from "./ProjectHealth";
+import WorkspaceSearch from "./WorkspaceSearch";
+import "./workspace-native.css";
 import "./overview.css";
 import WorkspaceSidebar from "./WorkspaceSidebar";
 import { SettingsView, HistoryView, UpdateView } from "./SecondaryViews";
@@ -257,13 +259,13 @@ export default function App() {
     }
   }
   const layoutStyle = { "--assets-width": `${assetsWidth}px` } as CSSProperties;
-  const sidebar = <WorkspaceSidebar busy={busy} activeKey={contextKey} projectPath={project?.mainFile ?? null} view={settingsPage ? "settings" : view}
+  const sidebar = <WorkspaceSidebar busy={busy} activeKey={contextKey} projectPath={project?.mainFile ?? null} status={project?.status} filter={filter} onFilter={setFilter} view={settingsPage ? "settings" : view}
     recents={recents} failedRecent={failedRecent} onView={(next) => { setView(next); setSettingsPage(false); setDrawerOpen(false); }}
     onSettings={() => { setDrawerOpen(false); setSettingsPage(true); }} onOpenTex={() => { setDrawerOpen(false); openProject(); }}
     onRecent={(entry) => { setDrawerOpen(false); setSettingsPage(false); openRecent(entry); }}
     onRemove={workspace.forgetRecent} />;
 
-  return <TooltipProvider delayDuration={350}><div className="app-shell">
+  return <TooltipProvider delayDuration={350}><div className="app-shell mac-workspace">
     <div className="workbench" inert={review !== null || undoEntry !== null || problemId !== null || updateOpen || conversionBlocked}>
       <a href="#main-content" className="skip-link">跳转到工作区</a>
       {!narrow && <aside className="workspace-sidebar" data-collapsed={!sidebarOpen} aria-hidden={!sidebarOpen} inert={!sidebarOpen}>{sidebar}</aside>}
@@ -271,11 +273,11 @@ export default function App() {
       <header className="app-toolbar">
         <IconButton id="sidebar-toggle" label={narrow ? "打开项目导航" : sidebarOpen ? "收起侧栏" : "展开侧栏"} aria-expanded={narrow ? drawerOpen : sidebarOpen} onClick={() => narrow ? setDrawerOpen(true) : setSidebarOpen((value) => !value)}><PanelLeft aria-hidden="true" /></IconButton>
         <div className="project-title">{project ? <><h1 title={project.mainFile}>{fileName(project.mainFile)}</h1><p title={project.root}>{project.root}</p></> : <span>Texgo</span>}</div>
+        {project && !settingsPage && view === "assets" && <WorkspaceSearch value={search} onChange={setSearch} />}
         <div className="toolbar-actions">{project && <Badge variant="outline" className="project-file-count">{project.texFiles.length} 个 TeX 文件</Badge>}<WorkbenchMenu busy={busy} hasProject={Boolean(project)} canUndo={history.some((entry) => entry.canUndo) || Boolean(project?.undoAvailable)} onOpen={openProject} onClose={closeProject} onRefresh={() => { void execute("opening", () => refresh()); }} onUpdate={() => setUpdateOpen(true)} onUndo={() => {
           const entry = history.find((item) => item.canUndo); if (entry) { rememberFocus(); reviewFlow.requestUndo(entry); } else if (project?.undoAvailable) replace(true);
         }} /></div>
       </header>
-      {project && !settingsPage && <ProjectHealth status={project.status} />}
       {error && !review && !undoEntry && !problemId && <ErrorNotice message={error} className="workbench-alert" onClose={() => setError(null)} />}
       {project?.status.blockingReason && <Alert variant="destructive" role="alert" className="workbench-alert"><TriangleAlert aria-hidden="true" /><AlertTitle>需要先解决安全问题</AlertTitle><AlertDescription>{project.status.blockingReason}</AlertDescription></Alert>}
       {settingsPage && <div className="page-enter settings-view"><SettingsView value={preferences} onSaved={(next) => { preferencesRef.current = next; setPreferences(next); }} onClose={() => setSettingsPage(false)} /></div>}
@@ -287,7 +289,7 @@ export default function App() {
           }
         }}>
           <div className="workspace-grid" hidden={view !== "assets"} data-view={view} style={layoutStyle}>
-            <div className="workspace-library"><AssetList images={visibleImages} allImages={project.images} ignored={ignored} pendingIds={pendingIds} problemIds={problemIds} completedIds={completedIds}
+            <div className="workspace-library"><AssetList showSearchAndFilters={false} images={visibleImages} allImages={project.images} ignored={ignored} pendingIds={pendingIds} problemIds={problemIds} completedIds={completedIds}
               onReveal={revealAsset} onCopyPath={copyAssetPath} selectionMode={selectionMode} renameRequest={renameRequest} onRename={renameAsset} convertibleIds={convertibleIds} onManualConvert={(id) => convert("reconvert", [id])} onIgnore={(id, value) => { void ignoreAsset(id, value); }} onInspect={inspectProblem} onLocate={locateRepair} total={project.status.totalImages} selected={selected} activeId={activeId} results={results}
               busy={busy} previewDisabled={busy && operation !== "converting"} search={search} filter={filter} onSearch={setSearch} onFilter={setFilter} onActivate={setActiveId}
               onSelect={(id) => { if (!busy) selection.toggleSelected(id); }}
@@ -302,11 +304,11 @@ export default function App() {
         <div hidden={settingsPage}><CommandBar status={project.status} settings={settings} selectionMode={selectionMode} selectedCount={selected.size} busy={busy} converting={operation === "converting"} progress={progress} completion={completion} cancelRequested={cancelRequested}
           onAction={nextAction} onConvert={convert} onManualOpen={allowManualConversionPanel} currentImageId={activeId} convertibleIds={[...convertibleIds]} onSettings={updateSettings} onSelectionMode={(enabled) => { setView("assets"); selection.changeSelectionMode(enabled); }} onCancel={() => { void cancelConversion(); }} /></div>
       </>}
-      <footer className="status-bar"><div className="status-text" role="status" aria-live="polite">{operation === "opening" ? <LoaderCircle className="spin" aria-hidden="true" /> : project ? <Check aria-hidden="true" /> : <span className="status-dot" />}<span>{operation && operation !== "converting" ? operationLabels[operation] : notice}</span></div></footer>
+      <footer className="status-bar">{project && !settingsPage && <ProjectHealth status={project.status} />}<div className="status-text" role="status" aria-live="polite">{operation === "opening" ? <LoaderCircle className="spin" aria-hidden="true" /> : project ? <Check aria-hidden="true" /> : <span className="status-dot" />}<span>{operation && operation !== "converting" ? operationLabels[operation] : notice}</span></div></footer>
       </div>
     </div>
     <Dialog open={narrow && drawerOpen} onOpenChange={setDrawerOpen}>
-      <DialogContent className="navigation-drawer" showCloseButton={false} onCloseAutoFocus={(event) => { event.preventDefault(); document.getElementById("sidebar-toggle")?.focus(); }}>
+      <DialogContent className="navigation-drawer translate-x-0! translate-y-0!" showCloseButton={false} onCloseAutoFocus={(event) => { event.preventDefault(); document.getElementById("sidebar-toggle")?.focus(); }}>
         <DialogTitle className="sr-only">项目导航</DialogTitle><DialogDescription className="sr-only">打开项目与最近工作区</DialogDescription>
         <Button variant="ghost" size="icon" className="drawer-close" aria-label="关闭项目导航" title="关闭项目导航" onClick={() => setDrawerOpen(false)}><X aria-hidden="true" /></Button>
         {sidebar}

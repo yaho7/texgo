@@ -119,8 +119,9 @@ Desktop 无法可靠获知第三方编辑器的 dirty buffer。Review Dialog 底
 ### 2026-10-28 补充：先完成 Tailwind UI 重绘
 
 按用户最新指示，移除 shadcn 组件层，使用 Tailwind 重绘完整界面。以用户附图的
-浅灰侧栏、蓝色选中行、紧凑文件列表和独立预览区为风格参考，按 Texgo 实际工作流
-调整布局，不复制不合理的重复主操作或无实际功能的控件。保留所有后台只读、引用
+浅灰侧栏、蓝色选中行、紧凑文件列表和独立预览区最初作为风格参考；用户随后明确
+允许不参考图片，要求调用 skill 设计 macOS 原生软件风格和排布。使用 `frontend-design`
+按 Texgo 实际工作流设计，不复制不合理的重复主操作或无实际功能的控件。保留所有后台只读、引用
 Pending Review、完整文件 fingerprint、外部编辑器保存提醒与事务/Undo 边界。
 该新增单元在 Phase 6 之后、Updater / Release 之前执行。
 
