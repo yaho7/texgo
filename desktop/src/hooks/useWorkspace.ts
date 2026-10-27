@@ -57,7 +57,7 @@ export function useWorkspace(ports: WorkspacePorts) {
     const isCurrent = () => generation.current === started && current.current?.mainFile === key;
     try {
       const next = await invoke<Project>("refresh_workspace");
-      if (isCurrent()) await acceptProject(next, true, message);
+      if (isCurrent() && next.mainFile === key) await acceptProject(next, true, message);
     } catch (reason) { if (isCurrent()) throw reason; }
   }
   function openProject() {

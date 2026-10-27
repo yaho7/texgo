@@ -45,6 +45,7 @@ describe("asset selection domain", () => {
 
 describe("workspace and history lifecycle", () => {
   function useDomains() {
+    const [undoEntry, setUndoEntry] = useState<ConversionHistoryEntry | null>(null);
     const [errors] = useState(() => vi.fn());
     const execute = async (_kind: string, action: () => Promise<void>) => {
       try { await action(); } catch (reason) { errors(reason); }
@@ -60,6 +61,7 @@ describe("workspace and history lifecycle", () => {
       execute, acceptProject: workspace.acceptProject,
       refresh: workspace.refresh, discardProject: workspace.discardProject,
       restoreRename: selection.restoreRename, restoreFocus: vi.fn(), onError: errors,
+      undoEntry: () => undoEntry, requestUndo: setUndoEntry, dismissUndo: () => setUndoEntry(null),
     });
     return { workspace, history, selection, errors };
   }
@@ -183,4 +185,13 @@ describe("workspace and history lifecycle", () => {
     await act(async () => { reject(new Error("old history error")); await loading; });
     expect(result.current.errors).not.toHaveBeenCalled();
   });
+  it("does not accept a native refresh for a different project while the frontend generation remains unchanged", async () => {
+    const other = { ...project, root: "/other", mainFile: "/other/main.tex" };
+    mockIPC((command) => command === "refresh_workspace" ? other : []);
+    const { result } = renderHook(useDomains);
+    await act(async () => { await result.current.workspace.acceptProject(project, false); });
+    await act(async () => { await result.current.workspace.refresh(); });
+    expect(result.current.workspace.project?.mainFile).toBe(project.mainFile);
+  });
+
 });

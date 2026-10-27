@@ -39,19 +39,20 @@ Files: `App.tsx`, `hooks/useWorkspace.ts`, `hooks/useAssetSelection.ts`, `hooks/
 - [x] Move selection/search/filter and ID migration into `useAssetSelection`; preserve surviving selections, keep ignore behavior and reset only on actual project change.
 - [x] Move guarded history loading and Undo into `useHistory`; retain rename identity restoration and partial failure refresh. Guard stale successful and failed refreshes, Undo and nested recovery across A→B→A sessions.
 - [x] Run frontend static and workflow checks, inspect all native invoke arguments for unchanged safety contracts. Independent specification and code-quality reviews passed; parent verified TypeScript, 165 frontend tests and one PDF test.
-- [ ] Commit the coherent workspace/selection/history extraction.
+- [x] Commit the coherent workspace/selection/history extraction (`4da7b26`).
 
 ## Unit 4: Conversion, review and native adapters
 
 Files: `App.tsx`, `hooks/useConversion.ts`, `hooks/useReviewFlow.ts`, `hooks/useDesktopEvents.ts`, `hooks/useBackgroundAutomation.ts`, `hooks/useAppShortcuts.ts`.
 
-- [ ] Preserve existing conversion tests for pending/selected/reconvert/cancel/retry, same-path output and partial review.
-- [ ] Add dialog shortcut and late native subscription cleanup tests; demonstrate failures for any new corrected behavior before its implementation.
-- [ ] Extract conversion ownership, event subscription lifetime, cancellation and result recovery without changing engine options.
-- [ ] Extract review/repair state as a discriminated union retaining the complete reviewed snapshot. Applying or undoing transitions only from permitted business states.
-- [ ] Extract desktop listeners and shortcut dispatch, sharing a single overlay/operation eligibility policy. Queue background snapshots while foreground decisions are active.
-- [ ] Keep App limited to page/layout/dialog composition and hook connection; do not replace it with another monolithic hook.
-- [ ] Run all frontend/PDF/Rust checks, update `docs/background-workflow.md`, inspect conditional native behavior, and commit each coherent domain extraction.
+- [x] Preserve existing conversion tests for pending/selected/reconvert/cancel/retry, same-path output and partial review.
+- [x] Add dialog shortcut and late native subscription cleanup tests; demonstrate failures for any new corrected behavior before its implementation. Additional regressions cover review selection retention, stale background completion/errors, unmounted conversion, cross-project notification targets, transient overlays, A→B→A and StrictMode lifetimes.
+- [x] Extract conversion ownership, event subscription lifetime, cancellation and result recovery without changing engine options.
+- [x] Extract review/repair state as a discriminated union retaining the complete reviewed snapshot. Applying or undoing transitions only from permitted business states.
+- [x] Extract desktop listeners and shortcut dispatch, sharing a single overlay/operation eligibility policy. Queue background snapshots while foreground decisions are active.
+- [x] Keep App limited to page/layout/dialog composition and hook connection; do not replace it with another monolithic hook. App is 328 lines; each new workflow hook is under 200 lines.
+- [x] Run all frontend/PDF/Rust checks, update `docs/background-workflow.md`, inspect conditional native behavior. Parent verified TypeScript, 182 frontend tests, one PDF test, production frontend build, 197 desktop Rust tests and 209 headless Rust tests. No Rust/platform conditional code changed in this phase. Specification and quality reviews passed after fixing delayed background errors and overlay focus.
+- [ ] Commit remaining workflow/event/decision extraction.
 
 ## Phase completion evidence
 

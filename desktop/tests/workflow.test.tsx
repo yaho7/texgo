@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
@@ -355,7 +355,7 @@ describe("LaTeX 项目唯一工作流", () => {
     await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
     await user.click(screen.getByRole("button", { name: "设置" }));
     await screen.findByRole("main", { name: "设置" });
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 750)); });
+    await act(async () => { await act(async () => { await new Promise((resolve) => setTimeout(resolve, 750)); }); });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "图片" }));
     expect(await screen.findByRole("dialog", { name: "检查引用变更" })).toBeInTheDocument();
@@ -508,4 +508,119 @@ it("clears the previous project's history before the next project's history arri
   expect(document.getElementById(`operation-${record.id}`)).not.toBeInTheDocument();
   await act(async () => { pending.resolve([]); });
   expect(await screen.findByRole("region", { name: "操作记录" })).toBeInTheDocument();
+});
+
+it("keeps settings accelerators behind an open review decision", async () => {
+  const user = await openProject();
+  await convertAndReview(user);
+  fireEvent.keyDown(window, { key: ",", ctrlKey: true });
+  await user.click(screen.getByRole("button", { name: "关闭替换预览" }));
+  expect(screen.getByRole("button", { name: "预览 figures/alpha.png" })).toBeVisible();
+});
+
+it("preserves the checked review snapshot across native workspace and completion events", async () => {
+  const user = await openProject();
+  const dialog = await convertAndReview(user);
+  const original = structuredClone(changes);
+  await user.click(within(dialog).getByRole("checkbox", { name: "第 8 行" }));
+  changes = { referenceCount: 1, files: [{ path: "/paper/main.tex", changes: [{ id: "late", line: 99, before: "late.png", after: "late.pdf" }] }] };
+  await act(async () => {
+    await emit("workspace-updated", structuredClone(backend));
+    await emit("background-finished", { project: structuredClone(backend), result: { images: [], cancelled: false } });
+  });
+  expect(within(dialog).getByRole("checkbox", { name: "第 8 行" })).not.toBeChecked();
+  expect(screen.queryByRole("checkbox", { name: "第 99 行" })).not.toBeInTheDocument();
+  await user.click(within(dialog).getByRole("button", { name: "更新 1 处引用" }));
+  await waitFor(() => expect(calls.find((call) => call.command === "apply_replacements")?.args).toMatchObject({ expected: original, selection: ["change-b"] }));
+});
+
+it("ignores stale native completion while foreground conversion owns progress", async () => {
+  const pending = deferred<ConversionResult>();
+  handlers.convert_images = () => pending.promise;
+  const user = await openProject();
+  await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
+  await waitFor(() => expect(calls.some((call) => call.command === "convert_images")).toBe(true));
+  const stale = structuredClone(backend);
+  stale.status = { ...stale.status, pendingImages: 0, pendingImageIds: [], pendingReferences: 1, nextAction: "reviewReferences" };
+  await act(async () => { await emit("background-finished", { project: stale, result: { images: [{ id: "a", pdfPath: "/stale.pdf", bytes: 1, cached: false, error: null }], cancelled: false } }); });
+  expect(screen.getByRole("button", { name: "取消更新" })).toBeEnabled();
+  expect(calls.some((call) => call.command === "preview_changes")).toBe(false);
+  expect(screen.queryByText("已更新 1 张图片")).not.toBeInTheDocument();
+  await act(async () => pending.resolve({ images: [], cancelled: true }));
+});
+
+it("does not refresh a disposed workspace when foreground conversion resolves late", async () => {
+  const pending = deferred<ConversionResult>(); handlers.convert_images = () => pending.promise;
+  const user = await openProject();
+  await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
+  await waitFor(() => expect(calls.some((call) => call.command === "convert_images")).toBe(true));
+  cleanup();
+  await act(async () => pending.resolve({ images: [], cancelled: true }));
+  expect(calls.some((call) => call.command === "refresh_workspace")).toBe(false);
+});
+
+it("defers a cross-project notification until foreground completion and preserves its target", async () => {
+  const pending = deferred<ConversionResult>(); handlers.convert_images = () => pending.promise;
+  const user = await openProject();
+  await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
+  await waitFor(() => expect(calls.some((call) => call.command === "convert_images")).toBe(true));
+  backend = { ...structuredClone(initial), root: "/other", mainFile: "/other/main.tex" };
+  entries = [record];
+  await act(async () => { await emit("notification-navigate", { project: structuredClone(backend), target: { path: backend.mainFile, view: "history", batchId: record.id, imageId: null } }); });
+  expect(screen.getByRole("button", { name: "取消更新" })).toBeEnabled();
+  expect(screen.getByRole("heading", { name: "main.tex" })).toHaveAttribute("title", "/paper/main.tex");
+  await act(async () => pending.resolve({ images: [], cancelled: true }));
+  await waitFor(() => expect(screen.getByRole("heading", { name: "main.tex" })).toHaveAttribute("title", "/other/main.tex"));
+  expect(await screen.findByRole("region", { name: "操作记录" })).toBeVisible();
+  expect(document.getElementById(`operation-${record.id}`)).toHaveAttribute("data-highlighted", "true");
+});
+
+it("defers native background errors while the original review decision is open", async () => {
+  const user = await openProject();
+  const dialog = await convertAndReview(user);
+  await act(async () => { await emit("desktop-error", "后台检测失败"); });
+  expect(within(dialog).queryByText("后台检测失败")).not.toBeInTheDocument();
+  await user.click(within(dialog).getByRole("button", { name: "关闭替换预览" }));
+  expect(await screen.findByText("后台检测失败")).toBeVisible();
+});
+
+it("keeps automatic review queued behind the navigation drawer and resumes when it closes", async () => {
+  const previous = window.matchMedia;
+  window.matchMedia = vi.fn(() => ({ matches: true, media: "(max-width: 980px)", onchange: null, addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(() => true) }));
+  try {
+    const user = await openProject();
+    await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
+    await user.click(screen.getByRole("button", { name: "打开项目导航" }));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 750)); });
+    expect(screen.queryByRole("dialog", { name: "检查引用变更" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "关闭项目导航" }));
+    expect(await screen.findByRole("dialog", { name: "检查引用变更" })).toBeVisible();
+  } finally { window.matchMedia = previous; }
+});
+
+it("keeps automatic review queued behind an open menu and resumes on portal removal", async () => {
+  const user = await openProject();
+  await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
+  await user.click(screen.getByRole("button", { name: "更多操作" }));
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 750)); });
+  expect(screen.queryByRole("dialog", { name: "检查引用变更" })).not.toBeInTheDocument();
+  await user.keyboard("{Escape}");
+  expect(await screen.findByRole("dialog", { name: "检查引用变更" })).toBeVisible();
+});
+
+it("defers a delayed background preview error after a foreground review decision opens", async () => {
+  let rejectPreview!: (reason: Error) => void;
+  const delayed = new Promise<ChangePreview>((_resolve, reject) => { rejectPreview = reject; });
+  const user = await openProject();
+  const result = convertResponse(["a", "b"]);
+  const original = structuredClone(changes);
+  let previews = 0;
+  handlers.preview_changes = () => ++previews === 1 ? delayed : original;
+  await act(async () => { await emit("background-finished", { project: structuredClone(backend), result: { ...result, images: [] } }); });
+  await user.click(screen.getByRole("button", { name: /检查.*引用|检查引用变更/ }));
+  const dialog = await screen.findByRole("dialog", { name: "检查引用变更" });
+  await act(async () => rejectPreview(new Error("后台引用读取失败")));
+  expect(within(dialog).queryByText("后台引用读取失败")).not.toBeInTheDocument();
+  await user.click(within(dialog).getByRole("button", { name: "关闭替换预览" }));
+  expect(await screen.findByText("后台引用读取失败")).toBeVisible();
 });
