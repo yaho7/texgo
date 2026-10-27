@@ -22,6 +22,8 @@ Refreshing, applying references, background conversion and switching sidebar pag
 
 ## Shared conversion and background state
 
+React's `useOperation` owns a typed idle/running state with a unique lease token and a foreground/background owner. Acquisition is synchronous, so two callbacks in one render cannot start competing operations. Completion releases only the lease it acquired; a background idle event cannot clear a foreground conversion or rename. The operation kind still drives the existing progress labels. Review decisions and workspace reconciliation are separate domains and must retain their original preview and project identity checks.
+
 GUI and Smart Convert call the same pending-image update method. New sources use the requested output folder; existing managed sources update their original preferred output. Groups retain existing conversion safety checks and aggregate progress across destinations. Output writes, hashes, backups, cancellation, source/dependency validation and Undo continue through the original pipeline. No TeX references are applied automatically by background conversion.
 
 React receives `background-start`, per-image conversion progress/results, `background-finished`, error recovery snapshots and `background-idle`. These events reconcile the foreground status even when automatic file observation is disabled. Notifications and the command bar therefore describe the same remaining work. Only notification clicks reveal/focus the window; background conversion does not.
@@ -42,6 +44,6 @@ Registration normalizes and validates the shortcut, restores the previous regist
 
 CSS defines shared fast/normal/slow/feedback durations and standard/out easing. Page changes use small vertical fades, the command bar crossfades departing/entering states without a second primary button, badges/backgrounds communicate result changes, and preview frames retain the old image until the next is ready. Divider dragging stays immediate; reset uses the shared easing. Reduced motion removes spatial animation, delays and continuous spinners while retaining short opacity feedback.
 
-Local tests and compilation remain disabled per user instruction. No-emit TypeScript and diff/config inspection run locally. GitHub Actions runs frontend/PDF/Rust tests followed by four native package targets. Apple Developer ID signing and notarization stay in the existing shared macOS build step. Passing CI does not establish actual installed-app permissions or delivery on every desktop.
+Local tests and compilation are enabled by the current product-upgrade request. See [local setup and verification](development.md) for generated icon/sidecar prerequisites. GitHub Actions runs frontend/PDF/Rust tests followed by four native package targets. Apple Developer ID signing and notarization stay in the existing shared macOS build step. Passing CI does not establish actual installed-app permissions or delivery on every desktop.
 
 The headless pipeline retains the restricted compatibility path for restoring/updating a valid managed destination under an existing standalone recovery record. It still validates record ownership/version and all TeX after-hashes under the project lock; new destinations and changed TeX are rejected.

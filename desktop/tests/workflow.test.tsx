@@ -478,3 +478,20 @@ it("never shows a fallback image while rename history is still loading", async (
   await act(async () => { historyLoad.resolve([]); });
   await waitFor(() => expect(screen.getByRole("button", { name: "转换 2 张图片" })).toBeEnabled());
 });
+
+it("keeps foreground conversion ownership when background start and idle arrive", async () => {
+  const pending = deferred<ConversionResult>();
+  handlers.convert_images = () => pending.promise;
+  const user = await openProject();
+  await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
+  await waitFor(() => expect(calls.some((call) => call.command === "convert_images")).toBe(true));
+  await act(async () => {
+    await emit("background-start", structuredClone(backend));
+    await emit("background-idle", null);
+  });
+  expect(screen.getByRole("button", { name: "取消更新" })).toBeEnabled();
+  await act(async () => { await emit("menu-action", "refresh"); });
+  expect(calls.some((call) => call.command === "refresh_workspace")).toBe(false);
+  await act(async () => pending.resolve({ images: [], cancelled: true }));
+  expect(await screen.findByRole("button", { name: "转换 2 张图片" })).toBeEnabled();
+});

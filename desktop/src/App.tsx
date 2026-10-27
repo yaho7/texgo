@@ -32,7 +32,8 @@ import type { RecentWorkspace } from "./recents";
 import type { SmartReport, NotificationTarget, ChangePreview, ConversionHistoryEntry, ConversionProgress, ConversionResult, ImageResult, Project, ReplacementResult, RenameResult, IgnoreMode, ConversionIntent } from "./types";
 import { errorMessage, fileName } from "./utils";
 
-type Operation = "opening" | "converting" | "reviewing" | "applying" | "undoing" | "updating" | "renaming";
+import { useOperation } from "./hooks/useOperation";
+import type { Operation, OperationLease } from "./state/operationMachine";
 const operationLabels: Record<Operation, string> = { opening: "正在扫描…", converting: "正在更新图片…", reviewing: "正在读取引用变更…", applying: "正在替换引用…", undoing: "正在撤销…", updating: "正在更新项目状态…", renaming: "正在重命名图片…" };
 
 function projectEntry(project: Project): Omit<RecentWorkspace, "openedAt"> {
@@ -59,7 +60,7 @@ export default function App() {
   const [filter, setFilter] = useState("all");
   const [settings, setSettings] = useState<ConversionSettings>(defaultSettings);
   const [highlightBatch, setHighlightBatch] = useState<string | null>(null);
-  const backgroundActive = useRef(false);
+  const backgroundLease = useRef<OperationLease | null>(null);
   const backgroundStart = useRef<(project: Project) => void>(() => {});
   const backgroundFinished = useRef<(report: SmartReport) => void>(() => {});
   const notificationNavigate = useRef<(payload: { project: Project; target: NotificationTarget }) => void>(() => {});
@@ -68,8 +69,8 @@ export default function App() {
   const [view, setView] = useState<"assets" | "history">("assets");
   const [undoEntry, setUndoEntry] = useState<ConversionHistoryEntry | null>(null);
   const dialogTrigger = useRef<HTMLElement | null>(null);
-  const [operation, setOperation] = useState<Operation | null>(null);
-  const operationRef = useRef<Operation | null>(null);
+  const { state: operationState, current: currentOperation, acquire: acquireOperation, release: releaseOperation, run: runOperation } = useOperation();
+  const operation = operationState.status === "running" ? operationState.kind : null;
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState("就绪");
   const [progress, setProgress] = useState<ConversionProgress | null>(null);
@@ -127,7 +128,7 @@ export default function App() {
     let retryAt = 0;
     const root = project.root;
     async function poll() {
-      if (disposed || pending || document.hidden || operationRef.current || Date.now() < retryAt) return;
+      if (disposed || pending || document.hidden || currentOperationKind() || Date.now() < retryAt) return;
       pending = true;
       try {
         const next = await invoke<Project | null>("poll_workspace", { root });
@@ -161,9 +162,12 @@ export default function App() {
     }));
     keep(listen<Project>("background-start", ({ payload }) => backgroundStart.current(payload)));
     keep(listen<SmartReport>("background-finished", ({ payload }) => backgroundFinished.current(payload)));
-    keep(listen("background-idle", () => { if (backgroundActive.current) { backgroundActive.current = false; operationRef.current = null; setOperation(null); void loadHistory(); } }));
-    keep(listen<ConversionProgress>("conversion-progress", ({ payload }) => { if (backgroundActive.current) setProgress(payload); }));
-    keep(listen<ImageResult>("conversion-result", ({ payload }) => { if (backgroundActive.current) setResults((previous) => ({ ...previous, [payload.id]: payload })); }));
+    keep(listen("background-idle", () => {
+      const lease = backgroundLease.current;
+      if (lease) { backgroundLease.current = null; if (releaseOperation(lease)) void loadHistory(); }
+    }));
+    keep(listen<ConversionProgress>("conversion-progress", ({ payload }) => { if (backgroundLease.current) setProgress(payload); }));
+    keep(listen<ImageResult>("conversion-result", ({ payload }) => { if (backgroundLease.current) setResults((previous) => ({ ...previous, [payload.id]: payload })); }));
     keep(listen<string>("desktop-error", ({ payload }) => setError(payload)));
     keep(listen<{ project: Project; target: NotificationTarget }>("notification-navigate", ({ payload }) => notificationNavigate.current(payload)));
     void invoke<{ error: string | null }>("desktop_status").then((status) => { if (active && status?.error) setError(status.error); }).catch(() => {});
@@ -191,7 +195,7 @@ export default function App() {
   }, []);
 
   function closeProject() {
-    if (operationRef.current) return;
+    if (currentOperationKind()) return;
     void execute("opening", async () => {
       await invoke("close_workspace");
       setSettingsPage(false); setDrawerOpen(false);
@@ -211,14 +215,14 @@ export default function App() {
     dialogTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   }
 
+  function currentOperationKind() {
+    const state = currentOperation();
+    return state.status === "running" ? state.kind : null;
+  }
+
   async function execute(kind: Operation, action: () => Promise<void>) {
-    if (operationRef.current) return;
-    operationRef.current = kind;
-    setOperation(kind);
-    setError(null);
-    try { await action(); }
+    try { await runOperation(kind, "foreground", async () => { setError(null); await action(); }); }
     catch (reason) { setError(errorMessage(reason)); }
-    finally { operationRef.current = null; setOperation(null); }
   }
 
   function clearAssetState() {
@@ -308,7 +312,7 @@ export default function App() {
   }
 
   async function ignoreAsset(id: string, mode: IgnoreMode = "session") {
-    if (operationRef.current || !projectRef.current) return;
+    if (currentOperationKind() || !projectRef.current) return;
     await execute("updating", async () => {
       const next = await invoke<Project>("ignore_asset", { imageId: id, mode });
       await acceptProject(next, true);
@@ -319,9 +323,9 @@ export default function App() {
 
   async function renameAsset(imageId: string, newBaseName: string) {
     const current = projectRef.current;
-    if (!current || operationRef.current) throw new Error("已有项目操作正在运行，请稍后重试");
-    operationRef.current = "renaming"; setOperation("renaming"); setError(null);
-    try {
+    if (!current) throw new Error("已有项目操作正在运行，请稍后重试");
+    const outcome = await runOperation("renaming", "foreground", async () => {
+      setError(null);
       const result = await invoke<RenameResult>("rename_asset", { imageId, newBaseName, expectedFingerprint: current.stateFingerprint ?? "" });
       // Migrate identity before accepting the snapshot; loading operation history
       // must never briefly select a fallback image or discard a selected asset.
@@ -330,11 +334,12 @@ export default function App() {
       await acceptProject(result.project, true);
       const entry = result.project.images.find((image) => image.id === result.newImageId);
       setNotice(`已重命名${entry?.references.length ? `，并更新 ${entry.references.length} 处 LaTeX 引用` : ""}`);
-    } finally { operationRef.current = null; setOperation(null); }
+    });
+    if (!outcome.acquired) throw new Error("已有项目操作正在运行，请稍后重试");
   }
 
   function retryAsset(imageId: string) {
-    if (operationRef.current) return;
+    if (currentOperationKind()) return;
     void execute("updating", async () => acceptProject(await invoke<Project>("retry_asset", { imageId }), true, "已准备重试，请确认更新图片"));
   }
 
@@ -367,7 +372,7 @@ export default function App() {
   }
 
   function convert(intent: ConversionIntent = selectionMode ? "selected" : "pending", explicitIds?: string[]) {
-    if (!project || operationRef.current || project.status.blockingReason) return;
+    if (!project || currentOperationKind() || project.status.blockingReason) return;
     if (canReview && !preferences.allowUnreviewed) { rememberFocus(); setConversionBlocked(true); return; }
     const issues = settingsIssues(settings);
     const first = (["dpi", "jpegQuality", "outputDir"] as const).find((key) => issues[key]);
@@ -429,12 +434,12 @@ export default function App() {
   }
 
   async function cancelConversion() {
-    if (operationRef.current !== "converting" || cancelRef.current) return;
+    if (currentOperationKind() !== "converting" || cancelRef.current) return;
     cancelRef.current = true;
     setCancelRequested(true);
     try { await invoke("cancel_conversion"); }
     catch (reason) {
-      if (operationRef.current === "converting") {
+      if (currentOperationKind() === "converting") {
         cancelRef.current = false;
         setCancelRequested(false);
         setError(errorMessage(reason, "取消失败，请重试"));
@@ -498,13 +503,15 @@ export default function App() {
   });
   backgroundStart.current = (nativeProject) => {
     if (!project || project.root !== nativeProject.root || project.mainFile !== nativeProject.mainFile) return;
+    const lease = acquireOperation("converting", "background");
+    if (!lease) return;
+    backgroundLease.current = lease;
     projectRef.current = nativeProject; setProject(nativeProject);
     setResults((previous) => ({
       ...Object.fromEntries(Object.entries(previous).filter(([id, image]) => (image.error || image.cancelled) && nativeProject.images.some((asset) => asset.id === id))),
       ...Object.fromEntries(nativeProject.convertedImages.map((image) => [image.id, image])),
     }));
-    backgroundActive.current = true;
-    operationRef.current = "converting"; setOperation("converting"); setProgress(null); setError(null);
+    setProgress(null); setError(null);
   };
   backgroundFinished.current = (report) => {
     if (!project || project.root !== report.project.root || project.mainFile !== report.project.mainFile) return;
@@ -548,7 +555,7 @@ export default function App() {
   desktopAction.current = (action) => {
     if (action === "settings") { setSettingsPage(true); setDrawerOpen(false); return; }
     if (action === "check-updates") { setUpdateOpen(true); return; }
-    if (operationRef.current || review || undoEntry || updateOpen || problemId || conversionBlocked) return;
+    if (currentOperationKind() || review || undoEntry || updateOpen || problemId || conversionBlocked) return;
     if (action === "open-project") openProject();
     else if (action === "close-project") closeProject();
     else if (action === "refresh" && project) void execute("opening", () => refresh());
@@ -561,7 +568,7 @@ export default function App() {
     }
   };
   dropFiles.current = (paths) => {
-    if (operationRef.current || review || undoEntry || updateOpen || problemId || conversionBlocked) return;
+    if (currentOperationKind() || review || undoEntry || updateOpen || problemId || conversionBlocked) return;
     const tex = paths.filter((path) => /\.tex$/i.test(path));
     if (tex.length !== 1) { setError("请一次拖入一个 .tex 主文件"); return; }
     void execute("opening", async () => acceptProject(await invoke<Project>("open_project", { mainFile: tex[0] }), false));
@@ -663,14 +670,14 @@ export default function App() {
       </DialogContent>
     </Dialog>
     {problemId && project && <AssetProblems asset={project.images.find((image) => image.id === problemId) ?? null} projectRoot={project.root} busy={busy} candidates={repairCandidates} candidatesLoading={operation === "reviewing"} error={error} onClose={() => { setProblemId(null); setError(null); restoreFocus(); }} onLocate={locateRepair} onChoose={chooseRepair} onIgnore={(id) => { void ignoreAsset(id); }} />}
-    {review && project && <ReviewDialog key={JSON.stringify(review)} preview={review} root={project.root} busy={busy} error={error} onClose={() => { if (!operationRef.current) { setReview(null); setError(null); restoreFocus(); } }} onApply={(selection) => replace(false, selection)} />}
+    {review && project && <ReviewDialog key={JSON.stringify(review)} preview={review} root={project.root} busy={busy} error={error} onClose={() => { if (!currentOperationKind()) { setReview(null); setError(null); restoreFocus(); } }} onApply={(selection) => replace(false, selection)} />}
     <Dialog open={conversionBlocked} onOpenChange={setConversionBlocked}>
       <DialogContent onCloseAutoFocus={(event) => { event.preventDefault(); restoreFocus(); }}>
         <DialogHeader><DialogTitle>请先审核引用</DialogTitle><DialogDescription>当前有 {project?.status.pendingReferences ?? 0} 处引用尚未审核。建议先完成引用审核，再开始新的转换。</DialogDescription></DialogHeader>
         <DialogFooter><Button variant="outline" onClick={() => setConversionBlocked(false)}>取消</Button><Button onClick={() => { setConversionBlocked(false); reviewChanges(); }}>检查引用</Button></DialogFooter>
       </DialogContent>
     </Dialog>
-    <Dialog open={undoEntry !== null} onOpenChange={(value) => { if (!value && !operationRef.current) { setUndoEntry(null); setError(null); } }}>
+    <Dialog open={undoEntry !== null} onOpenChange={(value) => { if (!value && !currentOperationKind()) { setUndoEntry(null); setError(null); } }}>
       <DialogContent showCloseButton={false} onCloseAutoFocus={(event) => { event.preventDefault(); restoreFocus(); }} onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }} onInteractOutside={(event) => { if (busy) event.preventDefault(); }}>
         <DialogHeader><DialogTitle>撤销此次操作？</DialogTitle><DialogDescription>将恢复此次操作修改的文件与引用。重命名操作也会恢复原文件名；文件被外部修改时会停止撤销。</DialogDescription></DialogHeader>
         {error && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}

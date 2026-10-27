@@ -23,11 +23,11 @@ The approved overall design is `docs/superpowers/specs/2026-10-26-product-upgrad
 
 Files: `desktop/src/App.tsx`, new `desktop/src/state/operationMachine.ts`, new `desktop/src/hooks/useOperation.ts`, `desktop/tests/operation.test.tsx`.
 
-- [ ] Add focused tests proving a second operation cannot acquire an occupied coordinator, stale completion cannot release a newer lease, failure releases the owning lease, and background work cannot claim foreground ownership.
-- [ ] Run the focused test before implementation and confirm the missing coordinator failure.
-- [ ] Implement an explicit idle/running discriminated union with an operation token and owner (`foreground` / `background`). Keep the current operation label vocabulary during extraction; rename labels only once callers are migrated.
-- [ ] Integrate acquisition/release in execute, rename and background handlers. Eliminate direct independent writes to state/ref pairs. Dialog state remains a separate migration unit.
-- [ ] Run `npm run check` and `npm test`; inspect cancellation, background, review, rename and focus regressions.
+- [x] Add focused tests proving a second operation cannot acquire an occupied coordinator, stale completion cannot release a newer lease, failure releases the owning lease, and background work cannot claim foreground ownership.
+- [x] Run the focused test before implementation and confirm the missing coordinator failure. Foreground conversion regression also failed before integration because background idle removed the cancel action.
+- [x] Implement an explicit idle/running discriminated union with an operation token and owner (`foreground` / `background`). Keep the current operation label vocabulary during extraction; rename labels only once callers are migrated.
+- [x] Integrate acquisition/release in execute, rename and background handlers. Eliminate direct independent writes to state/ref pairs. Dialog state remains a separate migration unit.
+- [x] Run `npm run check` and `npm test`; inspect cancellation, background, review, rename and focus regressions. Parent independently verified 151 frontend tests and one PDF test; specification review passed.
 - [ ] Commit only this unit with `refactor: centralize operation ownership`.
 
 ## Unit 3: Workspace, selection and history
