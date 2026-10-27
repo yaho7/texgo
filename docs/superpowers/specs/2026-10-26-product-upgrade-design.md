@@ -2,11 +2,11 @@
 
 状态：用户已批准按设计实施；本文不是实现完成报告。
 
-范围更新（2026-10-27）：用户已取消新增 LaTeX 编译验证计划。Phase 5 及其关联设置、引擎选择、完成提示和历史验证记录不再实施；其他阶段继续。已有独立 engine 编译接口保留现有行为。
+范围更新（2026-10-27）：用户已取消 Phase 5 新增 LaTeX 编译验证及 Phase 8 VS Code 扩展计划。对应的新设置、引擎选择、验证提示/记录、扩展命令/状态栏及扩展专用 RPC 增强不再实施；其他阶段继续。已有 engine 编译接口和 VS Code 接入示例保留现有行为。
 
 ## 范围与现状
 
-按用户给定的 Phase 顺序实施，跳过已取消的 Phase 5。现有 Rust Workspace 是项目状态的权威来源；前端消费 `WorkspaceStatus.nextAction`，不另算一套待处理任务。保留 Transaction、Journal、Undo、引用审核、指纹校验、外部修改检测与 symlink 防护。
+按用户给定的 Phase 顺序实施，跳过已取消的 Phase 5 和 Phase 8。现有 Rust Workspace 是项目状态的权威来源；前端消费 `WorkspaceStatus.nextAction`，不另算一套待处理任务。保留 Transaction、Journal、Undo、引用审核、指纹校验、外部修改检测与 symlink 防护。
 
 本轮初步审阅已覆盖 App、CommandBar、Preview、History、Updater、Workspace 入口、桌面命令、后台任务、automation、observation、发布工作流及相关文档和测试。实施前继续完整阅读各阶段涉及模块；不把初步审阅表述为全仓库审计完成。
 
@@ -104,11 +104,9 @@ main：测试、构建、打包、上传 artifacts，不创建 Latest。`desktop
 
 增加 `version:check` 同时核对 manifest 与 lockfile。保留 Apple Developer ID、公证、Windows NSIS、Linux deb/AppImage 和两种 macOS 架构。签名密钥配置和跨平台安装升级测试完成前，不宣称更新端到端验收完成。
 
-## Phase 8：VS Code 薄客户端
+## Phase 8：已取消
 
-`extensions/vscode/` 提供 Scan、Update Changed Images、Review References、Open in Texgo 及状态栏。仅调用 engine；process 参数数组、request ID、超时、退出清理和 workspace trust 边界明确。更新仅传后端 pending IDs。
-
-现有 RPC `references.apply` 只有 confirm，不具备桌面完整审核协议；先扩展兼容的 reviewed preview + selected IDs 请求，再实现 extension 确认应用。不能让扩展绕过已审核快照检查。Open in Texgo 需原生打开项目协议，不能假定启动程序就能传入项目。
+按用户 2026-10-27 的指示，取消新增 VS Code 扩展、命令、状态栏、扩展专用 RPC 增强及为扩展增加的桌面打开协议。此阶段不作为剩余交付项。现有 `examples/vscode/` 和 CLI/JSON-RPC 接口继续保留；后续从 Phase 7 直接进入 Phase 9。
 
 ## Phase 9：公开发布材料
 
