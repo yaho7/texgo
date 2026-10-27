@@ -271,7 +271,8 @@ describe("LaTeX 项目唯一工作流", () => {
     const user = await openProject(); await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
     await waitFor(() => expect(calls.some((call) => call.command === "convert_images")).toBe(true));
     await act(async () => { await emit("conversion-progress", { current: 1, total: 2, name: "alpha.png", status: "done" }); });
-    expect(screen.getByRole("button", { name: "正在更新 1 / 2" })).toBeDisabled();
+    expect(screen.getAllByRole("status").some((element) => element.textContent?.includes("正在更新 1 / 2"))).toBe(true);
+    expect(screen.queryByRole("button", { name: /正在更新/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "预览 figures/beta.jpg" }));
     await act(async () => { fireEvent.focus(window); });
     expect(calls.some((call) => call.command === "poll_workspace")).toBe(false);
@@ -391,7 +392,7 @@ describe("explicit asset control", () => {
     handlers.convert_images = ({ options }) => convertResponse((options as ConversionOptions).imageIds, false);
     const user = await openProject();
     await user.click(screen.getByRole("button", { name: "转换…" }));
-    await user.click(screen.getByRole("button", { name: "开始转换" }));
+    await user.click(screen.getByRole("menuitem", { name: "重新转换当前图片" }));
     await waitFor(() => expect(calls.find((call) => call.command === "convert_images")?.args).toMatchObject({ intent: "reconvert", options: { imageIds: ["a"] } }));
     await waitFor(() => expect(calls.some((call) => call.command === "refresh_workspace")).toBe(true));
     expect(screen.queryByRole("dialog", { name: "检查引用变更" })).not.toBeInTheDocument();
@@ -411,7 +412,7 @@ describe("explicit asset control", () => {
     handlers.get_preferences = () => ({ ...defaultPreferences, autoUpdate: false, allowUnreviewed: true });
     const user = await openProject();
     await user.click(screen.getByRole("button", { name: "转换…" }));
-    await user.click(screen.getByRole("button", { name: "开始转换" }));
+    await user.click(screen.getByRole("menuitem", { name: "重新转换当前图片" }));
     await waitFor(() => expect(calls.some((call) => call.command === "convert_images" && call.args.intent === "reconvert")).toBe(true));
     expect(screen.queryByRole("dialog", { name: "请先审核引用" })).not.toBeInTheDocument();
   });

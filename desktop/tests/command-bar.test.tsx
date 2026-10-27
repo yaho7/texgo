@@ -12,16 +12,20 @@ it("keeps a single primary action while status and button labels transition", ()
   vi.useFakeTimers();
   const view = render(<CommandBar {...defaults} />);
   view.rerender(<CommandBar {...defaults} busy converting progress={{ current: 0, total: 2, name: "first.png", status: "converting" }} />);
-  expect(screen.getByRole("button", { name: "正在更新 0 / 2" })).toBeDisabled();
-  expect(document.querySelectorAll(".command-action")).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "取消更新" })).toBeEnabled();
+  expect(document.querySelectorAll(".command-action")).toHaveLength(0);
+  expect(screen.getByRole("status")).toHaveTextContent("正在更新 0 / 2");
+  expect(screen.getByRole("status")).toHaveTextContent("first.png");
   expect(document.querySelector(".command-message-exit")).toHaveTextContent("2 张图片需要更新");
   view.rerender(<CommandBar {...defaults} busy converting progress={{ current: 1, total: 2, name: "second.png", status: "converting" }} />);
   act(() => vi.advanceTimersByTime(300));
   expect(document.querySelector(".command-message-exit")).not.toBeInTheDocument();
   expect(document.querySelector(".command-action-label-exit")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "正在更新 1 / 2" })).toBeDisabled();
+  expect(screen.getByRole("status")).toHaveTextContent("正在更新 1 / 2");
+  expect(screen.queryByRole("button", { name: /正在更新/ })).not.toBeInTheDocument();
   view.rerender(<CommandBar {...defaults} completion={2} status={{ ...status, pendingReferences: 2, nextAction: "reviewReferences" }} />);
-  expect(screen.getByRole("button", { name: "已更新 2 张" })).toBeDisabled();
+  expect(screen.getByRole("status")).toHaveTextContent("已更新 2 张图片");
+  expect(document.querySelectorAll(".command-action")).toHaveLength(0);
   view.rerender(<CommandBar {...defaults} status={{ ...status, pendingReferences: 2, nextAction: "reviewReferences" }} />);
   expect(screen.getByRole("button", { name: "检查 2 处引用" })).toBeEnabled();
   expect(document.querySelectorAll(".command-action")).toHaveLength(1);
@@ -64,8 +68,8 @@ it.each(["reviewReferences", "resolveProblems", "upToDate"] as const)("keeps man
   const user = userEvent.setup(); const convert = vi.fn();
   render(<CommandBar {...defaults} status={{ ...status, pendingImages: 0, pendingImageIds: [], nextAction }} currentImageId="completed" convertibleIds={["completed"]} onConvert={convert} />);
   await user.click(screen.getByRole("button", { name: "转换…" }));
-  expect(screen.getByRole("radio", { name: "当前图片" })).toBeEnabled();
-  await user.click(screen.getByRole("button", { name: "开始转换" })); expect(convert).toHaveBeenCalledWith("reconvert", ["completed"]);
+  expect(screen.getByRole("menuitem", { name: "重新转换当前图片" })).toBeEnabled();
+  await user.click(screen.getByRole("menuitem", { name: "重新转换当前图片" })); expect(convert).toHaveBeenCalledWith("reconvert", ["completed"]);
   expect(document.querySelectorAll(".command-action").length).toBeLessThanOrEqual(1);
 });
 it("converts a temporary selection even when the project is otherwise up to date", async () => {
@@ -76,17 +80,65 @@ it("converts a temporary selection even when the project is otherwise up to date
 });
 
 
-it("checks the manual conversion guard before opening its panel", async () => {
+it("checks the manual conversion guard before opening its dropdown", async () => {
   const user = userEvent.setup(); const guard = vi.fn(() => false);
   render(<CommandBar {...defaults} status={{ ...status, nextAction: "reviewReferences", pendingReferences: 18 }} onManualOpen={guard} />);
   await user.click(screen.getByRole("button", { name: "转换…" }));
-  expect(guard).toHaveBeenCalledOnce(); expect(screen.queryByRole("radiogroup", { name: "转换范围" })).not.toBeInTheDocument();
+  expect(guard).toHaveBeenCalledOnce(); expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "转换…" })).toBeEnabled();
 });
-it("explains a safety block inside the manual panel and disables conversion", async () => {
+it("explains a safety block in the status and disables all conversion choices", async () => {
   const user = userEvent.setup(); const convert = vi.fn();
   render(<CommandBar {...defaults} status={{ ...status, blockingReason: "输出文件已被外部修改" }} convertibleIds={["a"]} currentImageId="a" onConvert={convert} />);
   await user.click(screen.getByRole("button", { name: "转换…" }));
-  expect(screen.getByRole("alert")).toHaveTextContent("输出文件已被外部修改");
-  expect(screen.getByRole("button", { name: "开始转换" })).toBeDisabled(); expect(convert).not.toHaveBeenCalled();
+  expect(screen.getByRole("status")).toHaveTextContent("输出文件已被外部修改");
+  for (const item of screen.getAllByRole("menuitem")) expect(item).toHaveAttribute("aria-disabled", "true"); expect(convert).not.toHaveBeenCalled();
+});
+
+const conversionChoices = ["转换需要更新的图片", "选择图片转换…", "重新转换当前图片", "重新转换全部图片"];
+it.each(["convertImages", "reviewReferences", "resolveProblems", "upToDate"] as const)("offers exactly the same four conversion choices for %s", async (nextAction) => {
+  const user = userEvent.setup();
+  render(<CommandBar {...defaults} status={{ ...status, nextAction }} currentImageId="a" convertibleIds={["a"]} />);
+  expect(screen.getAllByRole("button", { name: /输出参数：/ })).toHaveLength(1);
+  await user.click(screen.getByRole("button", { name: nextAction === "convertImages" ? "更多转换操作" : "转换…" }));
+  expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(conversionChoices);
+  expect(screen.queryByRole("radiogroup", { name: "转换范围" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "开始转换" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("menuitem", { name: "转换设置…" })).not.toBeInTheDocument();
+});
+it("checks the pending split menu guard before it opens", async () => {
+  const user = userEvent.setup(); const guard = vi.fn(() => false);
+  render(<CommandBar {...defaults} onManualOpen={guard} />);
+  await user.click(screen.getByRole("button", { name: "更多转换操作" }));
+  expect(guard).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+});
+it("keeps selection cancellation explicit and routes only authoritative convertible IDs", async () => {
+  const user = userEvent.setup(); const selection = vi.fn(); const convert = vi.fn();
+  const view = render(<CommandBar {...defaults} currentImageId="unsafe" convertibleIds={["ignored"]} onConvert={convert} />);
+  await user.click(screen.getByRole("button", { name: "更多转换操作" }));
+  expect(screen.getByRole("menuitem", { name: "重新转换当前图片" })).toHaveAttribute("aria-disabled", "true");
+  await user.click(screen.getByRole("menuitem", { name: "重新转换全部图片" }));
+  expect(convert).toHaveBeenCalledWith("reconvert", ["ignored"]);
+  view.rerender(<CommandBar {...defaults} selectionMode selectedCount={1} onSelectionMode={selection} />);
+  await user.click(screen.getByRole("button", { name: "取消选择" }));
+  expect(selection).toHaveBeenCalledWith(false);
+});
+
+it.each(["converting", "completion", "busy", "selection"] as const)("closes the conversion menu across %s and never reopens without a guarded user action", async (transition) => {
+  const user = userEvent.setup(); const guard = vi.fn(() => true);
+  const view = render(<CommandBar {...defaults} onManualOpen={guard} />);
+  await user.click(screen.getByRole("button", { name: "更多转换操作" }));
+  expect(screen.getByRole("menu")).toBeInTheDocument();
+  expect(guard).toHaveBeenCalledOnce();
+  view.rerender(<CommandBar {...defaults} onManualOpen={guard} busy={transition === "busy" || transition === "converting"} converting={transition === "converting"} completion={transition === "completion" ? 2 : null} selectionMode={transition === "selection"} />);
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  view.rerender(<CommandBar {...defaults} onManualOpen={guard} completion={2} />);
+  view.rerender(<CommandBar {...defaults} onManualOpen={guard} status={{ ...status, nextAction: "reviewReferences", pendingReferences: 2 }} />);
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  expect(guard).toHaveBeenCalledOnce();
+  guard.mockReturnValue(false);
+  await user.click(screen.getByRole("button", { name: "转换…" }));
+  expect(guard).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 });

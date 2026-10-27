@@ -39,7 +39,7 @@ Files: relevant background/workspace event hooks, workflow tests, `docs/backgrou
 - [x] Test project switches, hidden/restored windows, active review and internal PDF writes. Bursts coalesce once; known internal writes do not invalidate the metadata baseline. Hidden rerenders and in-flight responses wait for restored visibility.
 - [x] Run TypeScript, frontend, PDF and both Rust feature suites. Results: 191 frontend tests, one PDF test, production build, 239 desktop Rust tests and 248 headless Rust tests. Real macOS native source-save smoke passed outside the sandbox; Windows/Linux runtime verification remains pending.
 - [x] Update observation documentation and complete independent specification/code-quality review. Both reviews passed after fixing visibility, anchored-read and publication races.
-- [ ] Commit the complete lifecycle integration.
+- [x] Commit the complete lifecycle integration (`8219383`).
 
 ## Primary references checked
 
