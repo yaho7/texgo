@@ -39,4 +39,11 @@ shortcut rollback and headless protocol compatibility. Do not add LaTeX verifica
   journal Undo compatibility are covered; existing transactions remain intact. Main bundle
   510.01 kB retains Vite's standard size warning. Priority reference-review concurrency and
   external-editor safety follow in their own unit before settings/logging.
-- [ ] Settings/logging reviewed, verified and committed.
+- [x] Settings/logging reviewed and verified: TypeScript, 279 frontend tests, PDF test,
+  production build and both Rust modes passed. Specification and quality reviews approved
+  after fixing nonregular/FIFO log leaves and protecting the current log across clock
+  rollback. Logs use typed content-free records with bounded files and optional I/O failure.
+  Debug activation follows successful preference persistence and shortcut replacement.
+  Secondary views load on demand and retain history state; main bundle fell from 512.32 kB
+  to 497.57 kB without raising the warning threshold. Optional native service failures no
+  longer abort setup. Native Linux/Windows service behavior still needs platform QA.

@@ -258,7 +258,7 @@ describe("LaTeX 项目唯一工作流", () => {
     const user = await openProject();
     await user.click(screen.getByRole("button", { name: "操作记录" }));
     expect(screen.getByRole("button", { name: "操作记录" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByText("更新了 18 处 LaTeX 引用")).toBeInTheDocument();
+    expect(await screen.findByText("更新了 18 处 LaTeX 引用")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "操作记录" })).queryByText(/0 张|300 DPI/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "设置" }));
     await screen.findByRole("main", { name: "设置" });

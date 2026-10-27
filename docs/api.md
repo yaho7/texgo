@@ -526,3 +526,24 @@ Rename history entries carry an optional `rename` summary. Recovery data is stor
 `asset_file_action({imageId, action, expectedMainFile})` accepts `reveal` or `copyPath`. Rust resolves the source by ID from the current workspace, checks the expected main file and retained project root, and rejects unresolved, missing, outside, or symbolic-link paths. Reveal selects the file in the platform file manager; copy writes its absolute source path. These read-only actions preserve previews, conversion state, and ignore rules, and use backend-only opener/clipboard plugins without frontend file permissions; the opener’s JavaScript link-click hook is disabled. A platform service failure returns an ordinary command error.
 
 Asset rows expose the same actions through the more menu, right click, Context Menu key, and Shift+F10. Busy, exiting, and renaming rows cannot run stale menu actions. Menus own a tracked DOM overlay, so automatic reference review waits until the menu closes.
+
+## Desktop preferences and diagnostics
+
+`get_preferences` and `save_preferences({preferences})` include `debugLogging`
+(default `false` for older files). Log filtering changes only after shortcut
+registration and preference persistence succeed; a failed save retains the
+previous runtime logging level and restores the previous shortcut.
+`open_log_directory()` takes no arguments and opens the native application log
+directory via the backend opener. It does not grant JavaScript filesystem or
+arbitrary-path opening permissions. Failures return ordinary inline errors.
+
+Desktop diagnostics are optional JSON Lines in the trusted application log
+directory. Each file begins with a format marker; records carry Unix epoch
+milliseconds, typed level/category/event codes, bounded operation counts and
+elapsed milliseconds. Categories are workspace, scanner, conversion, journal,
+watcher, automation and notification. Default records are warnings/errors;
+explicitly saved debug mode adds operation start/completion records. There are
+no paths, document/image/reference contents, RPC payloads, arbitrary native
+error text, credentials, keys or signing material. Native command errors still
+reach the UI unchanged. Headless callers leave the file sink uninitialized and
+retain the existing JSON stdout protocol.

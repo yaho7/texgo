@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, State};
 use crate::preferences::Preferences;
+use crate::diagnostics::{self, Category, Level, Event};
 
 #[derive(Clone, Default)]
 pub(crate) struct AppState {
@@ -87,7 +88,7 @@ fn sync_observer(app: &tauri::AppHandle, state: &AppState) {
         }
     }) {
         Ok(service) => *observer = Some(service),
-        Err(error) => eprintln!("Texgo observation worker unavailable: {error}"),
+        Err(_) => diagnostics::event(Category::Watcher, Level::Warn, Event::BackendUnavailable, 1),
     }
 }
 
@@ -134,15 +135,13 @@ async fn save_preferences(preferences: Preferences, app: tauri::AppHandle, state
         let mut shortcut = state.shortcut.lock().map_err(|_| "快捷键状态不可用")?;
         let path = app.path().app_config_dir().map_err(|e| e.to_string())?.join("preferences.json");
         let next = normalized_shortcut(&preferences)?;
-        let old = shortcut.clone();
         let registrar = NativeRegistrar(app.clone());
-        crate::background::replace_shortcut(&registrar, &mut shortcut, next)?;
-        if let Err(error) = preferences.save(&path) {
-            if let Err(rollback) = crate::background::replace_shortcut(&registrar, &mut shortcut, old) { return Err(format!("{error}；{rollback}")); }
-            return Err(error);
-        }
-        *state.preferences.lock().map_err(|_| "设置状态不可用")? = preferences.clone();
-        *state.startup_error.lock().map_err(|_| "状态不可用")? = None;
+        crate::background::persist_settings(&registrar, &mut shortcut, next, || preferences.save(&path), || {
+            *state.preferences.lock().map_err(|_| "设置状态不可用")? = preferences.clone();
+            *state.startup_error.lock().map_err(|_| "状态不可用")? = None;
+            diagnostics::set_debug(preferences.debug_logging);
+            Ok(())
+        })?;
         sync_observer(&app, &state);
         Ok(preferences)
     }).await.map_err(|e| e.to_string())?
@@ -204,6 +203,18 @@ async fn poll_workspace(root: String, app: tauri::AppHandle, state: State<'_, Ap
     }).await?;
     if let Some(project) = &project { update_tray_status(&app, project); }
     Ok(project)
+}
+
+#[tauri::command]
+async fn open_log_directory(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    tauri::async_runtime::spawn_blocking(move || {
+        let directory = app.path().app_log_dir().map_err(|e| e.to_string())?;
+        // Capture/validate every ancestor without following links, even when the
+        // optional logger could not initialize. There is no caller-supplied path.
+        diagnostics::ensure_directory(&directory).map_err(|e| format!("无法打开日志目录：{e}"))?;
+        app.opener().open_path(directory.to_string_lossy(), None::<&str>).map_err(|e| format!("无法打开日志目录：{e}"))
+    }).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -388,15 +399,20 @@ pub fn run() {
                 Ok(preferences) => *app.state::<AppState>().preferences.lock().unwrap() = preferences,
                 Err(error) => { *app.state::<AppState>().startup_error.lock().unwrap() = Some(error); }
             }
-            install_background(app)?;
+            let debug = app.state::<AppState>().preferences.lock().is_ok_and(|prefs| prefs.debug_logging);
+            if let Ok(directory) = app.path().app_log_dir() { diagnostics::initialize(&directory, debug); }
+            install_background(app);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![observation_identity, desktop_status, set_shortcut_recording, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, asset_file_action, rename_asset, retry_asset, open_project, refresh_workspace, poll_workspace, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, preview_changes, apply_replacements, undo_replacements])
+        .invoke_handler(tauri::generate_handler![observation_identity, desktop_status, set_shortcut_recording, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, asset_file_action, rename_asset, retry_asset, open_project, refresh_workspace, poll_workspace, open_log_directory, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, preview_changes, apply_replacements, undo_replacements])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let background = window.state::<AppState>().preferences.lock().is_ok_and(|p| p.close_action == "background");
-                if background { api.prevent_close(); let _ = window.hide(); }
-                else { window.app_handle().exit(0); }
+                match crate::background::close_policy(background, window.app_handle().tray_by_id("texgo").is_some(), cfg!(target_os = "macos")) {
+                    crate::background::ClosePolicy::Quit => window.app_handle().exit(0),
+                    crate::background::ClosePolicy::Hide => { api.prevent_close(); let _ = window.hide(); }
+                    crate::background::ClosePolicy::KeepVisible => { api.prevent_close(); let _ = window.show(); }
+                }
             }
         })
         .build(tauri::generate_context!())
@@ -463,8 +479,9 @@ fn deliver_notice(app: &tauri::AppHandle, notice: Notice, target: NotificationTa
     // Register on_action once at setup, BEFORE any notification can be sent.
     // extra travels with the specific notification, including old workspaces/batches.
     if let Err(error) = app.notification().builder().title(notice.title).body(notice.body).extra("texgoTarget", target).show() {
+        diagnostics::event(Category::Notification, Level::Warn, Event::ActionUnavailable, 1);
         let _ = app.emit("desktop-error", format!("系统通知不可用：{error}"));
-    }
+    } else { diagnostics::event(Category::Notification, Level::Debug, Event::Completed, 1); }
 }
 
 fn show_window(app: &tauri::AppHandle) {
@@ -574,24 +591,28 @@ fn trigger_smart(app: &tauri::AppHandle) {
             let _ = app.emit("desktop-error", &error);
             // No workspace: inform without showing or activating the main window.
             if error.contains("请先打开") && state.preferences.lock().is_ok_and(|p| p.notify_failure) {
-                if let Err(e) = app.notification().builder().title("Texgo · 尚未打开项目").body("请从托盘打开 Texgo 并选择项目").show() { eprintln!("{e}"); }
+                if let Err(error) = app.notification().builder().title("Texgo · 尚未打开项目").body("请打开 Texgo 并选择项目").show() { diagnostics::event(Category::Notification, Level::Warn, Event::ActionUnavailable, 1); let _ = app.emit("desktop-error", format!("系统通知不可用：{error}")); }
             }
         }
     });
 }
 
-fn install_background(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+fn install_background(app: &tauri::App) {
     let handle = app.handle().clone();
-    app.notification().on_action(move |action| {
+    if app.notification().on_action(move |action| {
         if action.action_id() != "tap" { return; }
         if let Some(target) = action.notification().and_then(|n| n.extra().get("texgoTarget")).and_then(|v| serde_json::from_value::<NotificationTarget>(v.clone()).ok()) {
             notification_clicked(handle.clone(), target);
         } else { show_window(&handle); }
-    })?;
+    }).is_err() { diagnostics::event(Category::Notification, Level::Warn, Event::BackendUnavailable, 1); }
     let state = app.state::<AppState>();
     let prefs = state.preferences.lock().unwrap().clone();
     let registration = normalized_shortcut(&prefs).and_then(|next| crate::background::replace_shortcut(&NativeRegistrar(app.handle().clone()), &mut state.shortcut.lock().unwrap(), next));
     if let Err(error) = registration { *state.startup_error.lock().unwrap() = Some(error); }
+    if install_tray(app).is_err() { diagnostics::event(Category::Notification, Level::Warn, Event::TrayUnavailable, 1); }
+}
+
+fn install_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::{menu::{Menu, MenuItem}, tray::TrayIconBuilder};
     let convert = MenuItem::with_id(app, "smart-convert", "快速更新项目图片", true, None::<&str>)?;
     let open = MenuItem::with_id(app, "show-texgo", "打开 Texgo", true, None::<&str>)?;

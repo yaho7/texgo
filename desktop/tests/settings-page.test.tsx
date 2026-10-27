@@ -27,7 +27,7 @@ it("keeps previous settings and reports native registration or persistence failu
 
 it("organizes settings around projects without removed directory and completion options", () => {
   render(<SettingsPage value={defaultPreferences} onSaved={vi.fn()} onClose={vi.fn()} />);
-  for (const section of ["常规", "转换", "后台与通知", "快捷键", "高级"]) expect(screen.getByText(section, { selector: "legend" })).toBeInTheDocument();
+  for (const section of ["常规", "转换", "自动化", "通知", "快捷键", "高级"]) expect(screen.getByText(section, { selector: "legend" })).toBeInTheDocument();
   expect(screen.queryByText("图片目录默认递归扫描")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("转换完成后的默认行为")).not.toBeInTheDocument();
   expect(screen.queryByText("外观")).not.toBeInTheDocument();
@@ -55,4 +55,41 @@ it("disables repeat saves and keeps edited values after a failed save", async ()
   expect(screen.getByLabelText("默认输出目录")).toHaveValue("figures-pdf");
   expect(await screen.findByRole("alert")).toHaveTextContent("保存失败");
   expect(ipc.invoke).toHaveBeenCalledTimes(1);
+});
+
+
+it("keeps debug logging a draft until a successful save and leaves failures inline", async () => {
+  const user = userEvent.setup(); const saved = vi.fn();
+  ipc.invoke.mockRejectedValueOnce(new Error("磁盘不可写"));
+  render(<SettingsPage value={defaultPreferences} onSaved={saved} onClose={vi.fn()} />);
+  await user.click(screen.getByLabelText("启用调试日志"));
+  expect(ipc.invoke).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button", { name: "保存设置" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("磁盘不可写");
+  expect(saved).not.toHaveBeenCalled();
+  expect(screen.getByLabelText("启用调试日志")).toBeChecked();
+  ipc.invoke.mockImplementation((_command, args) => Promise.resolve(args?.preferences));
+  await user.click(screen.getByRole("button", { name: "保存设置" }));
+  await screen.findByText("设置已保存");
+  expect(saved).toHaveBeenCalledWith({ ...defaultPreferences, debugLogging: true });
+});
+
+it("opens only the native log directory and guards repeat clicks with inline failure", async () => {
+  const user = userEvent.setup(); let reject!: (reason: Error) => void;
+  ipc.invoke.mockImplementation(() => new Promise((_resolve, fail) => { reject = fail; }));
+  render(<SettingsPage value={defaultPreferences} onSaved={vi.fn()} onClose={vi.fn()} />);
+  await user.click(screen.getByRole("button", { name: "打开日志目录" }));
+  expect(screen.getByRole("button", { name: "正在打开…" })).toBeDisabled();
+  expect(ipc.invoke).toHaveBeenCalledExactlyOnceWith("open_log_directory");
+  await act(async () => reject(new Error("文件管理器不可用")));
+  expect(await screen.findByRole("alert")).toHaveTextContent("文件管理器不可用");
+  expect(screen.getByRole("button", { name: "打开日志目录" })).toBeEnabled();
+});
+
+it("places closing behavior in General and explains manual reference review", () => {
+  render(<SettingsPage value={defaultPreferences} onSaved={vi.fn()} onClose={vi.fn()} />);
+  expect(screen.getByLabelText("关闭窗口时").closest("fieldset")).toHaveTextContent("常规");
+  expect(screen.getByText(/Space 切换原图/)).toHaveTextContent("PDF / 对比");
+  expect(screen.getByText(/托盘或全局快捷键/)).toHaveTextContent(".tex 引用始终等待你在窗口中审核并确认");
+  expect(screen.getByText(/仅允许在引用待审核时/)).toHaveTextContent("不会自动修改 .tex 引用");
 });

@@ -34,7 +34,9 @@ struct Command {
 }
 
 pub(crate) fn scan(main: &Path) -> Result<Scan, String> {
-    scan_with_files(main, BTreeMap::new(), Vec::new())
+    crate::diagnostics::trace(crate::diagnostics::Category::Scanner, || {
+        scan_with_files(main, BTreeMap::new(), Vec::new())
+    })
 }
 
 /// Preview a rename without creating, removing, or changing any project file.

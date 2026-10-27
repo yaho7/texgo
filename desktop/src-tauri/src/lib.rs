@@ -1,4 +1,5 @@
 mod conversion;
+mod diagnostics;
 mod models;
 mod manifest;
 mod journal;

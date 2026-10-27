@@ -65,3 +65,22 @@ CSS defines shared fast/normal/slow/feedback durations and standard/out easing. 
 Local tests and compilation are enabled by the current product-upgrade request. See [local setup and verification](development.md) for generated icon/sidecar prerequisites. GitHub Actions runs frontend/PDF/Rust tests followed by four native package targets. Apple Developer ID signing and notarization stay in the existing shared macOS build step. Passing CI does not establish actual installed-app permissions or delivery on every desktop.
 
 The headless pipeline retains the restricted compatibility path for restoring/updating a valid managed destination under an existing standalone recovery record. It still validates record ownership/version and all TeX after-hashes under the project lock; new destinations and changed TeX are rejected.
+
+### Optional native services and diagnostics
+
+Settings group closing behavior under General, file observation under
+Automation, and system notices under Notifications. Smart Convert from the
+tray/global shortcut updates managed PDFs only; `.tex` changes always require
+explicit review in the window. Advanced “allow unreviewed” permits further PDF
+updates while references wait; it never applies references automatically.
+
+Unavailable tray or notification action registration no longer prevents app
+startup. Notification delivery failures appear inline. Without a tray,
+background-close keeps the window visible on Windows/Linux; macOS can reopen a
+hidden window through the Dock. Global shortcut registration and failed-save
+rollback retain their existing behavior.
+
+Advanced offers explicit debug logging and “Open log directory”. Debug changes
+take effect after saving and persist across restarts. Logging is content-free;
+see the desktop diagnostics section in `api.md` for the field and privacy
+contract. Optional log I/O failures disable the sink without blocking work.

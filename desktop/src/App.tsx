@@ -21,16 +21,14 @@ import IconButton from "./IconButton";
 import AssetList from "./AssetList";
 import AssetPreview from "./AssetPreview";
 import CommandBar from "./CommandBar";
-import ConversionHistory from "./ConversionHistory";
 import ErrorNotice from "./ErrorNotice";
 import Home from "./Home";
 import ProjectHealth from "./ProjectHealth";
 import "./overview.css";
 import WorkspaceSidebar from "./WorkspaceSidebar";
-import SettingsPage from "./SettingsPage";
+import { SettingsView, HistoryView, UpdateView } from "./SecondaryViews";
 import { defaultPreferences } from "./preferences";
 import type { Preferences } from "./preferences";
-import ApplicationUpdate from "./ApplicationUpdate";
 import WorkbenchMenu from "./WorkbenchMenu";
 import AssetProblems from "./AssetProblems";
 import ReviewDialog from "./ReviewDialog";
@@ -280,7 +278,7 @@ export default function App() {
       {project && !settingsPage && <ProjectHealth status={project.status} />}
       {error && !review && !undoEntry && !problemId && <ErrorNotice message={error} className="workbench-alert" onClose={() => setError(null)} />}
       {project?.status.blockingReason && <Alert variant="destructive" role="alert" className="workbench-alert"><TriangleAlert aria-hidden="true" /><AlertTitle>需要先解决安全问题</AlertTitle><AlertDescription>{project.status.blockingReason}</AlertDescription></Alert>}
-      {settingsPage && <div className="page-enter settings-view"><SettingsPage value={preferences} onSaved={(next) => { preferencesRef.current = next; setPreferences(next); }} onClose={() => setSettingsPage(false)} /></div>}
+      {settingsPage && <div className="page-enter settings-view"><SettingsView value={preferences} onSaved={(next) => { preferencesRef.current = next; setPreferences(next); }} onClose={() => setSettingsPage(false)} /></div>}
       {!project && !settingsPage && <Home busy={busy} onOpenTex={openProject} recents={recents} onRecent={openRecent} />}
       {project && <>
         <main id={settingsPage ? undefined : "main-content"} tabIndex={-1} className="workspace-content" hidden={settingsPage} data-view={view} onKeyDownCapture={(event) => {
@@ -299,7 +297,7 @@ export default function App() {
               statusLabel={activeAsset ? ignored.has(activeAsset.id) ? "已忽略" : problemIds.has(activeAsset.id) ? "需要处理" : pendingIds.has(activeAsset.id) ? activeAsset.updateAvailable ? "有更新" : "待转换" : "已完成" : undefined}
               onInspect={inspectProblem} onLocate={locateRepair} onRetry={project.status.blockingReason ? undefined : retryAsset} onIgnore={(id, value) => { void ignoreAsset(id, value); }} /></div>
           </div>
-          <div className="history-view page-enter" hidden={view !== "history"}><ConversionHistory highlightId={highlightBatch} entries={history} busy={busy} onUndo={(entry) => { rememberFocus(); setError(null); reviewFlow.requestUndo(entry); }} /></div>
+          <HistoryView active={view === "history"} onReturn={() => setView("assets")} highlightId={highlightBatch} entries={history} busy={busy} onUndo={(entry) => { rememberFocus(); setError(null); reviewFlow.requestUndo(entry); }} />
         </main>
         <div hidden={settingsPage}><CommandBar status={project.status} settings={settings} selectionMode={selectionMode} selectedCount={selected.size} busy={busy} converting={operation === "converting"} progress={progress} completion={completion} cancelRequested={cancelRequested}
           onAction={nextAction} onConvert={convert} onManualOpen={allowManualConversionPanel} currentImageId={activeId} convertibleIds={[...convertibleIds]} onSettings={updateSettings} onSelectionMode={(enabled) => { setView("assets"); selection.changeSelectionMode(enabled); }} onCancel={() => { void cancelConversion(); }} /></div>
@@ -329,7 +327,7 @@ export default function App() {
         <DialogFooter><Button variant="outline" disabled={busy} onClick={() => { reviewFlow.dismissUndo(); setError(null); }}>取消</Button><Button variant="destructive" disabled={busy} onClick={undoConversion}>{busy ? <LoaderCircle data-icon="inline-start" className="animate-spin" aria-hidden="true" /> : <RotateCcw data-icon="inline-start" aria-hidden="true" />}确认撤销</Button></DialogFooter>
       </DialogContent>
     </Dialog>
-    {updateOpen && <ApplicationUpdate onClose={() => setUpdateOpen(false)} />}
+    {updateOpen && <UpdateView onClose={() => setUpdateOpen(false)} />}
     {dragging && <div className="drop-overlay" role="status">松开以打开 .tex 主文件</div>}
   </div></TooltipProvider>;
 }

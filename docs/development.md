@@ -29,3 +29,25 @@ Passing local tests does not verify installed-app notifications, global shortcut
 Native observation tests include a real filesystem-event smoke test. On macOS a restricted agent sandbox can deny FSEvents stream initialization; run that test with the environment's normal permission review rather than treating a fallback-only run as proof of native events. The product-upgrade verification exercised real macOS FSEvents outside the sandbox. Windows/Linux runtime checks still require their native environments.
 
 The October 26 baseline passed 145 frontend tests, one PDF test, 209 headless Rust tests and 197 default desktop Rust tests. The Rust feature sets deliberately discover different tests. An existing unused-import warning in `manifest.rs` was recorded separately from failures.
+
+### Desktop diagnostic logs
+
+Advanced settings can enable debug logs after an explicit successful save and
+open the application log directory. The default filter records warn/error;
+debug adds typed operation events and bounded counts/durations. Logging never
+includes project paths, file/document/image/reference contents, payloads,
+credentials or raw error strings. The in-window error keeps its original detail.
+The headless engine does not initialize a file logger and its JSON output stays
+unchanged.
+
+Logs use new, exclusive files with a format marker and JSON Lines records,
+rotating at 1 MiB with at most four owned files (current plus three previous).
+Startup also prunes previous owned files. Unknown files are preserved. Directory
+ancestors and leaves are opened without following symlinks; linked leaves are
+rejected and a retained newly-created file handle is the only write target.
+Optional directory/disk failures disable diagnostics without blocking startup.
+Tests use temporary directories for filter changes, rotation/restart, concurrent
+serialization, deterministic I/O failure, FIFO rejection and symlink/hardlink
+rejection. Pure notification outcome and close reachability policies are tested
+without requiring a real platform service; native adapter startup failures still
+need runtime checks on each target platform.

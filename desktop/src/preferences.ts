@@ -11,13 +11,14 @@ export interface Preferences {
   notifyUnchanged: boolean;
   shortcutEnabled: boolean;
   shortcut: string;
+  debugLogging: boolean;
   closeAction: "background" | "quit";
 }
 export const defaultPreferences: Preferences = {
   startup: "home", autoWatch: true, autoUpdate: true,
   dpi: 300, jpegQuality: 90, outputDir: "texgo-pdf", allowUnreviewed: false,
   notifySuccess: true, notifyFailure: true, notifyUnchanged: false,
-  shortcutEnabled: true, shortcut: "CommandOrControl+Alt+Enter", closeAction: "background",
+  shortcutEnabled: true, shortcut: "CommandOrControl+Alt+Enter", closeAction: "background", debugLogging: false,
 };
 
 export const conversionPresets = [

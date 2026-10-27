@@ -36,17 +36,19 @@ pub(crate) struct StoredConversion {
 
 impl Workspace {
     pub fn open(main: &Path) -> Result<Self, String> {
-        let canonical = main.canonicalize().map_err(|e|e.to_string())?;
-        let root = canonical.parent().ok_or("主文件没有父目录")?;
-        let observation_root = crate::observation::ObservationRoot::open(root)?;
-        observation_root.validate_project(&canonical)?;
-        if root.join(".texgo/rename-active.json").symlink_metadata().is_ok() {
-            let _lock = transaction::lock_project(root)?;
-            crate::rename::recover(root)?;
-        }
-        let scan = scanner::scan(&canonical)?;
-        observation_root.validate_project(&canonical)?;
-        Self::from_scan(scan, observation_root)
+        crate::diagnostics::trace(crate::diagnostics::Category::Workspace, || {
+            let canonical = main.canonicalize().map_err(|e|e.to_string())?;
+            let root = canonical.parent().ok_or("主文件没有父目录")?;
+            let observation_root = crate::observation::ObservationRoot::open(root)?;
+            observation_root.validate_project(&canonical)?;
+            if root.join(".texgo/rename-active.json").symlink_metadata().is_ok() {
+                let _lock = transaction::lock_project(root)?;
+                crate::rename::recover(root)?;
+            }
+            let scan = scanner::scan(&canonical)?;
+            observation_root.validate_project(&canonical)?;
+            Self::from_scan(scan, observation_root)
+        })
     }
 
     fn from_scan(mut scan: scanner::Scan, observation_root: crate::observation::ObservationRoot) -> Result<Self, String> {
@@ -577,20 +579,22 @@ impl Workspace {
 
     pub fn smart_convert(&mut self, preferences: &crate::preferences::Preferences, cancel: &AtomicBool,
         progress: impl Fn(Progress), on_image: impl Fn(ConvertedImage)) -> Result<SmartReport, String> {
-        self.refresh()?;
-        let root = PathBuf::from(&self.project().root);
-        let status = self.project().status.clone();
-        let mut report = SmartReport { project: self.project().clone(), result: ConversionResult { images: vec![], cancelled: false },
-            batch_ids: vec![], problem_ids: status.problem_ids.clone(), pending_references: status.pending_references };
-        if status.blocking_reason.is_some() || (status.next_action == NextAction::ReviewReferences && !preferences.allow_unreviewed) { return Ok(report); }
-        self.ensure_can_convert(preferences.allow_unreviewed)?;
-        let before: HashSet<_> = self.conversion_history()?.into_iter().map(|entry| entry.id).collect();
-        report.result = self.update_pending_with_results(&preferences.options(status.pending_image_ids), cancel, progress, on_image)?;
-        report.batch_ids = Journal::load(&root)?.history(&root).into_iter().filter(|entry| !before.contains(&entry.id)).map(|entry| entry.id).collect();
-        report.project = self.project().clone();
-        report.pending_references = report.project.status.pending_references;
-        report.problem_ids = report.project.status.problem_ids.clone();
-        Ok(report)
+        crate::diagnostics::trace(crate::diagnostics::Category::Automation, || {
+            self.refresh()?;
+            let root = PathBuf::from(&self.project().root);
+            let status = self.project().status.clone();
+            let mut report = SmartReport { project: self.project().clone(), result: ConversionResult { images: vec![], cancelled: false },
+                batch_ids: vec![], problem_ids: status.problem_ids.clone(), pending_references: status.pending_references };
+            if status.blocking_reason.is_some() || (status.next_action == NextAction::ReviewReferences && !preferences.allow_unreviewed) { return Ok(report); }
+            self.ensure_can_convert(preferences.allow_unreviewed)?;
+            let before: HashSet<_> = self.conversion_history()?.into_iter().map(|entry| entry.id).collect();
+            report.result = self.update_pending_with_results(&preferences.options(status.pending_image_ids), cancel, progress, on_image)?;
+            report.batch_ids = Journal::load(&root)?.history(&root).into_iter().filter(|entry| !before.contains(&entry.id)).map(|entry| entry.id).collect();
+            report.project = self.project().clone();
+            report.pending_references = report.project.status.pending_references;
+            report.problem_ids = report.project.status.problem_ids.clone();
+            Ok(report)
+        })
     }
 
     pub fn plan(&self) -> Result<ReplacementPlan, String> {

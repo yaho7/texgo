@@ -79,6 +79,31 @@ pub fn replace_shortcut(registrar: &impl ShortcutRegistrar, current: &mut Option
     Ok(())
 }
 
+/// Keep a background window reachable when optional native services are absent.
+#[cfg(any(feature = "desktop", test))]
+#[derive(Debug, PartialEq)]
+pub(crate) enum ClosePolicy { Quit, Hide, KeepVisible }
+#[cfg(any(feature = "desktop", test))]
+pub(crate) fn close_policy(background: bool, tray_available: bool, dock_reopen: bool) -> ClosePolicy {
+    if !background { ClosePolicy::Quit }
+    else if tray_available || dock_reopen { ClosePolicy::Hide }
+    else { ClosePolicy::KeepVisible }
+}
+
+/// Runtime effects (including log filtering) belong after persistence and
+/// shortcut replacement. A failed save restores the previous registration.
+#[cfg(any(feature = "desktop", test))]
+pub(crate) fn persist_settings(registrar: &impl ShortcutRegistrar, current: &mut Option<String>, next: Option<String>,
+    persist: impl FnOnce() -> Result<(), String>, activate: impl FnOnce() -> Result<(), String>) -> Result<(), String> {
+    let old = current.clone();
+    replace_shortcut(registrar, current, next)?;
+    if let Err(error) = persist() {
+        if let Err(rollback) = replace_shortcut(registrar, current, old) { return Err(format!("{error}；{rollback}")); }
+        return Err(error);
+    }
+    activate()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -87,6 +112,26 @@ mod tests {
     impl ShortcutRegistrar for Fake {
         fn register(&self, key: &str) -> Result<(), String> { self.0.borrow_mut().push(format!("+{key}")); if key == "taken" { Err("占用".into()) } else { Ok(()) } }
         fn unregister(&self, key: &str) -> Result<(), String> { self.0.borrow_mut().push(format!("-{key}")); Ok(()) }
+    }
+    #[test]
+    fn optional_service_close_policy_keeps_a_reachable_window() {
+        assert_eq!(close_policy(false, false, false), ClosePolicy::Quit);
+        assert_eq!(close_policy(true, false, false), ClosePolicy::KeepVisible);
+        assert_eq!(close_policy(true, true, false), ClosePolicy::Hide);
+        assert_eq!(close_policy(true, false, true), ClosePolicy::Hide);
+    }
+    #[test]
+    fn runtime_debug_changes_only_after_shortcut_and_disk_success() {
+        let fake = Fake(RefCell::new(vec![])); let mut current = Some("old".into());
+        let enabled = std::cell::Cell::new(false);
+        assert!(persist_settings(&fake, &mut current, Some("taken".into()), || panic!("registration failed"), || { enabled.set(true); Ok(()) }).is_err());
+        assert!(!enabled.get()); assert_eq!(current.as_deref(), Some("old"));
+        assert!(persist_settings(&fake, &mut current, Some("new".into()), || Err("disk unavailable".into()), || { enabled.set(true); Ok(()) }).is_err());
+        assert!(!enabled.get()); assert_eq!(current.as_deref(), Some("old"));
+        persist_settings(&fake, &mut current, Some("new".into()), || Ok(()), || { enabled.set(true); Ok(()) }).unwrap();
+        assert!(enabled.get()); assert_eq!(current.as_deref(), Some("new"));
+        assert!(persist_settings(&fake, &mut current, Some("new".into()), || Err("disk unavailable".into()), || { enabled.set(false); Ok(()) }).is_err());
+        assert!(enabled.get());
     }
     #[test]
     fn shortcut_register_modify_disable_deduplicate_and_rollback() {

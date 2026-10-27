@@ -25,56 +25,58 @@ pub(crate) struct Rendered {
 }
 
 pub(crate) fn render(source: &Path, root: &Path, options: &ConversionOptions) -> Result<Rendered, String> {
-    let bytes = fs::read(source).map_err(|e| e.to_string())?;
-    if bytes.len() > 256 * 1024 * 1024 { return Err("单张图片超过 256 MB，请先缩小文件".into()); }
-    let is_svg = source.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| ext.eq_ignore_ascii_case("svg"));
-    let (vector_pdf, dependencies) = if is_svg {
-        let (pdf, dependencies) = svg_pdf(&bytes, source, root)?;
-        (Some(pdf), dependencies)
-    } else { (None, Vec::new()) };
-    let source_identity = source.strip_prefix(root).map_err(|_| "原图片位于项目之外")?.to_string_lossy().replace('\\', "/");
-    let dependency_keys: Vec<_> = dependencies.iter().map(|(path, hash)| {
-        (path.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/"), hash)
-    }).collect();
-    let effective = if is_svg { ("vector", 0, 0) } else {
-        match options.quality.as_str() {
-            "original" => ("original", 0, 100),
-            "high" => ("high", 300, 92),
-            "compact" => ("compact", 150, 75),
-            _ => ("custom", options.dpi, options.jpeg_quality),
-        }
-    };
-    // Ordered fields make GUI and headless cache identities independent of JSON map features.
-    let identity = ("texgo-pdf-v4", env!("CARGO_PKG_VERSION"), source_identity, digest(&bytes),
-        effective, dependency_keys, vector_pdf.as_ref().map(|pdf| digest(pdf)));
-    let key = digest(&serde_json::to_vec(&identity).map_err(|e| e.to_string())?);
-    let pdf = if let Some(pdf) = vector_pdf {
-        pdf
-    } else {
-        let mut reader = image::ImageReader::new(std::io::Cursor::new(&bytes)).with_guessed_format().map_err(|e| e.to_string())?;
-        let mut limits = image::Limits::default();
-        limits.max_image_width = Some(40_000);
-        limits.max_image_height = Some(40_000);
-        limits.max_alloc = Some(512 * 1024 * 1024);
-        reader.limits(limits);
-        let mut image = reader.decode().map_err(|e| format!("图片解码失败：{e}"))?;
-        let (dpi_x, dpi_y) = density(&bytes);
-        let physical = (image.width() as f32 / dpi_x * 72.0, image.height() as f32 / dpi_y * 72.0);
-        if options.quality != "original" {
-            let dpi = match options.quality.as_str() { "high" => 300, "compact" => 150, _ => options.dpi };
-            let scale_x = (dpi as f32 / dpi_x).min(1.0);
-            let scale_y = (dpi as f32 / dpi_y).min(1.0);
-            let width = (image.width() as f32 * scale_x).round().max(1.0) as u32;
-            let height = (image.height() as f32 * scale_y).round().max(1.0) as u32;
-            if width < image.width() || height < image.height() {
-                image = image.resize_exact(width, height, FilterType::Lanczos3);
+    crate::diagnostics::trace(crate::diagnostics::Category::Conversion, || {
+        let bytes = fs::read(source).map_err(|e| e.to_string())?;
+        if bytes.len() > 256 * 1024 * 1024 { return Err("单张图片超过 256 MB，请先缩小文件".into()); }
+        let is_svg = source.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| ext.eq_ignore_ascii_case("svg"));
+        let (vector_pdf, dependencies) = if is_svg {
+            let (pdf, dependencies) = svg_pdf(&bytes, source, root)?;
+            (Some(pdf), dependencies)
+        } else { (None, Vec::new()) };
+        let source_identity = source.strip_prefix(root).map_err(|_| "原图片位于项目之外")?.to_string_lossy().replace('\\', "/");
+        let dependency_keys: Vec<_> = dependencies.iter().map(|(path, hash)| {
+            (path.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/"), hash)
+        }).collect();
+        let effective = if is_svg { ("vector", 0, 0) } else {
+            match options.quality.as_str() {
+                "original" => ("original", 0, 100),
+                "high" => ("high", 300, 92),
+                "compact" => ("compact", 150, 75),
+                _ => ("custom", options.dpi, options.jpeg_quality),
             }
-        }
-        raster_pdf(&image, options, physical)?
-    };
-    let document = Document::load_mem(&pdf).map_err(|e| format!("生成的 PDF 无法读取：{e}"))?;
-    if document.get_pages().len() != 1 { return Err("转换结果不是单页图片 PDF".into()); }
-    Ok(Rendered { pdf, source_hash: digest(&bytes), key, dependencies })
+        };
+        // Ordered fields make GUI and headless cache identities independent of JSON map features.
+        let identity = ("texgo-pdf-v4", env!("CARGO_PKG_VERSION"), source_identity, digest(&bytes),
+            effective, dependency_keys, vector_pdf.as_ref().map(|pdf| digest(pdf)));
+        let key = digest(&serde_json::to_vec(&identity).map_err(|e| e.to_string())?);
+        let pdf = if let Some(pdf) = vector_pdf {
+            pdf
+        } else {
+            let mut reader = image::ImageReader::new(std::io::Cursor::new(&bytes)).with_guessed_format().map_err(|e| e.to_string())?;
+            let mut limits = image::Limits::default();
+            limits.max_image_width = Some(40_000);
+            limits.max_image_height = Some(40_000);
+            limits.max_alloc = Some(512 * 1024 * 1024);
+            reader.limits(limits);
+            let mut image = reader.decode().map_err(|e| format!("图片解码失败：{e}"))?;
+            let (dpi_x, dpi_y) = density(&bytes);
+            let physical = (image.width() as f32 / dpi_x * 72.0, image.height() as f32 / dpi_y * 72.0);
+            if options.quality != "original" {
+                let dpi = match options.quality.as_str() { "high" => 300, "compact" => 150, _ => options.dpi };
+                let scale_x = (dpi as f32 / dpi_x).min(1.0);
+                let scale_y = (dpi as f32 / dpi_y).min(1.0);
+                let width = (image.width() as f32 * scale_x).round().max(1.0) as u32;
+                let height = (image.height() as f32 * scale_y).round().max(1.0) as u32;
+                if width < image.width() || height < image.height() {
+                    image = image.resize_exact(width, height, FilterType::Lanczos3);
+                }
+            }
+            raster_pdf(&image, options, physical)?
+        };
+        let document = Document::load_mem(&pdf).map_err(|e| format!("生成的 PDF 无法读取：{e}"))?;
+        if document.get_pages().len() != 1 { return Err("转换结果不是单页图片 PDF".into()); }
+        Ok(Rendered { pdf, source_hash: digest(&bytes), key, dependencies })
+    })
 }
 
 fn svg_pdf(bytes: &[u8], source: &Path, root: &Path) -> Result<(Vec<u8>, Vec<(PathBuf, String)>), String> {

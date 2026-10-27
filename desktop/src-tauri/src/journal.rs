@@ -190,9 +190,11 @@ impl Journal {
     }
 
     pub fn save(&self, root: &Path) -> Result<(), String> {
-        let path = root.join(".texgo/conversions.json");
-        safe_path(root, &path)?;
-        save_atomic(&path, &serde_json::to_vec_pretty(self).map_err(|e| e.to_string())?)
+        crate::diagnostics::trace(crate::diagnostics::Category::Journal, || {
+            let path = root.join(".texgo/conversions.json");
+            safe_path(root, &path)?;
+            save_atomic(&path, &serde_json::to_vec_pretty(self).map_err(|e| e.to_string())?)
+        })
     }
 
     /// Expected bytes come from the transaction's in-memory journal, never from

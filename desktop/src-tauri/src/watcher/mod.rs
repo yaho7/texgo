@@ -47,8 +47,8 @@ impl Service {
                     if retry { backend = attach(&root, &worker); }
                     // Callback may queue behind a foreground workspace mutation.
                     // Native producers keep coalescing into the bounded inbox.
-                    if let Err(error) = callback(batch.unwrap_or_default()) {
-                        eprintln!("Texgo workspace observation: {error}");
+                    if callback(batch.unwrap_or_default()).is_err() {
+                        crate::diagnostics::event(crate::diagnostics::Category::Watcher, crate::diagnostics::Level::Warn, crate::diagnostics::Event::Failed, 1);
                         // A root can become inaccessible without a backend
                         // error (for example a disconnected network mount).
                         // Keep polling and re-register on the next fallback.
@@ -74,8 +74,8 @@ fn attach(root: &Path, shared: &Shared) -> Option<RecommendedWatcher> {
             if inbox.stopped { return; }
             match result {
                 Ok(event) => queue_event(&mut inbox, &watched_root, event, Instant::now()),
-                Err(error) => {
-                    eprintln!("Texgo native observation: {error}");
+                Err(_) => {
+                    crate::diagnostics::event(crate::diagnostics::Category::Watcher, crate::diagnostics::Level::Warn, crate::diagnostics::Event::BackendUnavailable, 1);
                     inbox.retry = true;
                     inbox.pending.push([], true, Instant::now());
                 }
@@ -86,8 +86,8 @@ fn attach(root: &Path, shared: &Shared) -> Option<RecommendedWatcher> {
         Ok::<_, notify::Error>(backend)
     })();
     match registered {
-        Ok(backend) => Some(backend),
-        Err(error) => { eprintln!("Texgo native observation unavailable; retaining metadata fallback: {error}"); None }
+        Ok(backend) => { crate::diagnostics::event(crate::diagnostics::Category::Watcher, crate::diagnostics::Level::Debug, crate::diagnostics::Event::Completed, 1); Some(backend) },
+        Err(_) => { crate::diagnostics::event(crate::diagnostics::Category::Watcher, crate::diagnostics::Level::Warn, crate::diagnostics::Event::BackendUnavailable, 1); None }
     }
 }
 
