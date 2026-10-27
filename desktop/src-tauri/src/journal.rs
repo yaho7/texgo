@@ -195,6 +195,20 @@ impl Journal {
         save_atomic(&path, &serde_json::to_vec_pretty(self).map_err(|e| e.to_string())?)
     }
 
+    /// Expected bytes come from the transaction's in-memory journal, never from
+    /// a post-conversion directory read which could absorb an external edit.
+    pub(crate) fn written_fingerprints(&self, root: &Path, batch: usize) -> BTreeMap<PathBuf, String> {
+        let mut writes = BTreeMap::new();
+        if let Ok(bytes) = self.serialized() { writes.insert(root.join(".texgo/conversions.json"), digest(&bytes)); }
+        for change in &self.batches[batch].changes {
+            if change.committed { writes.insert(root.join(&change.output), change.after.pdf_hash.clone()); }
+            if let (Some(backup), Some(before)) = (&change.backup, &change.before) {
+                writes.insert(root.join(backup), before.pdf_hash.clone());
+            }
+        }
+        writes
+    }
+
     pub fn excluded(&self, root: &Path) -> Vec<PathBuf> {
         self.batches.iter().filter(|batch| !batch.changes.is_empty() || batch.entry.files.iter().any(|file| file.cached && file.error.is_none()))
             .filter_map(|batch| output_directory(root, &batch.entry.output_dir).ok()).collect()

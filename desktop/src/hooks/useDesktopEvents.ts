@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ConversionProgress, ImageResult, Project, SmartReport } from "../types";
-import type { useBackgroundAutomation, Navigation } from "./useBackgroundAutomation";
+import type { useBackgroundAutomation, Navigation, ObservationIdentity, ObservationUpdate } from "./useBackgroundAutomation";
 import type { Setter } from "./workflowPorts";
 interface Ports {
   background: ReturnType<typeof useBackgroundAutomation>;
@@ -21,6 +21,8 @@ export function useDesktopEvents(ports: Ports) {
         if (active) stops.push(stop); else stopSafely(stop);
       }).catch(() => {});
     }
+    subscribe<ObservationUpdate>("workspace-observed", (p) => latest.current.background.onObserved(p));
+    subscribe<ObservationIdentity>("workspace-observation-unavailable", (p) => latest.current.background.onObservationUnavailable(p));
     subscribe<Project>("workspace-updated", (p) => latest.current.background.onWorkspace(p));
     subscribe<Project>("background-start", (p) => latest.current.background.onStart(p));
     subscribe<SmartReport>("background-finished", (p) => latest.current.background.onFinished(p));

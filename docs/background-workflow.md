@@ -18,7 +18,17 @@ The inspector belongs to the selected image. It contains the source/PDF overlay 
 
 New PDF paths automatically open selective reference review after the brief completion feedback. Updating an already referenced PDF at the same path does not open review. Applying a reviewed selection always revalidates the complete preview against the current files. Undo jointly validates and restores reference edits and PDFs; user edits stop recovery rather than being overwritten.
 
-Refreshing, applying references, background conversion and switching sidebar pages preserve active image, filter, search, scroll, preview mode/divider and sidebar width/state. Only disappearance of an image chooses a fallback. Background observation is quiet; change notices clear after a few seconds.
+Refreshing, applying references, background conversion and switching sidebar pages preserve active image, filter, search, scroll, preview mode/divider and sidebar width/state. Only disappearance of an image chooses a fallback. Background observation uses a brief status message and does not open a routine modal.
+
+## Native file observation
+
+Rust owns one native `notify` observer for the current project, with a 500 ms trailing debounce and a bounded queue of 1,024 paths. Event overflow or a native rescan flag requests a safe rescan. Read/access events are ignored to prevent verification reads from producing feedback loops. Dotted directory renames and SVG resources with arbitrary extensions still reach Workspace classification.
+
+Native initialization and event errors retain a 30-second metadata fallback and retry. The frontend also keeps a low-frequency fallback and focus check. The CLI's existing explicit `watch` pipeline retains its own behavior. Opening, closing, reopening, switching projects, disabling automatic detection and exiting manage the native observer's session and lifetime. An asynchronous identity read and session-tagged events prevent old callbacks from updating a reopened project; one early event is retained until its current identity is known.
+
+Conversion records expected PDF, journal and backup hashes and advances only those verified metadata entries. It never acknowledges the whole tree after rendering, which would absorb external TeX edits made during conversion. A retained directory capability and no-follow ancestor/leaf handles keep new fingerprint reads inside the original project. Root identity and currently named file identity are rechecked before acknowledging a write. Ordinary external changes still use the existing scanner, journal and transaction checks.
+
+The observer queues behind the same Workspace mutex as foreground mutations. Preview locks are released before observer publication, while the Workspace lock still serializes publication with mutations. This prevents an older scan from publishing after a newer rename, ignore or reference operation. Hidden windows, open business decisions and foreground operations retain invalidations until safe reconciliation. The UI uses generic project-updated or temporarily-unavailable notices.
 
 ## Shared conversion and background state
 

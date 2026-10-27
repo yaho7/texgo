@@ -11,7 +11,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => ({ error: nul
 it("ignores disposed callbacks and cleans up subscriptions that resolve after unmount", async () => {
   native.listeners.clear(); native.resolves = [];
   const onAction = vi.fn(); const onError = vi.fn(); const stop = vi.fn();
-  const background = { onWorkspace: vi.fn(), onStart: vi.fn(), onFinished: vi.fn(), onIdle: vi.fn(), onProgress: vi.fn(), onResult: vi.fn(), onNavigate: vi.fn(), onNativeError: onError };
+  const background = { onObserved: vi.fn(), onObservationUnavailable: vi.fn(), onWorkspace: vi.fn(), onStart: vi.fn(), onFinished: vi.fn(), onIdle: vi.fn(), onProgress: vi.fn(), onResult: vi.fn(), onNavigate: vi.fn(), onNativeError: onError };
   const { unmount } = renderHook(() => useDesktopEvents({ background, onAction, onDrop: vi.fn(), setDragging: vi.fn() }));
   unmount();
   await act(async () => {

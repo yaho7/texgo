@@ -8,11 +8,15 @@ import type { useConversion } from "./useConversion";
 import type { useReviewFlow } from "./useReviewFlow";
 import type { useOperation } from "./useOperation";
 import { errorMessage } from "../utils";
+export type ObservationIdentity = { root: string; mainFile: string; session: number };
+export type ObservationUpdate = { project: Project; session: number };
 export type Navigation = { project: Project; target: NotificationTarget };
-interface Ports extends WorkflowPorts {
-  conversion: ReturnType<typeof useConversion>;
-  reviewFlow: ReturnType<typeof useReviewFlow>;
-  historyDomain: HistoryDomain;
+interface Ports extends Pick<WorkflowPorts, "execute" | "currentOperationKind" | "setError" | "setNotice"> {
+  workspace: Pick<WorkflowPorts["workspace"], "project" | "current" | "generation" | "acceptProject" | "updateSnapshot">;
+  selection: Pick<WorkflowPorts["selection"], "reconcileBackground">;
+  conversion: Pick<ReturnType<typeof useConversion>, "completionVisible" | "setResults" | "setProgress" | "setCompletion">;
+  reviewFlow: Pick<ReturnType<typeof useReviewFlow>, "decisionRef" | "queueReview">;
+  historyDomain: Pick<HistoryDomain, "load">;
   operationDomain: Pick<ReturnType<typeof useOperation>, "current" | "acquire" | "release">;
   autoWatch: boolean; held: boolean;
   onNavigate: (payload: Navigation) => Promise<void>;
@@ -28,7 +32,10 @@ export function useBackgroundAutomation(ports: Ports) {
   const navigation = useRef<{ generation: number; payload: Navigation } | null>(null);
   const capture = useWorkspaceGuard(() => ports.workspace.generation.current);
   const refreshing = useRef(false);
-  function matches(project: Project) {
+  const observation = useRef<{ generation: number; identity: ObservationIdentity } | null>(null);
+  const observationUnavailable = useRef<number | null>(null);
+  const pendingObservation = useRef<{ generation: number; payload: ObservationUpdate } | null>(null);
+  function matches(project: Pick<Project, "root" | "mainFile">) {
     const current = latest.current.workspace.current.current;
     return current?.root === project.root && current.mainFile === project.mainFile;
   }
@@ -39,13 +46,58 @@ export function useBackgroundAutomation(ports: Ports) {
   }
   function defer() { dirty.current = latest.current.workspace.generation.current; }
   function currentContext(generation: number) { return generation === latest.current.workspace.generation.current; }
-  function onWorkspace(project: Project) {
+  function onWorkspace(project: Project, quiet = false) {
     if (!matches(project)) return;
     if (held()) { defer(); return; }
     const generation = latest.current.workspace.generation.current;
     const isCurrent = capture();
-    void latest.current.workspace.acceptProject(project, true, "项目状态已更新").catch((reason) => { if (isCurrent() && currentContext(generation)) latest.current.setError(errorMessage(reason)); });
+    void latest.current.workspace.acceptProject(project, true, "项目状态已更新").catch((reason) => { if (isCurrent() && currentContext(generation)) { if (quiet) latest.current.setNotice("自动检测暂不可用"); else latest.current.setError(errorMessage(reason)); } });
   }
+  function matchesObservation(identity: ObservationIdentity) {
+    const p = latest.current;
+    const current = observation.current;
+    return p.autoWatch && current?.generation === p.workspace.generation.current
+      && current.identity.session === identity.session && current.identity.root === identity.root
+      && current.identity.mainFile === identity.mainFile;
+  }
+  function onObserved(payload: ObservationUpdate) {
+    const generation = latest.current.workspace.generation.current;
+    // The identity read can queue behind a conversion. Retain one update until
+    // that read identifies its session; an older session can never replace it.
+    if (latest.current.autoWatch && matches(payload.project) && observation.current?.generation !== generation) {
+      const pending = pendingObservation.current;
+      if (!pending || pending.generation !== generation || pending.payload.session <= payload.session) {
+        pendingObservation.current = { generation, payload };
+      }
+      return;
+    }
+    if (!matchesObservation({ ...payload.project, session: payload.session }) || !matches(payload.project)) return;
+    if (held() || latest.current.currentOperationKind() || document.hidden) { defer(); return; }
+    onWorkspace(payload.project, true);
+  }
+  function onObservationUnavailable(identity: ObservationIdentity) {
+    if (!matchesObservation(identity)) return;
+    if (held() || latest.current.currentOperationKind() || document.hidden) {
+      observationUnavailable.current = latest.current.workspace.generation.current;
+    } else latest.current.setNotice("自动检测暂不可用");
+  }
+  useEffect(() => {
+    observation.current = null;
+    const p = latest.current;
+    if (!p.autoWatch || !p.workspace.project) return;
+    let active = true;
+    const generation = p.workspace.generation.current;
+    const isCurrent = capture();
+    void invoke<ObservationIdentity | null>("observation_identity").then((identity) => {
+      if (active && isCurrent() && identity && matches(identity)) {
+        observation.current = { generation, identity };
+        const pending = pendingObservation.current;
+        pendingObservation.current = null;
+        if (pending?.generation === generation) onObserved(pending.payload);
+      }
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [ports.workspace.project?.mainFile, ports.workspace.generation.current, ports.autoWatch]);
   function onStart(project: Project) {
     if (!matches(project)) return;
     if (held()) { defer(); return; }
@@ -73,7 +125,7 @@ export function useBackgroundAutomation(ports: Ports) {
       const state = latest.current.operationDomain.current();
       if (latest.current.reviewFlow.decisionRef.current.kind !== "none" || (!ownRead && state.status === "running" && state.owner === "foreground")) { defer(); return; }
       if (preview.referenceCount) latest.current.reviewFlow.queueReview(preview);
-    } catch (reason) { if (isCurrent() && currentContext(generation)) onNativeError(errorMessage(reason)); }
+    } catch (reason) { if (isCurrent() && currentContext(generation)) { if (ownRead) latest.current.setNotice("自动检测暂不可用"); else onNativeError(errorMessage(reason)); } }
   }
   function onFinished(report: SmartReport) {
     if (!matches(report.project)) return;
@@ -111,9 +163,13 @@ export function useBackgroundAutomation(ports: Ports) {
   }
   useEffect(() => {
     const p = latest.current;
-    if (held() || p.currentOperationKind() || refreshing.current) return;
+    if (document.hidden || held() || p.currentOperationKind() || refreshing.current) return;
     const generation = p.workspace.generation.current;
     const isCurrent = capture();
+    if (observationUnavailable.current !== null) {
+      if (observationUnavailable.current === generation) p.setNotice("自动检测暂不可用");
+      observationUnavailable.current = null;
+    }
     if (dirty.current !== null && dirty.current !== generation) dirty.current = null;
     if (navigation.current && navigation.current.generation !== generation) navigation.current = null;
     if (dirty.current === null && !navigation.current) {
@@ -129,8 +185,18 @@ export function useBackgroundAutomation(ports: Ports) {
     dirty.current = null;
     refreshing.current = true;
     void p.execute("updating", async () => {
-      let fresh = await invoke<Project>("refresh_workspace");
+      let fresh = await invoke<Project>("refresh_workspace").catch((reason) => {
+        if (pendingNavigation) throw reason;
+        if (isCurrent() && currentContext(generation)) latest.current.setNotice("自动检测暂不可用");
+        return null;
+      });
+      if (!fresh) return;
       if (!isCurrent() || !currentContext(generation)) return;
+      if (document.hidden) {
+        defer();
+        if (pendingNavigation) navigation.current = pendingNavigation;
+        return;
+      }
       if (pendingNavigation) {
         if (fresh.mainFile !== pendingNavigation.payload.target.path) {
           fresh = await invoke<Project>("open_project", { mainFile: pendingNavigation.payload.target.path });
@@ -139,7 +205,7 @@ export function useBackgroundAutomation(ports: Ports) {
         await latest.current.onNavigate({ ...pendingNavigation.payload, project: fresh });
       } else {
         if (fresh.mainFile !== latest.current.workspace.current.current?.mainFile) return;
-        await latest.current.workspace.acceptProject(fresh, true);
+        await latest.current.workspace.acceptProject(fresh, true, "项目状态已更新");
         if (currentContext(generation)) await queuePreview(fresh, generation, true);
       }
     }).finally(() => { refreshing.current = false; });
@@ -157,14 +223,14 @@ export function useBackgroundAutomation(ports: Ports) {
       try {
         const next = await invoke<Project | null>("poll_workspace", { root });
         if (!next || disposed || !isCurrent() || !currentContext(generation) || next.mainFile !== latest.current.workspace.current.current?.mainFile) return;
-        if (held() || latest.current.currentOperationKind()) { defer(); return; }
-        await latest.current.workspace.acceptProject(next, true, "检测到图片发生变化，项目状态已更新");
-      } catch (reason) { retryAt = Date.now() + 30_000; if (!disposed && currentContext(generation)) latest.current.setError(`自动检测暂不可用：${errorMessage(reason)}`); }
+        if (document.hidden || held() || latest.current.currentOperationKind()) { defer(); return; }
+        await latest.current.workspace.acceptProject(next, true, "项目状态已更新");
+      } catch { retryAt = Date.now() + 30_000; if (!disposed && currentContext(generation)) latest.current.setNotice("自动检测暂不可用"); }
       finally { pending = false; }
     }
-    const timer = window.setInterval(() => { void poll(); }, 2500);
-    const focus = () => { void poll(); }; window.addEventListener("focus", focus);
+    const timer = window.setInterval(() => { void poll(); }, 30_000);
+    const focus = () => { if (dirty.current === generation || observationUnavailable.current === generation) latest.current.setRevision((value) => value + 1); void poll(); }; window.addEventListener("focus", focus);
     return () => { disposed = true; window.clearInterval(timer); window.removeEventListener("focus", focus); };
   }, [ports.workspace.project?.mainFile, ports.workspace.generation.current, ports.autoWatch, ports.held, ports.currentOperationKind()]);
-  return { onWorkspace, onStart, onFinished, onIdle, onProgress, onResult, onNavigate, onNativeError };
+  return { onObserved, onObservationUnavailable, onWorkspace, onStart, onFinished, onIdle, onProgress, onResult, onNavigate, onNativeError };
 }

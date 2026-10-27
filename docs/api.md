@@ -247,10 +247,16 @@ Workspace refresh owns these counts and IDs. Reference review has priority over 
 
 `updateAvailable` is true when a convertible source or its SVG dependencies have
 changed since a managed, intact PDF was generated. It is recomputed when opening,
-refreshing, converting or undoing a workspace. The desktop app checks metadata
-in the background every 2.5 seconds while visible and idle, and on window focus;
-it rescans only after a change. Review dialogs and file mutations pause polling.
-Search, filters, valid selections and comparison mode survive automatic refresh.
+refreshing, converting or undoing a workspace. The desktop app observes native
+filesystem events with a 500 ms trailing debounce. A 30-second metadata fallback
+and window-focus checks remain available when events are unavailable or lost.
+Internal PDF, journal and backup writes are suppressed only when their bytes
+still match the expected write fingerprint. External PDF edits remain safety
+events, and known SVG dependency paths are tracked regardless of extension.
+Native sessions reject old events after close/reopen, including the same path.
+Foreground operations, review decisions and hidden windows defer projection;
+release/focus re-reads current native state. Search, filters, valid selections
+and comparison mode survive automatic refresh.
 The headless engine does not start background work merely by opening a project.
 Content hashes are compared, so rewriting identical bytes does not trigger an
 update. Missing or externally edited PDFs are not offered as safe updates. If a

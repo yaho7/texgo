@@ -1,7 +1,7 @@
 use crate::*;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, State};
 use crate::preferences::Preferences;
@@ -9,6 +9,8 @@ use crate::preferences::Preferences;
 #[derive(Clone, Default)]
 pub(crate) struct AppState {
     workspace: Arc<Mutex<Option<Workspace>>>,
+    workspace_session: Arc<AtomicU64>,
+    observer: Arc<Mutex<Option<crate::watcher::Service>>>,
     preview: Arc<Mutex<Option<Workspace>>>,
     completed_previews: Arc<Mutex<BTreeMap<String, String>>>,
     cancel: Arc<AtomicBool>,
@@ -18,6 +20,85 @@ pub(crate) struct AppState {
     shortcut: Arc<Mutex<Option<String>>>,
     startup_error: Arc<Mutex<Option<String>>>,
     settings_update: Arc<Mutex<()>>,
+}
+
+// The observer owns only the workspace/preview projection, not its service
+// handle. This prevents a reference cycle and preserves workspace -> preview
+// lock ordering used by foreground work.
+struct ObservationState {
+    workspace: Arc<Mutex<Option<Workspace>>>,
+    preview: Arc<Mutex<Option<Workspace>>>,
+    completed: Arc<Mutex<BTreeMap<String, String>>>,
+    session: Arc<AtomicU64>,
+}
+impl From<&AppState> for ObservationState {
+    fn from(state: &AppState) -> Self {
+        Self { workspace: state.workspace.clone(), preview: state.preview.clone(), completed: state.completed_previews.clone(), session: state.workspace_session.clone() }
+    }
+}
+impl ObservationState {
+    fn reconcile_and_publish(&self, session: u64, paths: &[PathBuf], force: bool, publish: impl FnOnce(&Project)) -> Result<Option<Project>, String> {
+        if self.session.load(Ordering::SeqCst) != session { return Ok(None); }
+        let mut workspace = self.workspace.lock().map_err(|_| "Workspace unavailable")?;
+        // A stale worker may have waited behind close/open or a long mutation.
+        if self.session.load(Ordering::SeqCst) != session { return Ok(None); }
+        let Some(ws) = workspace.as_mut() else { return Ok(None); };
+        let result = ws.reconcile_observation(paths, force)?;
+        if result.is_some() {
+            if let Ok(mut preview) = self.preview.lock() { *preview = workspace.clone(); }
+            if let Ok(mut completed) = self.completed.lock() { completed.clear(); }
+        }
+        // Publication belongs to the same serialized operation as the refresh.
+        // A foreground mutation must not publish/return P2 before this P1 event.
+        // Preview/completed guards above have already been released.
+        if let Some(project) = &result { publish(project); }
+        Ok(result)
+    }
+}
+
+fn sync_observer(app: &tauri::AppHandle, state: &AppState) {
+    let Ok(workspace) = state.workspace.lock() else { return; };
+    let enabled = state.preferences.lock().is_ok_and(|preferences| preferences.auto_watch);
+    let Ok(mut observer) = state.observer.lock() else { return; };
+    let Some(ws) = workspace.as_ref().filter(|_| enabled) else {
+        if observer.is_some() { state.workspace_session.fetch_add(1, Ordering::SeqCst); }
+        *observer = None;
+        return;
+    };
+    let session = state.workspace_session.load(Ordering::SeqCst);
+    if observer.as_ref().is_some_and(|observer| observer.session == session) { return; }
+    *observer = None;
+    let root = PathBuf::from(&ws.project().root);
+    let identity = serde_json::json!({ "root": ws.project().root, "mainFile": ws.project().main_file, "session": session });
+    let observation = ObservationState::from(state);
+    let app = app.clone();
+    // Native callback queues behind the same workspace mutex as all mutations.
+    // The service retains its own 30-second fallback even when init fails.
+    match crate::watcher::Service::start(root, session, move |batch| {
+        match observation.reconcile_and_publish(session, &batch.paths, batch.force, |project| {
+            update_tray_status(&app, project);
+            let _ = app.emit("workspace-observed", serde_json::json!({ "project": project, "session": session }));
+        }) {
+            Ok(_) => Ok(()),
+            Err(error) => {
+                let _ = app.emit("workspace-observation-unavailable", &identity);
+                Err(error)
+            }
+        }
+    }) {
+        Ok(service) => *observer = Some(service),
+        Err(error) => eprintln!("Texgo observation worker unavailable: {error}"),
+    }
+}
+
+#[tauri::command]
+async fn observation_identity(state: State<'_, AppState>) -> Result<Option<serde_json::Value>, String> {
+    let workspace = state.workspace.clone();
+    let session = state.workspace_session.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let workspace = workspace.lock().map_err(|_| "工作区状态不可用")?;
+        Ok(workspace.as_ref().map(|ws| serde_json::json!({ "root": ws.project().root, "mainFile": ws.project().main_file, "session": session.load(Ordering::SeqCst) })))
+    }).await.map_err(|error| error.to_string())?
 }
 
 async fn work<T: Send + 'static>(state: AppState, action: impl FnOnce(&mut Option<Workspace>) -> Result<T, String> + Send + 'static) -> Result<T, String> {
@@ -58,6 +139,7 @@ async fn save_preferences(preferences: Preferences, app: tauri::AppHandle, state
         }
         *state.preferences.lock().map_err(|_| "设置状态不可用")? = preferences.clone();
         *state.startup_error.lock().map_err(|_| "状态不可用")? = None;
+        sync_observer(&app, &state);
         Ok(preferences)
     }).await.map_err(|e| e.to_string())?
 }
@@ -75,18 +157,28 @@ fn set_shortcut_recording(recording: bool, state: State<'_, AppState>) {
 }
 
 #[tauri::command]
-async fn close_workspace(state: State<'_, AppState>) -> Result<(), String> {
-    work(state.inner().clone(), |workspace| { *workspace = None; Ok(()) }).await
+async fn close_workspace(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let session = state.workspace_session.clone();
+    work(state.inner().clone(), move |workspace| {
+        session.fetch_add(1, Ordering::SeqCst);
+        *workspace = None;
+        Ok(())
+    }).await?;
+    sync_observer(&app, state.inner());
+    Ok(())
 }
 
 #[tauri::command]
 async fn open_project(main_file: String, app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Project, String> {
+    let session = state.workspace_session.clone();
     let project = work(state.inner().clone(), move |workspace| {
         let opened = Workspace::open(Path::new(&main_file))?;
         let project = opened.project().clone();
+        session.fetch_add(1, Ordering::SeqCst);
         *workspace = Some(opened);
         Ok(project)
     }).await?;
+    sync_observer(&app, state.inner());
     update_tray_status(&app, &project);
     Ok(project)
 }
@@ -281,7 +373,7 @@ pub fn run() {
             install_background(app)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![desktop_status, set_shortcut_recording, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, rename_asset, retry_asset, open_project, refresh_workspace, poll_workspace, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, preview_changes, apply_replacements, undo_replacements])
+        .invoke_handler(tauri::generate_handler![observation_identity, desktop_status, set_shortcut_recording, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, rename_asset, retry_asset, open_project, refresh_workspace, poll_workspace, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, preview_changes, apply_replacements, undo_replacements])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let background = window.state::<AppState>().preferences.lock().is_ok_and(|p| p.close_action == "background");
@@ -292,7 +384,12 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("failed to start texgo desktop")
         .run(|app, event| {
-            if matches!(&event, tauri::RunEvent::Exit) { let _ = app.global_shortcut().unregister_all(); }
+            if matches!(&event, tauri::RunEvent::Exit) {
+                let state = app.state::<AppState>();
+                state.workspace_session.fetch_add(1, Ordering::SeqCst);
+                if let Ok(mut observer) = state.observer.lock() { *observer = None; }
+                let _ = app.global_shortcut().unregister_all();
+            }
             #[cfg(target_os = "macos")]
             if matches!(&event, tauri::RunEvent::Reopen { .. }) { show_window(app); }
         });
@@ -363,15 +460,19 @@ fn notification_clicked(app: tauri::AppHandle, target: NotificationTarget) {
     let state = app.state::<AppState>().inner().clone();
     tauri::async_runtime::spawn(async move {
         let wanted = target.clone();
-        let result = work(state, move |workspace| {
+        let session = state.workspace_session.clone();
+        let result = work(state.clone(), move |workspace| {
             let same = workspace.as_ref().is_some_and(|ws| {
                 ws.project().main_file == wanted.path
             });
             if !same {
-                *workspace = Some(Workspace::open(Path::new(&wanted.path))?);
+                let opened = Workspace::open(Path::new(&wanted.path))?;
+                session.fetch_add(1, Ordering::SeqCst);
+                *workspace = Some(opened);
             }
             current(workspace)?.refresh()
         }).await;
+        sync_observer(&app, &state);
         match result {
             Ok(project) => { let _ = app.emit("notification-navigate", serde_json::json!({ "target": target, "project": project })); }
             Err(error) => { let _ = app.emit("desktop-error", error); }
@@ -500,5 +601,96 @@ mod desktop_policy_tests {
         prefs.shortcut = "Ctrl+Enter".into(); assert!(normalized_shortcut(&prefs).is_err());
         prefs.shortcut = "bad shortcut".into(); assert!(normalized_shortcut(&prefs).is_err());
         prefs.shortcut_enabled = false; assert!(normalized_shortcut(&prefs).unwrap().is_none());
+    }
+}
+
+#[cfg(test)]
+mod native_observation_lifecycle_tests {
+    use super::*;
+    #[test]
+    fn stale_sessions_cannot_refresh_a_reopened_project_at_the_same_path() {
+        let directory = tempfile::tempdir().unwrap();
+        let main = directory.path().join("main.tex");
+        std::fs::write(&main, r"\includegraphics{a.png}").unwrap();
+        let state = AppState::default();
+        *state.workspace.lock().unwrap() = Some(Workspace::open(&main).unwrap());
+        state.workspace_session.store(2, Ordering::SeqCst);
+        std::fs::write(&main, r"\includegraphics{b.png}").unwrap();
+        let observed = ObservationState::from(&state);
+        assert!(observed.reconcile_and_publish(1, &[main.clone()], true, |_| {}).unwrap().is_none());
+        assert_eq!(state.workspace.lock().unwrap().as_ref().unwrap().project().images[0].relative_path, "a.png");
+        assert!(observed.reconcile_and_publish(2, &[main], true, |_| {}).unwrap().is_some());
+        assert_eq!(state.workspace.lock().unwrap().as_ref().unwrap().project().images[0].relative_path, "b.png");
+    }
+    #[test]
+    fn queued_old_session_is_rechecked_after_the_workspace_mutex() {
+        let directory = tempfile::tempdir().unwrap();
+        let main = directory.path().join("main.tex");
+        std::fs::write(&main, r"\includegraphics{a.png}").unwrap();
+        let state = AppState::default();
+        let mut locked = state.workspace.lock().unwrap();
+        *locked = Some(Workspace::open(&main).unwrap());
+        state.workspace_session.store(1, Ordering::SeqCst);
+        let observed = ObservationState::from(&state);
+        let queued = std::thread::spawn(move || observed.reconcile_and_publish(1, &[], true, |_| {}));
+        state.workspace_session.store(2, Ordering::SeqCst);
+        drop(locked);
+        assert!(queued.join().unwrap().unwrap().is_none());
+    }
+}
+
+#[cfg(test)]
+mod observation_publication_tests {
+    use super::*;
+    use std::{sync::mpsc, time::Duration};
+    #[test]
+    fn foreground_mutation_cannot_overtake_an_older_observation_publication() {
+        let directory = tempfile::tempdir().unwrap();
+        let main = directory.path().join("main.tex");
+        std::fs::write(&main, r"\includegraphics{a.png}").unwrap();
+        let state = AppState::default();
+        *state.workspace.lock().unwrap() = Some(Workspace::open(&main).unwrap());
+        let publications = Arc::new(Mutex::new(Vec::new()));
+        let observed_publications = publications.clone();
+        let observation = ObservationState::from(&state);
+        let (entered, publishing) = mpsc::sync_channel(0);
+        let (resume, released) = mpsc::sync_channel(0);
+        let watcher = std::thread::spawn(move || observation.reconcile_and_publish(0, &[], true, |project| {
+            assert_eq!(project.status.ignored_count, 0);
+            entered.send(()).unwrap();
+            released.recv_timeout(Duration::from_secs(5)).unwrap();
+            observed_publications.lock().unwrap().push("observation P1");
+        }));
+        publishing.recv_timeout(Duration::from_secs(5)).unwrap();
+        // Force the exact old gap: the watcher has its P1 snapshot and pauses
+        // immediately before emission while a foreground mutation requests P2.
+        let overtook = match state.workspace.try_lock() {
+            Ok(mut workspace) => {
+                let ws = workspace.as_mut().unwrap();
+                let image = ws.project().images[0].id.clone();
+                ws.set_ignore_mode(&image, IgnoreMode::Session).unwrap();
+                publications.lock().unwrap().push("foreground P2");
+                true
+            }
+            Err(std::sync::TryLockError::WouldBlock) => false,
+            Err(error) => panic!("Unexpected workspace lock failure: {error}"),
+        };
+        let foreground = if !overtook {
+            let state = state.clone();
+            let publications = publications.clone();
+            Some(std::thread::spawn(move || {
+                let mut workspace = state.workspace.lock().unwrap();
+                let ws = workspace.as_mut().unwrap();
+                let image = ws.project().images[0].id.clone();
+                ws.set_ignore_mode(&image, IgnoreMode::Session).unwrap();
+                publications.lock().unwrap().push("foreground P2");
+            }))
+        } else { None };
+        resume.send(()).unwrap();
+        watcher.join().unwrap().unwrap();
+        if let Some(foreground) = foreground { foreground.join().unwrap(); }
+        assert!(!overtook, "foreground P2 must wait until older watcher P1 has been published");
+        assert_eq!(*publications.lock().unwrap(), ["observation P1", "foreground P2"]);
+        assert_eq!(state.workspace.lock().unwrap().as_ref().unwrap().project().status.ignored_count, 1);
     }
 }

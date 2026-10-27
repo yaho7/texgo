@@ -6,6 +6,8 @@ mod scanner;
 mod transaction;
 mod workspace;
 mod observation;
+#[cfg(any(feature = "desktop", test))]
+mod watcher;
 mod repair;
 mod ignore;
 mod rename;

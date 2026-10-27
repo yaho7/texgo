@@ -105,7 +105,7 @@ export default function App() {
 
 
   const decisionOpen = reviewFlow.decision.kind !== "none";
-  const background = useBackgroundAutomation({ workspace, selection, execute, currentOperationKind, setError, setNotice, rememberFocus, restoreFocus,
+  const background = useBackgroundAutomation({ workspace, selection, execute, currentOperationKind, setError, setNotice,
     conversion, reviewFlow, historyDomain, operationDomain: { current: currentOperation, acquire: acquireOperation, release: releaseOperation },
     autoWatch: preferences.autoWatch, held: decisionOpen || completion !== null || updateOpen,
     onNavigate: (payload) => notificationNavigate.current(payload), setRevision });

@@ -26,4 +26,6 @@ Use the host triple reported by `rustc -vV` for the sidecar filename on other pl
 
 Passing local tests does not verify installed-app notifications, global shortcuts, signing, notarization, tray availability, or update installation. Those require native platform checks.
 
+Native observation tests include a real filesystem-event smoke test. On macOS a restricted agent sandbox can deny FSEvents stream initialization; run that test with the environment's normal permission review rather than treating a fallback-only run as proof of native events. The product-upgrade verification exercised real macOS FSEvents outside the sandbox. Windows/Linux runtime checks still require their native environments.
+
 The October 26 baseline passed 145 frontend tests, one PDF test, 209 headless Rust tests and 197 default desktop Rust tests. The Rust feature sets deliberately discover different tests. An existing unused-import warning in `manifest.rs` was recorded separately from failures.

@@ -13,11 +13,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 #[derive(Clone)]
 pub struct Workspace {
     scan: scanner::Scan,
+    observation_root: crate::observation::ObservationRoot,
     rename_fingerprints: BTreeMap<String, String>,
     converted: BTreeMap<String, StoredConversion>,
     failures: BTreeMap<String, (String, Option<String>)>,
     retrying: HashSet<String>,
     observed: Option<crate::observation::Snapshot>,
+    expected_writes: BTreeMap<PathBuf, String>,
     pending_repair: Option<(String, PathBuf, ReplacementPlan)>,
     invalidated: HashSet<String>,
     ignored: HashSet<String>,
@@ -36,20 +38,25 @@ impl Workspace {
     pub fn open(main: &Path) -> Result<Self, String> {
         let canonical = main.canonicalize().map_err(|e|e.to_string())?;
         let root = canonical.parent().ok_or("主文件没有父目录")?;
+        let observation_root = crate::observation::ObservationRoot::open(root)?;
+        observation_root.validate_project(&canonical)?;
         if root.join(".texgo/rename-active.json").symlink_metadata().is_ok() {
             let _lock = transaction::lock_project(root)?;
             crate::rename::recover(root)?;
         }
-        let scan = scanner::scan(main)?;
-        Self::from_scan(scan)
+        let scan = scanner::scan(&canonical)?;
+        observation_root.validate_project(&canonical)?;
+        Self::from_scan(scan, observation_root)
     }
 
-    fn from_scan(mut scan: scanner::Scan) -> Result<Self, String> {
+    fn from_scan(mut scan: scanner::Scan, observation_root: crate::observation::ObservationRoot) -> Result<Self, String> {
+        if Path::new(&scan.project.root) != observation_root.path() { return Err("Workspace root changed; reopen the project".into()); }
+        observation_root.validate_project(Path::new(&scan.project.main_file))?;
         crate::manifest::restore_sources(&mut scan.project);
         let root = Path::new(&scan.project.root);
         let journal = Journal::load(root);
         let rename_fingerprints = crate::rename::fingerprints(&scan.project, &scan.sources)?;
-        let mut workspace = Self { scan, rename_fingerprints, converted: BTreeMap::new(), failures: BTreeMap::new(), retrying: HashSet::new(), observed: None, pending_repair: None, invalidated: HashSet::new(), ignored: HashSet::new(), session_ignored: HashSet::new() };
+        let mut workspace = Self { scan, observation_root, rename_fingerprints, converted: BTreeMap::new(), failures: BTreeMap::new(), retrying: HashSet::new(), observed: None, expected_writes: BTreeMap::new(), pending_repair: None, invalidated: HashSet::new(), ignored: HashSet::new(), session_ignored: HashSet::new() };
         if let Ok(journal) = journal {
             workspace.rehydrate(&journal);
             for asset in &workspace.scan.project.images {
@@ -62,7 +69,8 @@ impl Workspace {
         workspace.converted.retain(|id, _| !workspace.failures.contains_key(id));
         workspace.scan.project.converted_images.retain(|image| !workspace.failures.contains_key(&image.id));
         workspace.update_status();
-        workspace.observed = crate::observation::snapshot(Path::new(&workspace.scan.project.root)).ok();
+        workspace.observed = workspace.observation_snapshot().ok();
+        workspace.observation_root.validate_project(Path::new(&workspace.scan.project.main_file))?;
         Ok(workspace)
     }
 
@@ -96,13 +104,20 @@ impl Workspace {
     }
 
     fn scan_again(&self) -> Result<Self, String> {
+        let main = Path::new(&self.scan.project.main_file);
+        self.observation_root.validate_project(main)?;
         let root = Path::new(&self.scan.project.root);
         if root.join(".texgo/rename-active.json").symlink_metadata().is_ok() {
             let _lock = transaction::lock_project(root)?;
             crate::rename::recover(root)?;
         }
-        let scan = scanner::scan(Path::new(&self.scan.project.main_file))?;
-        let mut refreshed = Self::from_scan(scan)?;
+        let scan = scanner::scan(main)?;
+        self.observation_root.validate_project(main)?;
+        if scan.project.root != self.scan.project.root || scan.project.main_file != self.scan.project.main_file {
+            return Err("Workspace identity changed; reopen the project".into());
+        }
+        let mut refreshed = Self::from_scan(scan, self.observation_root.clone())?;
+        refreshed.expected_writes = self.expected_writes.clone();
         refreshed.session_ignored = self.session_ignored.clone();
         refreshed.session_ignored.retain(|id| refreshed.scan.project.images.iter().any(|asset| &asset.id == id));
         refreshed.invalidated.extend(self.invalidated.iter().cloned());
@@ -116,6 +131,7 @@ impl Workspace {
         refreshed.converted.retain(|id, _| !refreshed.invalidated.contains(id));
         refreshed.scan.project.converted_images.retain(|image| !refreshed.invalidated.contains(&image.id));
         refreshed.update_status();
+        refreshed.observation_root.validate_project(Path::new(&refreshed.scan.project.main_file))?;
         Ok(refreshed)
     }
 
@@ -126,10 +142,52 @@ impl Workspace {
 
     pub fn refresh_workspace(&mut self) -> Result<Project, String> { self.refresh() }
 
+    fn observation_snapshot(&self) -> Result<crate::observation::Snapshot, String> {
+        self.observation_root.validate_project(Path::new(&self.scan.project.main_file))?;
+        let root = Path::new(&self.scan.project.root);
+        let mut snapshot = crate::observation::snapshot(root)?;
+        // SVG resources are identified by their content, so a dependency can
+        // have an arbitrary filename extension. Keep those exact paths in the
+        // metadata fallback as well as the native invalidation policy.
+        for (path, _) in self.converted.values().flat_map(|conversion| &conversion.dependencies) {
+            if journal::safe_path(root, path).is_err() { continue; }
+            match fs::symlink_metadata(path) {
+                Ok(metadata) if metadata.is_file() => { snapshot.insert(path.clone(), (metadata.len(), metadata.modified().ok())); }
+                Ok(_) => (),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+                Err(error) => return Err(error.to_string()),
+            }
+        }
+        Ok(snapshot)
+    }
+
     pub fn poll_changes(&mut self) -> Result<Option<Project>, String> {
-        let observed = crate::observation::snapshot(Path::new(&self.scan.project.root))?;
+        let observed = self.observation_snapshot()?;
         if self.observed.as_ref() == Some(&observed) { return Ok(None); }
         self.refresh().map(Some)
+    }
+
+    /// Native events are content invalidations, including events with unchanged
+    /// metadata. Only exact files whose bytes still match our writes are quiet.
+    #[cfg(any(feature = "desktop", test))]
+    pub(crate) fn reconcile_observation(&mut self, paths: &[PathBuf], force: bool) -> Result<Option<Project>, String> {
+        let external = paths.iter().filter(|path| crate::observation::relevant_path(path)
+            || self.converted.values().any(|conversion| conversion.dependencies.iter().any(|(dependency, _)| dependency == *path))).any(|path| {
+            !self.expected_writes.get(path).is_some_and(|hash|
+                crate::observation::verified_metadata(&self.observation_root, path, hash).is_some())
+        });
+        if force || external { self.refresh().map(Some) } else { self.poll_changes() }
+    }
+
+    fn remember_conversion_writes(&mut self, root: &Path, journal: &Journal, batch: usize) {
+        for (path, hash) in journal.written_fingerprints(root, batch) {
+            // Never take a new whole-tree snapshot here: sources or TeX may have
+            // been edited while rendering. Advance only verified self writes.
+            if let Some(metadata) = crate::observation::verified_metadata(&self.observation_root, &path, &hash) {
+                if let Some(observed) = &mut self.observed { observed.insert(path.clone(), metadata); }
+                self.expected_writes.insert(path, hash);
+            }
+        }
     }
 
     pub fn conversion_history(&self) -> Result<Vec<ConversionHistoryEntry>, String> {
@@ -415,6 +473,7 @@ impl Workspace {
         }
         cancelled |= cancel.load(Ordering::Relaxed);
         journal.finish_batch(&root, batch, cancelled)?;
+        self.remember_conversion_writes(&root, &journal, batch);
         // Keep a failed or cancelled selection out of this session's reference plan.
         let succeeded: HashSet<_> = images.iter().filter(|image| image.error.is_none() && image.pdf_path.is_some()).map(|image| image.id.as_str()).collect();
         self.invalidated.retain(|id| !succeeded.contains(id.as_str()));
@@ -656,5 +715,135 @@ mod error_snapshot_tests {
         assert!(project.status.blocking_reason.is_some());
         assert_eq!(project.status.total_images, 1);
         assert!(ws.update_pending_with_results(&options, &AtomicBool::new(false), |_| {}, |_| {}).is_err());
+    }
+}
+
+#[cfg(test)]
+mod native_observation_tests {
+    use super::*;
+    fn fixture() -> (tempfile::TempDir, PathBuf, Workspace) {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().canonicalize().unwrap();
+        image::RgbImage::new(20, 10).save(root.join("a.png")).unwrap();
+        fs::write(root.join("main.tex"), r"\includegraphics{a.png}").unwrap();
+        let workspace = Workspace::open(&root.join("main.tex")).unwrap();
+        (directory, root, workspace)
+    }
+    #[test]
+    fn internal_conversion_only_advances_known_write_baselines() {
+        let (_directory, _root, mut workspace) = fixture();
+        let options = crate::preferences::Preferences::default().options(vec![]);
+        workspace.update_pending_with_results(&options, &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+        assert!(workspace.poll_changes().unwrap().is_none(), "own PDF and journal writes must not invalidate the workspace");
+    }
+    #[test]
+    fn external_tex_edit_during_conversion_remains_dirty() {
+        let (_directory, root, mut workspace) = fixture();
+        let options = crate::preferences::Preferences::default().options(vec![]);
+        workspace.update_pending_with_results(&options, &AtomicBool::new(false), |_| {}, |_| {
+            fs::write(root.join("main.tex"), r"\includegraphics{missing.png}").unwrap();
+        }).unwrap();
+        let fresh = workspace.poll_changes().unwrap().expect("external TeX edits must survive internal baseline updates");
+        assert!(fresh.images.iter().any(|image| image.relative_path == "missing.png"));
+    }
+    #[test]
+    fn external_managed_pdf_edit_remains_a_safety_event() {
+        let (_directory, root, mut workspace) = fixture();
+        let options = crate::preferences::Preferences::default().options(vec![]);
+        workspace.update_pending_with_results(&options, &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+        fs::write(root.join("texgo-pdf/a.pdf"), b"external PDF edit").unwrap();
+        let project = workspace.poll_changes().unwrap().unwrap();
+        assert!(project.status.blocking_reason.is_some());
+    }
+    #[test]
+    fn native_pdf_event_checks_content_even_when_size_and_mtime_match() {
+        let (_directory, root, mut workspace) = fixture();
+        let options = crate::preferences::Preferences::default().options(vec![]);
+        workspace.update_pending_with_results(&options, &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+        let output = root.join("texgo-pdf/a.pdf");
+        assert!(workspace.reconcile_observation(&[output.clone()], false).unwrap().is_none());
+        let metadata = fs::metadata(&output).unwrap();
+        let mut bytes = fs::read(&output).unwrap();
+        bytes[0] ^= 1;
+        fs::write(&output, bytes).unwrap();
+        fs::File::options().write(true).open(&output).unwrap().set_times(fs::FileTimes::new().set_modified(metadata.modified().unwrap())).unwrap();
+        assert!(workspace.poll_changes().unwrap().is_none(), "fixture must have unchanged metadata");
+        assert!(workspace.reconcile_observation(&[output], false).unwrap().unwrap().status.blocking_reason.is_some());
+    }
+    #[test]
+    fn private_backup_writes_are_quiet_but_external_safety_json_is_not() {
+        let (_directory, root, mut workspace) = fixture();
+        let options = crate::preferences::Preferences::default().options(vec![]);
+        workspace.update_pending_with_results(&options, &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+        image::RgbImage::new(31, 12).save(root.join("a.png")).unwrap();
+        workspace.refresh().unwrap();
+        workspace.update_pending_with_results(&options, &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+        assert!(workspace.poll_changes().unwrap().is_none());
+        fs::write(root.join(".texgo/ignore.json"), b"corrupted externally").unwrap();
+        assert!(workspace.reconcile_observation(&[root.join(".texgo/ignore.json")], false).unwrap().unwrap().status.blocking_reason.is_some());
+    }
+    #[cfg(unix)]
+    #[test]
+    fn self_write_verification_does_not_follow_symlinks_outside_root() {
+        let (_directory, root, mut workspace) = fixture();
+        let outside = tempfile::tempdir().unwrap();
+        let path = root.join("linked.pdf");
+        fs::write(outside.path().join("external.pdf"), b"outside").unwrap();
+        std::os::unix::fs::symlink(outside.path().join("external.pdf"), &path).unwrap();
+        workspace.expected_writes.insert(path.clone(), digest(b"outside"));
+        assert!(crate::observation::verified_metadata(&workspace.observation_root, &path, &digest(b"outside")).is_none());
+        assert!(crate::observation::snapshot(&root).unwrap().get(&path).is_none());
+    }
+    #[test]
+    fn svg_dependencies_with_arbitrary_extensions_invalidate_native_and_fallback() {
+        let (_directory, root, _) = fixture();
+        let resource = root.join("linked.data");
+        image::RgbImage::new(12, 12).save_with_format(&resource, image::ImageFormat::Png).unwrap();
+        fs::write(root.join("plot.svg"), r#"<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"><image href="linked.data" width="12" height="12"/></svg>"#).unwrap();
+        fs::write(root.join("main.tex"), r"\includegraphics{plot.svg}").unwrap();
+        let mut workspace = Workspace::open(&root.join("main.tex")).unwrap();
+        let options = crate::preferences::Preferences::default().options(vec![]);
+        workspace.update_pending_with_results(&options, &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+        assert_eq!(workspace.project().converted_images.len(), 1);
+        assert!(workspace.converted.values().any(|conversion| conversion.dependencies.iter().any(|(path, _)| path == &resource)));
+        workspace.refresh().unwrap();
+        let mut fallback = workspace.clone();
+        image::RgbImage::new(19, 19).save_with_format(&resource, image::ImageFormat::Png).unwrap();
+        assert!(workspace.reconcile_observation(&[resource], false).unwrap().is_some());
+        assert!(fallback.poll_changes().unwrap().is_some());
+    }
+    #[test]
+    fn refresh_rejects_a_replacement_root_directory_without_rebinding_anchor() {
+        let parent = tempfile::tempdir().unwrap();
+        let root = parent.path().canonicalize().unwrap().join("project");
+        fs::create_dir(&root).unwrap();
+        fs::write(root.join("main.tex"), r"\includegraphics{original.png}").unwrap();
+        let mut workspace = Workspace::open(&root.join("main.tex")).unwrap();
+        fs::rename(&root, root.with_file_name("saved")).unwrap();
+        fs::create_dir(&root).unwrap();
+        fs::write(root.join("main.tex"), r"\includegraphics{replacement.png}").unwrap();
+        assert!(workspace.refresh().is_err());
+        assert!(workspace.poll_changes().is_err());
+        assert_eq!(workspace.project().images[0].relative_path, "original.png");
+    }
+    #[cfg(unix)]
+    #[test]
+    fn refresh_rejects_a_main_file_replaced_by_a_symlink() {
+        let (_directory, root, mut workspace) = fixture();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(outside.path().join("main.tex"), r"\includegraphics{outside.png}").unwrap();
+        fs::remove_file(root.join("main.tex")).unwrap();
+        std::os::unix::fs::symlink(outside.path().join("main.tex"), root.join("main.tex")).unwrap();
+        assert!(workspace.refresh().is_err());
+        assert_eq!(workspace.project().root, root.to_string_lossy());
+        assert_eq!(workspace.project().images[0].relative_path, "a.png");
+    }
+    #[test]
+    fn source_save_and_tex_save_are_detected() {
+        let (_directory, root, mut workspace) = fixture();
+        image::RgbImage::new(30, 10).save(root.join("a.png")).unwrap();
+        assert!(workspace.poll_changes().unwrap().is_some());
+        fs::write(root.join("main.tex"), r"\includegraphics{missing.png}").unwrap();
+        assert!(workspace.poll_changes().unwrap().unwrap().images.iter().any(|asset| asset.relative_path == "missing.png"));
     }
 }
