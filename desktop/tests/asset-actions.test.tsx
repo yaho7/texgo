@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import AssetList from "../src/AssetList";
@@ -62,4 +62,42 @@ it("keeps the same row in place when a rename returns a new asset ID", async () 
   expect(await screen.findByRole("button", { name: "预览 figures/pressure-map.png" })).toHaveAttribute("aria-pressed", "true");
   expect(screen.getByRole("button", { name: "预览 figures/pressure-map.png" }).closest("tr")).toBe(row);
   expect(screen.getAllByRole("row")).toHaveLength(2);
+});
+
+
+it("uses the same current actions for right click and the more menu", async () => {
+  const user = userEvent.setup(); const p = { ...props(), onReveal: vi.fn(), onCopyPath: vi.fn() }; render(<AssetList {...p} />);
+  const row = screen.getByRole("row", { name: /plot.png/ });
+  expect(row).toHaveAttribute("aria-selected", "true");
+  fireEvent.contextMenu(row);
+  expect(p.onManualConvert).not.toHaveBeenCalled(); expect(p.onInspect).not.toHaveBeenCalled();
+  const contextLabels = screen.getAllByRole("menuitem").map((item) => item.textContent);
+  await user.click(screen.getByRole("menuitem", { name: "复制路径" })); expect(p.onCopyPath).toHaveBeenCalledWith("plot");
+  await user.click(screen.getByRole("button", { name: "更多操作 figures/plot.png" }));
+  expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(contextLabels);
+  await user.click(screen.getByRole("menuitem", { name: "重新转换此图片" })); expect(p.onManualConvert).toHaveBeenCalledWith("plot");
+});
+it.each(["ContextMenu", "ShiftF10"])("opens %s from the focused row and hands rename focus to the editor", async (key) => {
+  const user = userEvent.setup(); render(<AssetList {...props()} />);
+  const trigger = screen.getByRole("button", { name: "预览 figures/plot.png" }); trigger.focus();
+  fireEvent.keyDown(trigger, { key: key === "ShiftF10" ? "F10" : key, shiftKey: key === "ShiftF10" });
+  await user.click(screen.getByRole("menuitem", { name: "重命名" }));
+  await waitFor(() => expect(screen.getByRole("textbox", { name: "图片新名称" })).toHaveFocus());
+});
+it("blocks busy and unresolved file actions and revalidates an already open menu", async () => {
+  const user = userEvent.setup(); const p = { ...props(), onReveal: vi.fn(), onCopyPath: vi.fn() }; const view = render(<AssetList {...p} />);
+  fireEvent.contextMenu(screen.getByRole("row", { name: /plot.png/ }));
+  view.rerender(<AssetList {...p} busy />);
+  await user.click(screen.getByRole("menuitem", { name: "复制路径" })); expect(p.onCopyPath).not.toHaveBeenCalled();
+  await user.keyboard("{Escape}");
+  view.rerender(<AssetList {...p} images={[{ ...image, path: null, status: "missing", canRename: false }]} allImages={[{ ...image, path: null, status: "missing", canRename: false }]} />);
+  fireEvent.contextMenu(screen.getByRole("row", { name: /plot.png/ }));
+  expect(screen.getByRole("menuitem", { name: "复制路径" })).toHaveAttribute("data-disabled");
+});
+
+it("shows healthy asset details in the existing inspector without starting repair", async () => {
+  const user = userEvent.setup(); const p = props(); render(<AssetList {...p} />);
+  fireEvent.contextMenu(screen.getByRole("row", { name: /plot.png/ }));
+  await user.click(screen.getByRole("menuitem", { name: "查看详细信息" }));
+  expect(p.onActivate).toHaveBeenCalledWith("plot"); expect(p.onInspect).not.toHaveBeenCalled();
 });

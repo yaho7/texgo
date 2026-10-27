@@ -30,5 +30,12 @@ commit before the next implementation starts. Preserve pre-existing styles/revie
   fixture confirmed matching 1024 × 1024 source/PDF frames. Unknown-size loading/failure
   retains the prior bitmap; explicit zoom centers the view and refresh preserves pan.
   The 500.07 kB main chunk emits Vite's standard size warning; the limit was not raised.
-- [ ] Asset actions reviewed, verified and committed.
+- [x] Asset actions reviewed and verified: TypeScript, 234 frontend tests, PDF test,
+  production build, 245 desktop Rust tests and 254 headless Rust tests passed. Both
+  reviews approved. Radix context menus share the existing menu actions and tracked
+  overlay lifetime; file reveal/copy use backend-only OS plugins. Tauri's native popup
+  API resolves when shown rather than dismissed, so a DOM menu preserves the existing
+  automatic-review focus gate. Browser fixture verified the actual Finder/copy menu.
+  Resolver and fake OS-port tests cover the native boundary without opening Finder or
+  changing the user's clipboard. Platform-installed behavior still needs native QA.
 - [ ] Home/health/accessibility reviewed, verified and committed.

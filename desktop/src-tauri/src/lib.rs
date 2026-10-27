@@ -5,6 +5,8 @@ mod journal;
 mod scanner;
 mod transaction;
 mod workspace;
+#[cfg(any(feature = "desktop", test))]
+mod asset_file_actions;
 mod observation;
 #[cfg(any(feature = "desktop", test))]
 mod watcher;

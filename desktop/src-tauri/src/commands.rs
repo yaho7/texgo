@@ -305,6 +305,18 @@ async fn ignore_asset(image_id: String, ignored: Option<bool>, mode: Option<Igno
 }
 
 #[tauri::command]
+async fn asset_file_action(image_id: String, action: crate::asset_file_actions::AssetFileAction, expected_main_file: String, app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let workspace = state.workspace.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        // Keep the current workspace locked through native dispatch. Unlike work(),
+        // this read-only operation must preserve completed preview ownership.
+        let workspace = workspace.lock().map_err(|_| "工作区状态不可用")?;
+        let workspace = workspace.as_ref().ok_or("请先打开 LaTeX 项目")?;
+        crate::asset_file_actions::dispatch(workspace, &image_id, &expected_main_file, action, &crate::asset_file_actions::NativeFileActions(app))
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 async fn rename_asset(image_id: String, new_base_name: String, expected_fingerprint: String, app: tauri::AppHandle, state: State<'_, AppState>) -> Result<RenameResult, String> {
     if state.converting.swap(true, Ordering::SeqCst) { return Err("已有项目操作正在运行，请稍后重试".into()); }
     let guard = ConversionGuard(state.converting.clone());
@@ -358,6 +370,8 @@ async fn undo_replacements(state: State<'_, AppState>) -> Result<MutationResult,
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(|app, _, event| {
             if event.state == ShortcutState::Pressed { trigger_smart(app); }
@@ -373,7 +387,7 @@ pub fn run() {
             install_background(app)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![observation_identity, desktop_status, set_shortcut_recording, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, rename_asset, retry_asset, open_project, refresh_workspace, poll_workspace, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, preview_changes, apply_replacements, undo_replacements])
+        .invoke_handler(tauri::generate_handler![observation_identity, desktop_status, set_shortcut_recording, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, asset_file_action, rename_asset, retry_asset, open_project, refresh_workspace, poll_workspace, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, preview_changes, apply_replacements, undo_replacements])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let background = window.state::<AppState>().preferences.lock().is_ok_and(|p| p.close_action == "background");

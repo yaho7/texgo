@@ -238,6 +238,27 @@ impl Workspace {
 
     pub fn project(&self) -> &Project { &self.scan.project }
 
+    /// Resolve only a source owned by this live workspace. This read-only path
+    /// check deliberately avoids scans, content reads and preview mutation.
+    pub fn asset_path(&self, image_id: &str, expected_main_file: &str) -> Result<PathBuf, String> {
+        let project = &self.scan.project;
+        if project.main_file != expected_main_file { return Err("项目已切换，请重新选择图片".into()); }
+        let main = Path::new(&project.main_file);
+        self.observation_root.validate_project(main)?;
+        let asset = project.images.iter().find(|asset| asset.id == image_id).ok_or("图片不属于当前项目")?;
+        if matches!(asset.status.as_str(), "missing" | "ambiguous") { return Err("图片路径尚未确定，请先修复引用".into()); }
+        let path = PathBuf::from(asset.path.as_ref().ok_or("图片路径尚未确定")?);
+        let root = Path::new(&project.root);
+        journal::safe_path(root, &path)?;
+        let canonical = path.canonicalize().map_err(|error| format!("无法定位图片：{error}"))?;
+        if canonical != path || !canonical.starts_with(root) || !fs::symlink_metadata(&canonical).map_err(|error| error.to_string())?.is_file() {
+            return Err("图片必须是当前项目内的普通文件".into());
+        }
+        self.observation_root.validate_project(main)?;
+        journal::safe_path(root, &canonical)?;
+        Ok(canonical)
+    }
+
     pub fn ignored(&self) -> &HashSet<String> { &self.ignored }
 
     pub fn ignore(&mut self, id: &str, ignored: bool) -> Result<(), String> {

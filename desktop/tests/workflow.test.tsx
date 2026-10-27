@@ -599,10 +599,11 @@ it("keeps automatic review queued behind the navigation drawer and resumes when 
   } finally { window.matchMedia = previous; }
 });
 
-it("keeps automatic review queued behind an open menu and resumes on portal removal", async () => {
+it.each(["more", "context"] as const)("keeps automatic review queued behind an open %s menu and resumes on portal removal", async (kind) => {
   const user = await openProject();
   await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
-  await user.click(screen.getByRole("button", { name: "更多操作" }));
+  if (kind === "more") await user.click(screen.getByRole("button", { name: "更多操作" }));
+  else fireEvent.contextMenu(screen.getByRole("button", { name: "预览 figures/alpha.png" }).closest("tr")!);
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 750)); });
   expect(screen.queryByRole("dialog", { name: "检查引用变更" })).not.toBeInTheDocument();
   await user.keyboard("{Escape}");

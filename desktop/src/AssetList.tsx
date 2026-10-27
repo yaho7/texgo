@@ -11,6 +11,9 @@ import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { assetActions } from "./assetActions";
+import type { AssetActionId } from "./assetActions";
+import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuGroup, ContextMenuItem, ContextMenuSeparator } from "@/components/ui/context-menu";
 import type { AssetStatus, ImageAsset, ImageResult } from "./types";
 import { formatBytes } from "./utils";
 import { motionDuration } from "./motion";
@@ -36,6 +39,8 @@ interface Props {
   renameRequest?: { id: string; token: number };
   convertibleIds?: Set<string>;
   onManualConvert?: (id: string) => void;
+  onReveal?: (id: string) => void;
+  onCopyPath?: (id: string) => void;
   onInspect?: (id: string) => void;
   onLocate?: (id: string) => void;
   total: number;
@@ -55,6 +60,8 @@ interface Props {
 
 export default function AssetList(props: Props) {
   const [rename, setRename] = useState<{ id: string; name: string; error: string | null; saving: boolean } | null>(null);
+  const latestProps = useRef(props); latestProps.current = props;
+  const currentRename = useRef(rename); currentRename.current = rename;
   const renameRef = useRef<HTMLInputElement>(null);
   const renameHandoff = useRef(false);
   const latestImages = useRef(props.allImages ?? props.images);
@@ -178,6 +185,37 @@ export default function AssetList(props: Props) {
     const animation = node.animate([{ opacity: .7 }, { opacity: 1 }], { duration: motionDuration("fast"), easing: "ease-out" });
     return () => animation.cancel();
   }, [props.filter]);
+  function actionsFor(asset: ImageAsset, isExiting = false) {
+    const current = latestProps.current;
+    const ignoreMode = asset.ignoreMode ?? (current.ignored?.has(asset.id) ? "session" : "none");
+    return assetActions({ asset, ignoreMode, ignored: ignoreMode !== "none", problem: current.problemIds.has(asset.id),
+      convertible: (current.convertibleIds ?? current.pendingIds).has(asset.id), blocked: current.busy || isExiting || Boolean(currentRename.current) || savingRename.current,
+      available: { details: true, rename: Boolean(current.onRename), inspect: Boolean(current.onInspect), locate: Boolean(current.onLocate), convert: Boolean(current.onManualConvert),
+        reveal: Boolean(current.onReveal), copyPath: Boolean(current.onCopyPath), restore: Boolean(current.onIgnore), ignoreSession: Boolean(current.onIgnore), ignorePermanent: Boolean(current.onIgnore) } });
+  }
+  function selectAction(id: string, action: AssetActionId) {
+    const current = latestProps.current;
+    const asset = (current.allImages ?? current.images).find((image) => image.id === id);
+    if (!asset || !current.images.some((image) => image.id === id) || !actionsFor(asset).some((item) => item.id === action && !item.disabled)) return;
+    if (action === "rename") beginRename(asset);
+    else if (action === "details") current.onActivate(id);
+    else if (action === "inspect") current.onInspect?.(id);
+    else if (action === "locate") current.onLocate?.(id);
+    else if (action === "convert") current.onManualConvert?.(id);
+    else if (action === "reveal") current.onReveal?.(id);
+    else if (action === "copyPath") current.onCopyPath?.(id);
+    else current.onIgnore?.(id, action === "restore" ? "none" : action === "ignoreSession" ? "session" : "permanent");
+  }
+  function menuItems(asset: ImageAsset, isExiting: boolean, context: boolean) {
+    const Group = context ? ContextMenuGroup : DropdownMenuGroup;
+    const Item = context ? ContextMenuItem : DropdownMenuItem;
+    const Divider = context ? ContextMenuSeparator : DropdownMenuSeparator;
+    const actions = actionsFor(asset, isExiting);
+    return (["file", "ignore"] as const).map((group, index) => <Group key={group}>
+      {index > 0 && actions.some((action) => action.group === group) && <Divider />}
+      {actions.filter((action) => action.group === group).map((action) => <Item key={action.id} disabled={action.disabled} onSelect={() => selectAction(asset.id, action.id)}>{action.label}</Item>)}
+    </Group>);
+  }
   return (
     <section className="asset-panel @container flex min-h-0 min-w-0 flex-1 flex-col bg-background" aria-label="项目图片">
       <header className="flex shrink-0 flex-col gap-3 px-4 py-3">
@@ -223,7 +261,12 @@ export default function AssetList(props: Props) {
               const filename = normalizedPath.slice(slash + 1);
               const folder = slash < 0 ? "." : normalizedPath.slice(0, slash);
               return (
-                <TableRow key={rowKeys.current.get(asset.id) ?? asset.id} data-state={props.activeId === asset.id ? "selected" : undefined} data-exiting={isExiting || undefined} aria-hidden={isExiting || undefined} data-disabled={Boolean(props.previewDisabled) || isExiting} data-highlight={renamedId === asset.id ? "success" : highlights[asset.id]} className="asset-row h-[60px]">
+                <ContextMenu key={rowKeys.current.get(asset.id) ?? asset.id}><ContextMenuTrigger asChild disabled={props.busy || isExiting || Boolean(rename)}><TableRow tabIndex={isExiting ? -1 : 0} aria-selected={props.activeId === asset.id} onKeyDown={(event) => {
+                  if ((event.key === "ContextMenu" || event.key === "F10" && event.shiftKey) && !props.busy && !isExiting && !rename) {
+                    event.preventDefault(); event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect();
+                    event.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: rect.left + 20, clientY: rect.top + rect.height / 2 }));
+                  }
+                }} data-state={props.activeId === asset.id ? "selected" : undefined} data-exiting={isExiting || undefined} aria-hidden={isExiting || undefined} data-disabled={Boolean(props.previewDisabled) || isExiting} data-highlight={renamedId === asset.id ? "success" : highlights[asset.id]} className="asset-row h-[60px]">
                   {props.selectionMode && <TableCell className="asset-selection-cell">
                     <label className="asset-selection-target"><Checkbox aria-label={`选择 ${asset.relativePath}`} checked={props.selected.has(asset.id)} disabled={props.busy || isExiting || !convertible.has(asset.id)} onCheckedChange={() => props.onSelect(asset.id)} /></label>
                   </TableCell>}
@@ -251,17 +294,9 @@ export default function AssetList(props: Props) {
                     <Badge key={label} className={updatable && !problem ? "status-badge update-badge" : "status-badge"} variant={ignored ? "secondary" : problem ? referenceProblem ? "warning" : "destructive" : converted ? "success" : "secondary"} title={ignored ? ignoreMode === "permanent" ? "始终忽略" : "仅本次忽略" : updatable ? "源图片或 SVG 依赖已变化，可重新转换" : result?.pdfPath ?? undefined}>
                       {converted && !problem && !ignored && <CircleCheck data-icon="inline-start" aria-hidden="true" />}{updatable && !problem && !ignored && <RefreshCw data-icon="inline-start" aria-hidden="true" />}{label}
                     </Badge>
-                    <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" className="asset-more" aria-label={`更多操作 ${asset.relativePath}`} disabled={props.busy || isExiting || Boolean(rename)}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" onCloseAutoFocus={(event) => { if (renameHandoff.current || renameRef.current) event.preventDefault(); }}><DropdownMenuGroup>
-                      {asset.canRename && props.onRename && <DropdownMenuItem onSelect={() => beginRename(asset)}>重命名</DropdownMenuItem>}
-                      {problem && <DropdownMenuItem onSelect={() => props.onInspect?.(asset.id)}>{["missing", "ambiguous"].includes(asset.status) ? "查看并修复" : "查看详情"}</DropdownMenuItem>}
-                      {["missing", "ambiguous"].includes(asset.status) && <DropdownMenuItem onSelect={() => props.onLocate?.(asset.id)}>定位文件</DropdownMenuItem>}
-                      {props.onManualConvert && convertible.has(asset.id) && <DropdownMenuItem onSelect={() => props.onManualConvert?.(asset.id)}>{ignored ? "手动转换一次" : "重新转换此图片"}</DropdownMenuItem>}
-                    </DropdownMenuGroup><DropdownMenuSeparator /><DropdownMenuGroup>
-                      {ignored ? <DropdownMenuItem onSelect={() => props.onIgnore?.(asset.id, "none")}>恢复处理</DropdownMenuItem> : <DropdownMenuItem onSelect={() => props.onIgnore?.(asset.id, "session")}>忽略本次</DropdownMenuItem>}
-                      {ignoreMode !== "permanent" && <DropdownMenuItem onSelect={() => props.onIgnore?.(asset.id, "permanent")}>始终忽略</DropdownMenuItem>}
-                    </DropdownMenuGroup></DropdownMenuContent></DropdownMenu>
+                    <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" className="asset-more" aria-label={`更多操作 ${asset.relativePath}`} disabled={props.busy || isExiting || Boolean(rename)}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" onCloseAutoFocus={(event) => { if (renameHandoff.current || renameRef.current) event.preventDefault(); }}>{menuItems(asset, isExiting, false)}</DropdownMenuContent></DropdownMenu>
                   </TableCell>
-                </TableRow>
+                </TableRow></ContextMenuTrigger><ContextMenuContent onCloseAutoFocus={(event) => { if (renameHandoff.current || renameRef.current) event.preventDefault(); }}>{menuItems(asset, isExiting, true)}</ContextMenuContent></ContextMenu>
               );
             })}
           </TableBody>

@@ -1,3 +1,4 @@
+import { useAssetFileActions } from "./hooks/useAssetFileActions";
 import { useTransientOverlay } from "./hooks/useTransientOverlay";
 import { useWorkspaceGuard } from "./hooks/useWorkspaceGuard";
 import { mayStartOperation } from "./state/businessDecision";
@@ -165,6 +166,8 @@ export default function App() {
     catch (reason) { if (isMounted() && (workspace.generation.current === generation || !projectRef.current)) setError(errorMessage(reason)); }
   }
 
+  const { revealAsset, copyAssetPath } = useAssetFileActions({ currentProject: () => projectRef.current, isBusy: () => Boolean(currentOperationKind()), captureWorkspace, execute, onNotice: setNotice });
+
   function clearAssetState() {
     selection.reset();
     conversion.reset();
@@ -283,7 +286,7 @@ export default function App() {
         }}>
           <div className="workspace-grid" hidden={view !== "assets"} data-view={view} style={layoutStyle}>
             <div className="workspace-library"><AssetList images={visibleImages} allImages={project.images} ignored={ignored} pendingIds={pendingIds} problemIds={problemIds} completedIds={completedIds}
-              selectionMode={selectionMode} renameRequest={renameRequest} onRename={renameAsset} convertibleIds={convertibleIds} onManualConvert={(id) => convert("reconvert", [id])} onIgnore={(id, value) => { void ignoreAsset(id, value); }} onInspect={inspectProblem} onLocate={locateRepair} total={project.status.totalImages} selected={selected} activeId={activeId} results={results}
+              onReveal={revealAsset} onCopyPath={copyAssetPath} selectionMode={selectionMode} renameRequest={renameRequest} onRename={renameAsset} convertibleIds={convertibleIds} onManualConvert={(id) => convert("reconvert", [id])} onIgnore={(id, value) => { void ignoreAsset(id, value); }} onInspect={inspectProblem} onLocate={locateRepair} total={project.status.totalImages} selected={selected} activeId={activeId} results={results}
               busy={busy} previewDisabled={busy && operation !== "converting"} search={search} filter={filter} onSearch={setSearch} onFilter={setFilter} onActivate={setActiveId}
               onSelect={(id) => { if (!busy) selection.toggleSelected(id); }}
               onSelectAll={(ids, select) => { if (!busy) selection.selectMany(ids, select); }} /></div>
