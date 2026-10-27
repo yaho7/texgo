@@ -1,6 +1,6 @@
 # Texgo 产品升级设计
 
-状态：待用户审阅；本文不是实现完成报告。
+状态：用户已批准按设计实施；本文不是实现完成报告。
 
 ## 范围与现状
 
@@ -37,9 +37,10 @@
 | TypeScript `tsc --noEmit` | 通过 |
 | Vitest `run` | 13 个文件、145 项通过 |
 | Node PDF test | 1 项通过 |
-| `cargo test` | 首次启动失败：shell 无 cargo；正在安装工具链 |
+| Rust headless `cargo test --locked --no-default-features --features automation` | 209 项通过 |
+| Rust desktop `cargo test --locked` | 197 项通过 |
 
-前三项直接使用 Codex 捆绑 Node 执行 package scripts 对应入口；初始 shell 无 npm。原有用户修改为 `desktop/scripts/review-ui.mjs` 与 `desktop/src/styles.css`，不得混入本次提交。
+前三项先使用 Codex 捆绑 Node 执行对应入口，随后安装 Node.js 22.23.4/npm 10.9.9 并通过实际 npm scripts 复核。Rust/Cargo 1.99.1 已安装；桌面测试按 CI 顺序先构建真实 sidecar 并从 app-icon.svg 生成图标。生成物均被 Git 忽略。基线存在一项已有 unused import warning（manifest.rs），没有测试失败。原有用户修改为 `desktop/scripts/review-ui.mjs` 与 `desktop/src/styles.css`，不得混入本次提交。基线不包含 Windows/Linux 实机验收。
 
 增加针对性测试：旧项目异步响应不能覆盖新项目；后台完成不能挤走前台审核；dialog 阻止应用快捷键；取消/失败后恢复可操作状态；rename 前后保留选择和 ignore；100/500/1000 图片列表分页保持 DOM 有界。
 

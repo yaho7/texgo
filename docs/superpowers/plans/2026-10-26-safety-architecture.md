@@ -14,10 +14,10 @@ The approved overall design is `docs/superpowers/specs/2026-10-26-product-upgrad
 
 - [x] Preserve pre-existing `desktop/src/styles.css` and `desktop/scripts/review-ui.mjs` changes.
 - [x] Run `npm run check`, `npm test`, `npm run test:pdf`; initial results: 145 frontend tests and one PDF test pass.
-- [ ] Run `cargo test --locked --no-default-features --features automation`.
-- [ ] Build the native sidecar with `cargo build --locked --no-default-features --features automation --bin texgo-engine`, stage it in ignored `binaries/texgo-engine-aarch64-apple-darwin`, then run `cargo test --locked`.
-- [ ] Record counts and platform limits in the design baseline. Desktop baseline initially requires the packaged sidecar; do not create a fake executable to bypass this requirement.
-- [ ] Independently review scanner/transaction/journal/rename/ignore/repair invariants and existing regression coverage before production edits.
+- [x] Run `cargo test --locked --no-default-features --features automation`: 209 passed.
+- [x] Build the native sidecar with `cargo build --locked --no-default-features --features automation --bin texgo-engine`, stage it in ignored `binaries/texgo-engine-aarch64-apple-darwin`, generate icons with `npm exec tauri icon app-icon.svg`, then run `cargo test --locked`: 197 passed.
+- [x] Record counts and platform limits in the design baseline. Desktop baseline initially requires the packaged sidecar; do not create a fake executable to bypass this requirement.
+- [x] Independently review scanner/transaction/journal/rename/ignore/repair invariants and existing regression coverage before production edits. Joint TeX/PDF preflight, original review snapshots, LIFO Undo, ignore identities, preview disposal and mounted list context are preserved boundaries.
 
 ## Unit 2: Domain ownership and operation arbitration
 
