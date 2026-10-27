@@ -5,6 +5,7 @@ import IconButton from "./IconButton";
 import type { RecentWorkspace } from "./recents";
 import { workspaceKey } from "./recents";
 import { fileName } from "./utils";
+import RecentProjectDetails from "./RecentProjectDetails";
 
 interface Props {
   busy: boolean;
@@ -33,7 +34,7 @@ export default function WorkspaceSidebar(props: Props) {
       {props.recents.length === 0 ? <p className="recent-empty">暂无最近项目</p> : <ul className="recent-list">{props.recents.map((entry) => {
         const key = workspaceKey(entry);
         return <li key={key} className="recent-item" data-active={props.activeKey === key}>
-          <Button variant="ghost" className="recent-open" disabled={props.busy} aria-label={`打开最近项目 ${entry.path}`} onClick={() => props.onRecent(entry)}><FileCode2 aria-hidden="true" /><span className="recent-copy"><strong>{fileName(entry.path)}</strong><span title={entry.path}>{entry.path}</span>{props.failedRecent === key && <span className="text-destructive">无法打开，请重新选择</span>}</span></Button>
+          <Button variant="ghost" className="recent-open" disabled={props.busy} aria-label={`打开最近项目 ${entry.path}`} onClick={() => props.onRecent(entry)}><FileCode2 aria-hidden="true" /><RecentProjectDetails entry={entry} failed={props.failedRecent === key} /></Button>
           <IconButton label={`移除最近记录 ${entry.path}`} size="icon-sm" disabled={props.busy} onClick={() => props.onRemove(entry)}><X aria-hidden="true" /></IconButton>
         </li>;
       })}</ul>}

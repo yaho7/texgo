@@ -23,6 +23,8 @@ import AssetPreview from "./AssetPreview";
 import CommandBar from "./CommandBar";
 import ConversionHistory from "./ConversionHistory";
 import Home from "./Home";
+import ProjectHealth from "./ProjectHealth";
+import "./overview.css";
 import WorkspaceSidebar from "./WorkspaceSidebar";
 import SettingsPage from "./SettingsPage";
 import { defaultPreferences } from "./preferences";
@@ -274,6 +276,7 @@ export default function App() {
           const entry = history.find((item) => item.canUndo); if (entry) { rememberFocus(); reviewFlow.requestUndo(entry); } else if (project?.undoAvailable) replace(true);
         }} /></div>
       </header>
+      {project && !settingsPage && <ProjectHealth status={project.status} />}
       {error && !review && !undoEntry && !problemId && <Alert variant="destructive" role="alert" className="workbench-alert"><TriangleAlert aria-hidden="true" /><AlertTitle>操作未完成</AlertTitle><AlertDescription className="flex items-start justify-between gap-4"><span>{error}</span><IconButton label="关闭错误提示" onClick={() => setError(null)}><X aria-hidden="true" /></IconButton></AlertDescription></Alert>}
       {project?.status.blockingReason && <Alert variant="destructive" role="alert" className="workbench-alert"><TriangleAlert aria-hidden="true" /><AlertTitle>需要先解决安全问题</AlertTitle><AlertDescription>{project.status.blockingReason}</AlertDescription></Alert>}
       {settingsPage && <div className="page-enter settings-view"><SettingsPage value={preferences} onSaved={(next) => { preferencesRef.current = next; setPreferences(next); }} onClose={() => setSettingsPage(false)} /></div>}

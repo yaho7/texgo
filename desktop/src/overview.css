@@ -1,0 +1,12 @@
+/* Home and the shared recent-project rows use the existing neutral surfaces. */
+.home-purpose { max-width: 34em; margin: 0; color: var(--muted-foreground); font-size: 13px; line-height: 1.7; }
+.recent-copy > .recent-time { color: var(--muted-foreground); font-size: 11px; font-weight: 400; }
+.project-health { flex-shrink: 0; border-bottom: 1px solid var(--border); padding: 0 20px 12px; }
+.project-health dl { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 0; }
+.project-health dl > div { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
+.project-health dt { color: var(--muted-foreground); font-size: 12px; }
+.project-health dd { margin: 0; font-size: 12px; font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) {
+  .project-health { padding: 0 12px 10px; }
+  .project-health dl { gap: 8px 16px; }
+}

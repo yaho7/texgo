@@ -102,6 +102,18 @@ async function convertAndReview(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("LaTeX 项目唯一工作流", () => {
+  it("keeps project health tied to the backend snapshot across image filters and refreshes", async () => {
+    backend.status = { ...backend.status, totalImages: 17, pendingImages: 7, problemCount: 4, pendingReferences: 3 };
+    const user = await openProject();
+    const summary = screen.getByRole("region", { name: "项目状态" });
+    const counts = () => within(summary).getAllByRole("definition").map((item) => item.textContent);
+    expect(counts()).toEqual(["17", "7", "4", "3"]);
+    await user.type(screen.getByRole("searchbox", { name: "搜索图片" }), "alpha");
+    expect(counts()).toEqual(["17", "7", "4", "3"]);
+    backend.status = { ...backend.status, totalImages: 20, pendingImages: 0, problemCount: 0, pendingReferences: 0 };
+    await menu(user, "重新扫描");
+    await waitFor(() => expect(counts()).toEqual(["20", "0", "0", "0"]));
+  });
   it("has no standalone image-directory entry, Home navigation or default checkboxes", async () => {
     const user = await openProject();
     expect(screen.queryByRole("button", { name: /批量转换|图片目录|返回首页|主页/ })).not.toBeInTheDocument();

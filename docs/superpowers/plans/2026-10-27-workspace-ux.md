@@ -38,4 +38,10 @@ commit before the next implementation starts. Preserve pre-existing styles/revie
   automatic-review focus gate. Browser fixture verified the actual Finder/copy menu.
   Resolver and fake OS-port tests cover the native boundary without opening Finder or
   changing the user's clipboard. Platform-installed behavior still needs native QA.
-- [ ] Home/health/accessibility reviewed, verified and committed.
+- [x] Home/health/accessibility reviewed and verified: TypeScript, 251 frontend tests,
+  PDF test and production build passed. Both reviews approved. Browser fixture confirmed
+  the Home copy, recent directories/times and compact four-count health row. Counts remain
+  tied to the backend snapshot across filters and refresh. Shared dialog close labels are
+  Chinese and decorative close icons are hidden from accessibility. Phase 4's native
+  changes passed 245 desktop and 254 headless tests in the preceding unit; this unit changes
+  only frontend presentation. Main chunk is 508.51 kB; the standard warning remains visible.

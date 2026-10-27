@@ -6,6 +6,7 @@ import ConversionHistory from "../src/ConversionHistory";
 import Home from "../src/Home";
 import WorkspaceSidebar from "../src/WorkspaceSidebar";
 import WorkbenchMenu from "../src/WorkbenchMenu";
+import { TooltipProvider } from "../src/components/ui/tooltip";
 import type { ConversionHistoryEntry, ImageAsset } from "../src/types";
 
 const pending: ImageAsset = { id: "pending", path: "/paper/plot.png", relativePath: "plot.png", format: "png", width: 2400, height: 1600, bytes: 100, status: "ready", message: null, references: [] };
@@ -21,6 +22,30 @@ it("exposes a single LaTeX opening flow and recent projects", async () => {
   expect(screen.getByText("拖入 main.tex 开始")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "打开 LaTeX 项目" })); expect(open).toHaveBeenCalledOnce();
   await user.click(screen.getByRole("button", { name: /main.tex/ })); expect(recent).toHaveBeenCalledWith({ path: "/paper/main.tex", openedAt: 1 });
+});
+
+it("keeps native recent paths and opening times readable while busy", () => {
+  const entry = { path: "C:\\papers\\main.tex", openedAt: Date.now() - 5 * 60_000 };
+  const view = render(<Home busy onOpenTex={vi.fn()} recents={[entry]} onRecent={vi.fn()} />);
+  expect(screen.getByText("C:\\papers")).toBeInTheDocument();
+  expect(screen.getByText("main.tex")).toBeInTheDocument();
+  const time = view.container.querySelector("time")!;
+  expect(time).toHaveAttribute("datetime", new Date(entry.openedAt).toISOString());
+  expect(time).toHaveAttribute("title", new Date(entry.openedAt).toISOString());
+  expect(screen.getAllByRole("button").every((button) => button.hasAttribute("disabled"))).toBe(true);
+  view.rerender(<Home busy={false} onOpenTex={vi.fn()} recents={[{ ...entry, openedAt: NaN }]} onRecent={vi.fn()} />);
+  expect(view.container.querySelector("time")).toBeNull();
+  expect(screen.getByText("时间未知")).toBeInTheDocument();
+});
+
+it("preserves removal of a failed recent project after shared formatting", async () => {
+  const entry = { path: "/main.tex", openedAt: 1 };
+  const remove = vi.fn(); const open = vi.fn(); const user = userEvent.setup();
+  render(<TooltipProvider><WorkspaceSidebar busy={false} activeKey={null} projectPath={null} view="assets" recents={[entry]} failedRecent="tex:/main.tex" onView={vi.fn()} onSettings={vi.fn()} onOpenTex={vi.fn()} onRecent={open} onRemove={remove} /></TooltipProvider>);
+  expect(screen.getByText("/")).toBeInTheDocument();
+  expect(screen.getByText("无法打开，请重新选择")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "移除最近记录 /main.tex" }));
+  expect(remove).toHaveBeenCalledWith(entry); expect(open).not.toHaveBeenCalled();
 });
 
 it("only exposes checkboxes inside temporary selection mode and selects pending images", async () => {
