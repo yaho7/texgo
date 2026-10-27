@@ -24,6 +24,11 @@ commit before the next implementation starts. Preserve pre-existing styles/revie
   production build passed. Specification and quality reviews approved after adding menu
   lifecycle regressions for busy/conversion/completion/selection transitions. Scoped commit
   includes this plan and the Phase 3 commit record.
-- [ ] Three-mode preview reviewed, verified and committed.
+- [x] Three-mode preview reviewed and verified: TypeScript, 219 frontend tests, PDF test
+  and production build passed. Both independent reviews approved. Native PDF keeps its own
+  viewer; raster 100% uses source metadata and existing bounded preview pixels. A browser
+  fixture confirmed matching 1024 × 1024 source/PDF frames. Unknown-size loading/failure
+  retains the prior bitmap; explicit zoom centers the view and refresh preserves pan.
+  The 500.07 kB main chunk emits Vite's standard size warning; the limit was not raised.
 - [ ] Asset actions reviewed, verified and committed.
 - [ ] Home/health/accessibility reviewed, verified and committed.

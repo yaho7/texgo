@@ -1,0 +1,7 @@
+/* One artboard keeps the source and PDF aligned while scrolling at native size. */
+.preview-panel .preview-surface { display: block; overflow: auto; }
+.preview-artboard { position: relative; min-width: 100%; min-height: 100%; }
+.preview-scale-controls { display: flex; justify-content: flex-end; padding: 0 20px 8px; }
+/* Wait for intrinsic dimensions before exposing a bitmap with unknown metadata. */
+.comparison-frame[data-native-known="false"] .preview-content-frame[data-stale="false"] .image-stage img { visibility: hidden; }
+.preview-panel .preview-surface > [data-slot="empty"] { min-height: 100%; }

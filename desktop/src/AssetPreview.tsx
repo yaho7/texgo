@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { FileImage, TriangleAlert, MoreHorizontal } from "lucide-react";
 import type { AssetPreviewData, ImageAsset, ImageResult } from "./types";
@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import "./inspector-settings.css";
+import "./preview.css";
 
 function PdfUnavailable({ onError }: { onError?: (message: string) => void }) {
   useEffect(() => { onError?.("PDF 预览组件加载失败，请更新系统浏览器组件并重启应用"); }, []);
@@ -35,7 +36,7 @@ interface Props {
 }
 interface PreviewResponse { key: string; preview: AssetPreviewData; label: string; width: number; height: number }
 
-function PreviewContent({ asset, converted, revision, pdfPath, overlay = false }: { asset: ImageAsset; converted: boolean; revision: number; pdfPath?: string | null; overlay?: boolean }) {
+function PreviewContent({ asset, converted, revision, pdfPath, overlay = false, onNaturalSize }: { asset: ImageAsset; converted: boolean; revision: number; pdfPath?: string | null; overlay?: boolean; onNaturalSize?: (width: number, height: number) => void }) {
   const requestKey = JSON.stringify([asset.id, asset.path, converted, revision, pdfPath]);
   const [response, setResponse] = useState<PreviewResponse | null>(null);
   const [previous, setPrevious] = useState<PreviewResponse | null>(null);
@@ -63,13 +64,23 @@ function PreviewContent({ asset, converted, revision, pdfPath, overlay = false }
     return () => { disposed = true; };
   }, [asset.id, asset.path, asset.relativePath, asset.width, asset.height, converted, pdfPath, requestKey]);
 
-  function markReady(key: string) {
+  function markReady(key: string, dimensions?: { width: number; height: number }) {
     if (key !== currentKey.current || displayed.current?.key !== key) return;
-    readyResponse.current = displayed.current; setReadyKey(key); setPrevious(null);
+    const ready = dimensions ? { ...displayed.current, ...dimensions } : displayed.current;
+    displayed.current = ready;
+    readyResponse.current = ready;
+    if (dimensions) setResponse(ready);
+    setReadyKey(key); setPrevious(null);
   }
   function content(item: PreviewResponse, pending: boolean) {
     if (item.preview.kind === "pdf") return <Suspense fallback={null}><PdfPreview overlay={overlay} data={item.preview.data} label={item.label} onReady={() => markReady(item.key)} onError={(message) => { if (item.key === currentKey.current) setError({ key: item.key, message }); }} /></Suspense>;
-    return <div className="image-stage"><img src={item.preview.data} width={item.width} height={item.height} alt={`${pending ? "原始：" : "上一张："}${item.label}`} onLoad={() => markReady(item.key)} onError={() => { if (item.key === currentKey.current) setError({ key: item.key, message: "图片无法显示，请重新扫描后重试" }); }} /></div>;
+    return <div className="image-stage"><img src={item.preview.data} width={item.width} height={item.height} alt={`${pending ? "原始：" : "上一张："}${item.label}`} style={item.key !== currentKey.current ? { maxWidth: item.width, maxHeight: item.height, objectFit: "contain" } : undefined} onLoad={(event) => {
+      const { naturalWidth, naturalHeight } = event.currentTarget;
+      if (item.key === currentKey.current && naturalWidth && naturalHeight) {
+        onNaturalSize?.(naturalWidth, naturalHeight);
+        markReady(item.key, { width: asset.width ?? naturalWidth, height: asset.height ?? naturalHeight });
+      } else markReady(item.key);
+    }} onError={() => { if (item.key === currentKey.current) setError({ key: item.key, message: "图片无法显示，请重新扫描后重试" }); }} /></div>;
   }
   const current = response?.key === requestKey;
   const loaded = current && readyKey === requestKey;
@@ -90,9 +101,12 @@ export default function AssetPreview({ asset, result, revision, busy = false, ig
   const ignoreMode = asset?.ignoreMode ?? (ignored ? "session" : "none");
   ignored = ignoreMode !== "none";
   const [mode, setMode] = useState("original");
+  const [scale, setScale] = useState("fit");
   const unavailable = !asset?.path || ["missing", "ambiguous", "unsupported"].includes(asset.status);
   const hasConverted = Boolean(asset && !unavailable && result?.id === asset.id && result.pdfPath && !result.error && !result.cancelled);
-  const compare = mode === "compare" && hasConverted;
+  const visibleMode = hasConverted ? mode : "original";
+  const compare = visibleMode === "compare";
+  const showPdf = visibleMode !== "original";
   const sourceBytes = asset?.bytes;
   const pdfBytes = result?.bytes;
   const saving = hasConverted && sourceBytes != null && sourceBytes > 0 && pdfBytes != null ? (1 - pdfBytes / sourceBytes) * 100 : null;
@@ -101,10 +115,24 @@ export default function AssetPreview({ asset, result, revision, busy = false, ig
   const [resetting, setResetting] = useState(false);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const surface = useRef<HTMLDivElement>(null);
+  const artboard = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 480, height: 240 });
-  const [naturalAspect, setNaturalAspect] = useState(1.6);
-  const aspect = asset?.width && asset.height ? asset.width / asset.height : naturalAspect;
-  const width = Math.max(1, Math.min(size.width - 28, (size.height - 28) * aspect));
+  const sourceKey = JSON.stringify([asset?.id, asset?.path]);
+  const [natural, setNatural] = useState<{ key: string; width: number; height: number } | null>(null);
+  const dimensions = asset?.width && asset.height ? { width: asset.width, height: asset.height } : natural?.key === sourceKey ? natural : null;
+  const sourcePdf = asset?.format.toLowerCase() === "pdf" || asset?.status === "pdf";
+  const availableWidth = Math.max(1, size.width - 28);
+  const availableHeight = Math.max(1, size.height - 28);
+  const nativeWidth = dimensions?.width ?? availableWidth;
+  const aspect = dimensions ? dimensions.width / dimensions.height : availableWidth / availableHeight;
+  const width = sourcePdf ? size.width : scale === "actual" ? nativeWidth : Math.max(1, Math.min(nativeWidth, availableWidth, availableHeight * aspect));
+  const height = sourcePdf ? size.height : dimensions ? width / aspect : availableHeight;
+  useLayoutEffect(() => {
+    const element = surface.current;
+    if (!element) return;
+    element.scrollLeft = scale === "actual" ? Math.max(0, element.scrollWidth - element.clientWidth) / 2 : 0;
+    element.scrollTop = scale === "actual" ? Math.max(0, element.scrollHeight - element.clientHeight) / 2 : 0;
+  }, [scale]);
   useEffect(() => () => { if (resetTimer.current) clearTimeout(resetTimer.current); }, []);
   useEffect(() => {
     const element = surface.current;
@@ -120,8 +148,8 @@ export default function AssetPreview({ asset, result, revision, busy = false, ig
     if (!hasConverted || event.defaultPrevented || event.repeat || event.nativeEvent.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
     const target = event.target as HTMLElement;
     if (target.closest('input, textarea, select, button, a, [contenteditable], [role="dialog"], [role="menu"]')) return;
-    if (event.key === " " && !event.shiftKey) { event.preventDefault(); setMode(compare ? "original" : "compare"); }
-    else if (compare && ["ArrowLeft", "ArrowRight", "0", "Escape"].includes(event.key)) {
+    if (event.key === " " && !event.shiftKey) { event.preventDefault(); setMode(visibleMode === "original" ? "pdf" : visibleMode === "pdf" ? "compare" : "original"); }
+    else if ((compare || event.key === "Escape" && showPdf) && ["ArrowLeft", "ArrowRight", "0", "Escape"].includes(event.key)) {
       event.preventDefault(); event.stopPropagation();
       if (event.key === "Escape") setMode("original");
       else if (event.key === "0") resetDivider();
@@ -129,7 +157,7 @@ export default function AssetPreview({ asset, result, revision, busy = false, ig
     }
   }
   function moveDivider(event: React.PointerEvent<HTMLElement>) {
-    const bounds = surface.current?.getBoundingClientRect();
+    const bounds = artboard.current?.getBoundingClientRect();
     if (bounds?.width) setDivider(Math.max(0, Math.min(100, (event.clientX - bounds.left) / bounds.width * 100)));
   }
   const problem = Boolean(asset && (["missing", "ambiguous", "unsupported"].includes(asset.status) || result?.error || statusLabel === "需要处理"));
@@ -139,25 +167,30 @@ export default function AssetPreview({ asset, result, revision, busy = false, ig
     <div className="preview-heading">
       <div className="preview-heading-copy"><h2>图片预览</h2><div className="preview-filename" title={asset?.path ?? ""}>{asset?.relativePath ?? "未选择图片"}</div></div>
       {asset && onManualConvert && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="当前图片操作" disabled={busy}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuGroup><DropdownMenuItem disabled={!canConvert} onSelect={() => onManualConvert(asset.id)}>{ignored ? "手动转换一次" : "重新转换此图片"}</DropdownMenuItem></DropdownMenuGroup></DropdownMenuContent></DropdownMenu>}
-      <ToggleGroup type="single" value={compare ? "compare" : "original"} onValueChange={(value) => { if (value) setMode(value); }} variant="outline" size="sm" aria-label="预览版本">
-        <ToggleGroupItem value="original" disabled={!asset}>原图</ToggleGroupItem><ToggleGroupItem value="compare" disabled={!hasConverted}>对比</ToggleGroupItem>
+      <ToggleGroup type="single" value={visibleMode} onValueChange={(value) => { if (value) setMode(value); }} variant="outline" size="sm" aria-label="预览版本">
+        <ToggleGroupItem value="original" disabled={!asset}>原图</ToggleGroupItem><ToggleGroupItem value="pdf" disabled={!hasConverted}>PDF</ToggleGroupItem><ToggleGroupItem value="compare" disabled={!hasConverted}>对比</ToggleGroupItem>
       </ToggleGroup>
     </div>
-    <div ref={surface} className="preview-surface" data-dragging={dragging} data-resetting={resetting} onPointerDown={(event) => { if (!(event.target as HTMLElement).closest('button, input, [role="slider"]')) event.currentTarget.closest<HTMLElement>(".preview-panel")?.focus(); }}>
+    {!sourcePdf && <div className="preview-scale-controls"><ToggleGroup type="single" value={scale} onValueChange={(value) => { if (value) setScale(value); }} variant="outline" size="sm" aria-label="预览缩放">
+      <ToggleGroupItem value="fit" disabled={unavailable}>适应窗口</ToggleGroupItem><ToggleGroupItem value="actual" disabled={unavailable}>100%</ToggleGroupItem>
+    </ToggleGroup></div>}
+    <div ref={surface} className="preview-surface" data-scale={scale} data-dragging={dragging} data-resetting={resetting} onPointerDown={(event) => { if (!(event.target as HTMLElement).closest('button, input, [role="slider"]')) event.currentTarget.closest<HTMLElement>(".preview-panel")?.focus(); }}>
       {unavailable ? <Empty><EmptyHeader><EmptyMedia variant="icon"><FileImage aria-hidden="true" /></EmptyMedia><EmptyTitle>{asset ? asset.status === "missing" ? "文件缺失" : asset.status === "ambiguous" ? "找到多个候选文件" : "此图片暂不可预览" : "选择图片查看预览"}</EmptyTitle></EmptyHeader></Empty> : <>
-        <div className="comparison-frame" style={{ width, height: width / aspect }} onLoadCapture={(event) => { const img = event.target; if (img instanceof HTMLImageElement && img.naturalWidth && img.naturalHeight) setNaturalAspect(img.naturalWidth / img.naturalHeight); }}>
-          <section className="comparison-layer" aria-label="原图预览"><PreviewContent asset={asset!} converted={false} revision={revision} /></section>
+        <div ref={artboard} className="preview-artboard" style={{ width: sourcePdf ? size.width : Math.max(size.width, width + 28), height: sourcePdf ? size.height : Math.max(size.height, height + 28) }}>
+        <div className="comparison-frame" data-native-known={sourcePdf || Boolean(dimensions)} style={{ width, height, visibility: visibleMode === "pdf" ? "hidden" : undefined }}>
+          <section className="comparison-layer" aria-label="原图预览"><PreviewContent asset={asset!} converted={false} revision={revision} onNaturalSize={(width, height) => setNatural({ key: sourceKey, width, height })} /></section>
         </div>
+        {showPdf && <div className="comparison-clip" style={{ clipPath: compare ? `inset(0 0 0 ${divider}%)` : undefined }}>
+          <div className="comparison-frame" style={{ width, height }}><section className="comparison-layer" aria-label={compare ? "PDF 对比预览" : "PDF 预览"}><PreviewContent asset={asset!} converted revision={revision} pdfPath={result?.pdfPath} overlay /></section></div>
+        </div>}
         {compare && <>
-          <div className="comparison-clip" style={{ clipPath: `inset(0 0 0 ${divider}%)` }}>
-            <div className="comparison-frame" style={{ width, height: width / aspect }}><section className="comparison-layer" aria-label="PDF 对比预览"><PreviewContent asset={asset!} converted revision={revision} pdfPath={result?.pdfPath} overlay /></section></div>
-          </div>
           <span className="comparison-label comparison-label-left">原图</span><span className="comparison-label comparison-label-right">PDF</span>
           <div role="slider" tabIndex={0} aria-label="原图与 PDF 分隔线" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(divider)} aria-valuetext={`原图 ${Math.round(divider)}%，PDF ${100 - Math.round(divider)}%`} aria-orientation="horizontal" className="comparison-divider" style={{ left: `${divider}%` }}
             onDoubleClick={resetDivider} onPointerDown={(event) => { event.preventDefault(); setResetting(false); setDragging(true); event.currentTarget.focus(); event.currentTarget.setPointerCapture?.(event.pointerId); moveDivider(event); }}
             onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture?.(event.pointerId)) moveDivider(event); }}
             onPointerUp={(event) => { setDragging(false); event.currentTarget.releasePointerCapture?.(event.pointerId); }} onPointerCancel={() => setDragging(false)} onLostPointerCapture={() => setDragging(false)}><span aria-hidden="true">‹ ›</span></div>
         </>}
+        </div>
       </>}
     </div>
     <div className="preview-metadata">

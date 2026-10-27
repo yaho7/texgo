@@ -67,3 +67,15 @@ it("reports render failure to the retaining inspector", async () => {
   render(<TooltipProvider><PdfPreview data="cGRm" label="plot.pdf" onError={failed} /></TooltipProvider>);
   await waitFor(() => expect(failed).toHaveBeenCalledWith("PDF render failed"));
 });
+
+
+it("renders an overlay in the shared frame without adding standalone zoom controls", async () => {
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1200);
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(720);
+  const ready = vi.fn();
+  const { container } = render(<PdfPreview data="cGRm" label="plot.pdf" overlay onReady={ready} />);
+  await waitFor(() => expect(ready).toHaveBeenCalled());
+  expect(screen.queryByRole("group", { name: "PDF 预览工具" })).not.toBeInTheDocument();
+  expect(container.querySelector("canvas")).toHaveStyle({ width: "100%", height: "100%" });
+  expect(pdf.render).toHaveBeenLastCalledWith(expect.objectContaining({ viewport: { width: 1200, height: 720 } }));
+});
