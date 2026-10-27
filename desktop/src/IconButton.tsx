@@ -1,6 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Button } from "@/controls/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/controls/tooltip";
 
 type Props = Omit<ComponentProps<typeof Button>, "children"> & { label: string; children: ReactNode };
 

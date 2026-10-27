@@ -1,6 +1,6 @@
 import { FileCode2, Plus, Images, History, X, Settings } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import { Button } from "@/controls/button";
+import { Separator } from "@/controls/separator";
 import IconButton from "./IconButton";
 import type { RecentWorkspace } from "./recents";
 import { workspaceKey } from "./recents";

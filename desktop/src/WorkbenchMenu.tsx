@@ -1,6 +1,6 @@
 import { Download, FolderOpen, X, MoreHorizontal, RefreshCw, Undo2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Button } from "@/controls/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "@/controls/dropdown-menu";
 
 interface Props { busy: boolean; hasProject: boolean; canUndo: boolean; onOpen: () => void; onClose: () => void; onRefresh: () => void; onUndo: () => void; onUpdate: () => void; }
 export default function WorkbenchMenu(props: Props) {

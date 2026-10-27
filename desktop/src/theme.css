@@ -28,23 +28,23 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #20252c;
   --card: #ffffff;
-  --card-foreground: #171717;
+  --card-foreground: #20252c;
   --popover: #ffffff;
-  --popover-foreground: #171717;
-  --primary: #171717;
-  --primary-foreground: #fafafa;
-  --secondary: #f5f5f5;
-  --secondary-foreground: #262626;
-  --muted: #f5f5f5;
-  --muted-foreground: #737373;
-  --accent: #f0f0f0;
-  --accent-foreground: #171717;
+  --popover-foreground: #20252c;
+  --primary: #0b6fe8;
+  --primary-foreground: #ffffff;
+  --secondary: #f5f6f8;
+  --secondary-foreground: #20252c;
+  --muted: #f5f6f8;
+  --muted-foreground: #65707e;
+  --accent: #eceef1;
+  --accent-foreground: #20252c;
   --destructive: #dc2626;
-  --border: #e5e5e5;
-  --input: #e5e5e5;
-  --ring: #a3a3a3;
+  --border: #dfe3e8;
+  --input: #dfe3e8;
+  --ring: #147bf5;
   --radius: 0.5rem;
   --motion-fast: 120ms;
   --motion-normal: 180ms;

@@ -1,11 +1,11 @@
 import { useRef, useState } from "react";
 import { ArrowRight, FileWarning, LoaderCircle, X } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription } from "@/controls/alert";
+import { Badge } from "@/controls/badge";
+import { Button } from "@/controls/button";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/controls/dialog";
+import { Empty, EmptyHeader, EmptyTitle } from "@/controls/empty";
+import { Separator } from "@/controls/separator";
 import type { ChangePreview } from "./types";
 import { relativeFile } from "./utils";
 

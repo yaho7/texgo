@@ -6,7 +6,7 @@ import ConversionHistory from "../src/ConversionHistory";
 import Home from "../src/Home";
 import WorkspaceSidebar from "../src/WorkspaceSidebar";
 import WorkbenchMenu from "../src/WorkbenchMenu";
-import { TooltipProvider } from "../src/components/ui/tooltip";
+import { TooltipProvider } from "../src/controls/tooltip";
 import type { ConversionHistoryEntry, ImageAsset } from "../src/types";
 
 const pending: ImageAsset = { id: "pending", path: "/paper/plot.png", relativePath: "plot.png", format: "png", width: 2400, height: 1600, bytes: 100, status: "ready", message: null, references: [] };

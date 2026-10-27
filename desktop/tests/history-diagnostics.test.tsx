@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import ConversionHistory from "../src/ConversionHistory";
-import { TooltipProvider } from "../src/components/ui/tooltip";
+import { TooltipProvider } from "../src/controls/tooltip";
 import ErrorNotice from "../src/ErrorNotice";
 import { historyCalendarDay } from "../src/historyPresentation";
 import { errorMessage } from "../src/utils";

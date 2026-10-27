@@ -1,5 +1,5 @@
 import { FileCode2, FolderOpen, LoaderCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/controls/button";
 import type { RecentWorkspace } from "./recents";
 import RecentProjectDetails from "./RecentProjectDetails";
 

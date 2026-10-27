@@ -116,6 +116,14 @@ Desktop 无法可靠获知第三方编辑器的 dirty buffer。Review Dialog 底
 
 ## Phase 7：Updater / Release
 
+### 2026-10-28 补充：先完成 Tailwind UI 重绘
+
+按用户最新指示，移除 shadcn 组件层，使用 Tailwind 重绘完整界面。以用户附图的
+浅灰侧栏、蓝色选中行、紧凑文件列表和独立预览区为风格参考，按 Texgo 实际工作流
+调整布局，不复制不合理的重复主操作或无实际功能的控件。保留所有后台只读、引用
+Pending Review、完整文件 fingerprint、外部编辑器保存提醒与事务/Undo 边界。
+该新增单元在 Phase 6 之后、Updater / Release 之前执行。
+
 使用 Tauri signed updater：公钥固定到应用配置，私钥仅放 CI Secret，不存仓库或日志。签名或 feed 不可用时安全失败，不能退化成下载后直接执行。下载/安装/重启为明确用户动作；有文件操作或审核时不重启。
 
 main：测试、构建、打包、上传 artifacts，不创建 Latest。`desktop-v<version>-beta.N`：pre-release；`desktop-v<version>`：稳定 Latest。发布前 tag 与 package/Cargo/Tauri 版本必须一致。

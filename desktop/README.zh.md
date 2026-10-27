@@ -62,7 +62,7 @@ macOS 引擎路径为 `/Applications/Texgo.app/Contents/MacOS/texgo-engine`；Wi
 
 VS Code 示例包含普通构建和后台监听任务；其他编辑器或插件可使用同样的接口。编译功能依赖本机已安装的 `latexmk` 和对应 LaTeX 引擎。图片处理不需要安装 TeX。
 
-工作台使用 shadcn/ui、Radix 和 Tailwind CSS：侧栏承担项目导航，中央展示图片或操作记录，右侧 Inspector 属于当前图片，底部提供唯一推荐操作。最近打开和每个工作区的转换设置保存在本机应用存储中，不上传文件内容。
+工作台使用自有 Tailwind CSS 控件，弹层、菜单和选择控件由 Radix 提供无障碍交互：侧栏承担项目导航，中央展示图片或操作记录，右侧 Inspector 属于当前图片，底部提供唯一推荐操作。最近打开和每个工作区的转换设置保存在本机应用存储中，不上传文件内容。
 
 接口文档见 [api.md](../docs/api.md)，项目配置定义见 [project.schema.json](../docs/project.schema.json)，VS Code 示例见 [examples/vscode](../examples/vscode)。
 

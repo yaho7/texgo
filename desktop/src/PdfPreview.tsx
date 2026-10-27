@@ -5,7 +5,7 @@ import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist/legacy/build/pdf.m
 import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import { errorMessage } from "./utils";
 import IconButton from "./IconButton";
-import { Separator } from "@/components/ui/separator";
+import { Separator } from "@/controls/separator";
 import "./inspector-settings.css";
 
 GlobalWorkerOptions.workerSrc = workerUrl;

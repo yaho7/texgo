@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { History, RotateCcw } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Badge } from "@/controls/badge";
+import { Button } from "@/controls/button";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/controls/empty";
 import type { ConversionHistoryEntry } from "./types";
 
 import { historyCalendarDay, historyTime, renameEffects } from "./historyPresentation";

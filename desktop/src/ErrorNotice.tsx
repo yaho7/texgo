@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { TriangleAlert, X } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/controls/alert";
 import IconButton from "./IconButton";
 import "./history-diagnostics.css";
 

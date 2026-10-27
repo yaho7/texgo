@@ -1,10 +1,10 @@
 import { useId, useState } from "react";
 import { ArrowRight, EyeOff, FileSearch, FileWarning, LoaderCircle, X } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
-import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription } from "@/controls/alert";
+import { Button } from "@/controls/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/controls/dialog";
+import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/controls/field";
+import { Separator } from "@/controls/separator";
 import type { ImageAsset } from "./types";
 import { relativeFile } from "./utils";
 

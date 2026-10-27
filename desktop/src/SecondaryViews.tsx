@@ -1,7 +1,7 @@
 import { Component, lazy, Suspense, useState } from "react";
 import type { ComponentProps, ReactNode } from "react";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/controls/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/controls/dialog";
 import type SettingsPage from "./SettingsPage";
 import type ConversionHistory from "./ConversionHistory";
 import type ApplicationUpdate from "./ApplicationUpdate";

@@ -1,6 +1,6 @@
 # Texgo Desktop
 
-Tauri 2 + Rust + React + shadcn/ui. Texgo maintains images referenced by a LaTeX project. Open or drop the main `.tex` file; the sidebar is the only main navigation.
+Tauri 2 + Rust + React + Tailwind CSS, with application-owned controls and Radix accessibility primitives. Texgo maintains images referenced by a LaTeX project. Open or drop the main `.tex` file; the sidebar is the only main navigation.
 
 Rust publishes one `WorkspaceStatus` snapshot for the GUI, Smart Convert, tray and notifications. The next action is reference review, image updates, problem resolution, or up to date, in that order. The bottom command bar is the only primary action area. Updates include all pending images by default; temporary selection mode supports partial updates.
 

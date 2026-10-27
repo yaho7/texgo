@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
-import { TooltipProvider } from "../src/components/ui/tooltip";
+import { TooltipProvider } from "../src/controls/tooltip";
 import PdfPreview from "../src/PdfPreview";
 
 const pdf = vi.hoisted(() => ({
