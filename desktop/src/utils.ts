@@ -20,5 +20,5 @@ export function formatBytes(bytes: number | null): string {
 
 export function errorMessage(error: unknown, fallback = "操作失败，请重试"): string {
   const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
-  return message.trim().slice(0, 300) || fallback;
+  return message.trim() || fallback;
 }

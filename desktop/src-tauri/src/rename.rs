@@ -249,7 +249,8 @@ pub(crate) fn rename_locked(project:&Project,sources:&BTreeMap<PathBuf,Vec<u8>>,
     let before_ignores=ignores.serialized()?;
     ignores.migrate_paths(&moves)?; ignores.migrate_references(&reference_migrations)?;
     let after_ignores=ignores.serialized()?;
-    if before_ignores!=after_ignores { files.push(state(".texgo/ignore.json".into(),optional(root,".texgo/ignore.json")?,Some(after_ignores))); }
+    let permanent_ignore_migrated = before_ignores != after_ignores;
+    if permanent_ignore_migrated { files.push(state(".texgo/ignore.json".into(),optional(root,".texgo/ignore.json")?,Some(after_ignores))); }
     if let Some(before)=optional(root,".texgo/images.json")? {
         let mut manifest:serde_json::Value=serde_json::from_slice(&before).map_err(|_|"图片映射记录损坏，无法安全重命名")?;
         let images=manifest.get_mut("images").and_then(|v|v.as_object_mut()).ok_or("图片映射记录无效")?;
@@ -264,7 +265,7 @@ pub(crate) fn rename_locked(project:&Project,sources:&BTreeMap<PathBuf,Vec<u8>>,
     let preferred_outputs=journal.preferred_outputs(&old_rel).into_iter()
         .filter_map(|output|moves.iter().skip(1).find(|(old,_)|old==&output).map(|(_,new)|new.clone())).collect();
     journal.migrate_asset(&moves,&old_rel,&new_rel)?;
-    let rename=RenameHistory { old_source:old_rel.clone(),new_source:new_rel.clone(),old_pdf:moves.get(1).map(|v|v.0.clone()),new_pdf:moves.get(1).map(|v|v.1.clone()),references_changed:reference_count,pdf_count:moves.len()-1 };
+    let rename=RenameHistory { old_source:old_rel.clone(),new_source:new_rel.clone(),old_pdf:moves.get(1).map(|v|v.0.clone()),new_pdf:moves.get(1).map(|v|v.1.clone()),references_changed:reference_count,pdf_count:Some(moves.len()-1),permanent_ignore_migrated };
     let mut protected=files.clone();
     protected.push(state(".texgo/conversions.json".into(),journal_before.clone(),None));
     let identity=record_fingerprint(&Record{version:1,id:record_id.clone(),main_file:project.main_file.clone(),files:protected})?;

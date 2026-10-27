@@ -132,8 +132,10 @@ pub struct RenameHistory {
     pub old_pdf: Option<String>,
     pub new_pdf: Option<String>,
     pub references_changed: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pdf_count: Option<usize>,
     #[serde(default)]
-    pub pdf_count: usize,
+    pub permanent_ignore_migrated: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]

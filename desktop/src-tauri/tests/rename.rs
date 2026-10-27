@@ -105,6 +105,9 @@ fn undo_refuses_external_changes_to_any_member() {
         rename(&mut ws, "map").unwrap();
         let id = ws.conversion_history().unwrap()[0].id.clone();
         fs::write(dir.path().join(target), b"external edit after rename").unwrap();
+        let blocked = ws.conversion_history().unwrap().remove(0);
+        assert!(!blocked.can_undo);
+        assert!(blocked.undo_reason.as_deref().unwrap().contains(target));
         assert!(ws.undo_conversion(&id).is_err());
         assert_eq!(fs::read(dir.path().join(target)).unwrap(), b"external edit after rename");
         assert!(!dir.path().join("result.png").exists());
@@ -162,6 +165,9 @@ fn permanent_ignore_identity_migrates_and_undo_restores_it() {
     assert!(rules.contains("map.png"));
     assert!(!rules.contains("result.png"));
     let history = ws.conversion_history().unwrap();
+    assert!(history[0].rename.as_ref().unwrap().permanent_ignore_migrated);
+    let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    assert!(ws.conversion_history().unwrap()[0].rename.as_ref().unwrap().permanent_ignore_migrated);
     ws.undo_conversion(&history[0].id).unwrap();
     assert_eq!(fs::read(dir.path().join(".texgo/ignore.json")).unwrap(), original);
     let ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
@@ -174,6 +180,7 @@ fn session_ignore_migrates_without_becoming_permanent() {
     let renamed = rename(&mut ws, "map").unwrap();
     assert_eq!(renamed.project.images[0].ignore_mode, texgo_desktop::IgnoreMode::Session);
     assert!(!dir.path().join(".texgo/ignore.json").exists());
+    assert!(!ws.conversion_history().unwrap()[0].rename.as_ref().unwrap().permanent_ignore_migrated);
 }
 #[test]
 fn dotted_basename_and_reference_whitespace_are_preserved() {
@@ -250,6 +257,7 @@ fn rename_preserves_latest_managed_output_preference_across_multiple_directories
     assert!(Path::new(&before).ends_with(Path::new("zulu-latest").join("result.pdf")));
     let result=rename(&mut ws,"map").unwrap();
     assert_eq!(result.project.status.pending_references,0);
+    assert_eq!(ws.conversion_history().unwrap()[0].rename.as_ref().unwrap().pdf_count, Some(2));
     assert!(Path::new(result.project.converted_images[0].pdf_path.as_ref().unwrap()).ends_with(Path::new("zulu-latest").join("map.pdf")));
     assert!(dir.path().join("alpha-earlier/map.pdf").exists());
     assert!(dir.path().join("zulu-latest/map.pdf").exists());
@@ -259,4 +267,49 @@ fn rename_preserves_latest_managed_output_preference_across_multiple_directories
     let id=ws.conversion_history().unwrap()[0].id.clone();
     ws.undo_conversion(&id).unwrap();
     assert_eq!(ws.project().converted_images[0].pdf_path.as_ref(),Some(&before));
+}
+
+#[test]
+fn old_rename_history_preserves_unknown_metadata_without_inventing_effects() {
+    let old = r#"{"oldSource":"a.png","newSource":"b.png","oldPdf":"out/a.pdf","newPdf":"out/b.pdf","referencesChanged":2}"#;
+    let rename: texgo_desktop::RenameHistory = serde_json::from_str(old).unwrap();
+    assert_eq!(rename.pdf_count, None);
+    assert!(!rename.permanent_ignore_migrated);
+    let serialized = serde_json::to_value(&rename).unwrap();
+    assert!(serialized.get("pdfCount").is_none());
+    assert_eq!(serialized["newPdf"], "out/b.pdf");
+    let counted: texgo_desktop::RenameHistory = serde_json::from_value(serde_json::json!({
+        "oldSource":"a.png","newSource":"b.png","oldPdf":null,"newPdf":null,
+        "referencesChanged":0,"pdfCount":0
+    })).unwrap();
+    assert_eq!(counted.pdf_count, Some(0));
+}
+
+#[test]
+fn old_journal_without_rename_metadata_reopens_and_undoes_managed_files() {
+    let (dir, mut ws) = fixture(r"\includegraphics{result.png}");
+    convert(&mut ws);
+    rename(&mut ws, "map").unwrap();
+    let path = dir.path().join(".texgo/conversions.json");
+    let mut journal: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let batches = journal["batches"].as_array_mut().unwrap();
+    for batch in batches {
+        if let Some(rename) = batch["entry"]["rename"].as_object_mut() {
+            rename.remove("pdfCount");
+            rename.remove("permanentIgnoreMigrated");
+        }
+    }
+    fs::write(&path, serde_json::to_vec(&journal).unwrap()).unwrap();
+    let mut ws = Workspace::open(&dir.path().join("main.tex")).unwrap();
+    let entry = ws.conversion_history().unwrap().remove(0);
+    let rename = entry.rename.as_ref().unwrap();
+    assert_eq!(rename.pdf_count, None);
+    assert_eq!(rename.new_pdf.as_deref(), Some("out/map.pdf"));
+    assert!(!rename.permanent_ignore_migrated);
+    assert!(entry.can_undo);
+    ws.undo_conversion(&entry.id).unwrap();
+    assert!(dir.path().join("result.png").exists());
+    assert!(dir.path().join("out/result.pdf").exists());
+    assert!(!dir.path().join("map.png").exists());
+    assert!(!dir.path().join("out/map.pdf").exists());
 }

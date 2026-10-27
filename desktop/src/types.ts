@@ -66,7 +66,7 @@ export interface ConversionOptions {
 }
 
 export interface ConversionHistoryEntry {
-  rename?: { oldSource: string; newSource: string; oldPdf?: string | null; newPdf?: string | null; referencesChanged: number; pdfCount?: number } | null;
+  rename?: { oldSource: string; newSource: string; oldPdf?: string | null; newPdf?: string | null; referencesChanged: number; pdfCount?: number; permanentIgnoreMigrated?: boolean } | null;
   id: string;
   createdAt: number;
   outputDir: string;
