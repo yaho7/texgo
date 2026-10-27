@@ -102,14 +102,18 @@ async fn observation_identity(state: State<'_, AppState>) -> Result<Option<serde
 }
 
 async fn work<T: Send + 'static>(state: AppState, action: impl FnOnce(&mut Option<Workspace>) -> Result<T, String> + Send + 'static) -> Result<T, String> {
+    work_checked(state, action).await
+}
+
+async fn work_checked<T: Send + 'static, E: From<String> + Send + 'static>(state: AppState, action: impl FnOnce(&mut Option<Workspace>) -> Result<T, E> + Send + 'static) -> Result<T, E> {
     tauri::async_runtime::spawn_blocking(move || {
         // Mutations and scans share one worker-side lock; previews use a read snapshot.
-        let mut workspace = state.workspace.lock().map_err(|_| "工作区状态不可用，请重新启动应用".to_string())?;
+        let mut workspace = state.workspace.lock().map_err(|_| E::from("工作区状态不可用，请重新启动应用".to_string()))?;
         let result = action(&mut workspace);
         if let Ok(mut preview) = state.preview.lock() { *preview = workspace.clone(); }
         if let Ok(mut completed) = state.completed_previews.lock() { completed.clear(); }
         result
-    }).await.map_err(|e| format!("后台任务失败：{e}"))?
+    }).await.map_err(|e| E::from(format!("后台任务失败：{e}")))?
 }
 
 fn current(workspace: &mut Option<Workspace>) -> Result<&mut Workspace, String> {
@@ -348,8 +352,8 @@ async fn preview_changes(state: State<'_, AppState>) -> Result<ReplacementPlan, 
 }
 
 #[tauri::command]
-async fn apply_replacements(selection: Vec<String>, expected: ReplacementPlan, repair: Option<bool>, state: State<'_, AppState>) -> Result<MutationResult, String> {
-    work(state.inner().clone(), move |workspace| current(workspace)?.apply_reviewed(selection.into_iter().collect(), &expected, repair.unwrap_or(false))).await
+async fn apply_replacements(selection: Vec<String>, expected: ReplacementPlan, repair: Option<bool>, state: State<'_, AppState>) -> Result<MutationResult, ReviewApplyError> {
+    work_checked(state.inner().clone(), move |workspace| current(workspace)?.apply_reviewed_checked(selection.into_iter().collect(), &expected, repair.unwrap_or(false))).await
 }
 
 #[tauri::command]

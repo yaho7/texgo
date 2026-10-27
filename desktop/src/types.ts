@@ -106,7 +106,7 @@ export interface AssetPreviewData {
 }
 
 export interface ChangePreview {
-  files: { path: string; changes: { id: string; line: number; before: string; after: string }[] }[];
+  files: { path: string; fingerprint?: string; changes: { id: string; line: number; before: string; after: string }[] }[];
   referenceCount: number;
 }
 

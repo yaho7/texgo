@@ -166,3 +166,104 @@ fn bypassed_unreviewed_batches_use_a_separate_reference_batch_with_independent_u
     ws.undo_conversion(&ids[0]).unwrap();
     assert!(!directory.path().join("pdf/a.pdf").exists());
 }
+
+#[test]
+fn reviewed_plan_rejects_whole_file_drift_with_or_without_workspace_refresh() {
+    for refresh in [false, true] {
+        let (directory, mut workspace) = fixture();
+        convert(&mut workspace, "pdf-a");
+        let expected = workspace.plan().unwrap();
+        let changed = format!("{ORIGINAL}% external comment\n");
+        fs::write(directory.path().join("main.tex"), &changed).unwrap();
+        if refresh { workspace.refresh().unwrap(); }
+        let before_history = workspace.conversion_history().unwrap().len();
+        assert!(workspace.apply_reviewed(selection(&expected), &expected, false).is_err(), "refresh={refresh}");
+        assert_eq!(tex(directory.path()), changed);
+        assert_eq!(workspace.conversion_history().unwrap().len(), before_history);
+    }
+}
+
+#[test]
+fn review_validates_unselected_files_and_legacy_plans_before_any_write() {
+    let (directory, _) = fixture();
+    fs::write(directory.path().join("main.tex"), format!("{ORIGINAL}\\input{{chapter}}\n")).unwrap();
+    fs::write(directory.path().join("chapter.tex"), ORIGINAL).unwrap();
+    let mut workspace = Workspace::open(&directory.path().join("main.tex")).unwrap();
+    convert(&mut workspace, "pdf-a");
+    let expected = workspace.plan().unwrap();
+    assert_eq!(expected.files.len(), 2);
+    let selected = HashSet::from([expected.files[0].changes[0].id.clone()]);
+    let path = &expected.files[1].path;
+    let edited = format!("{}% external\n", fs::read_to_string(path).unwrap());
+    fs::write(path, &edited).unwrap();
+    workspace.refresh().unwrap();
+    assert!(workspace.apply_reviewed(selected, &expected, false).is_err());
+    assert_eq!(fs::read_to_string(path).unwrap(), edited);
+    assert!(!tex(directory.path()).contains("pdf-a/plot.pdf"));
+    let current = workspace.plan().unwrap();
+    let mut legacy = serde_json::to_value(&current).unwrap();
+    for file in legacy["files"].as_array_mut().unwrap() { file.as_object_mut().unwrap().remove("fingerprint"); }
+    let legacy: ReplacementPlan = serde_json::from_value(legacy).unwrap();
+    assert!(workspace.apply_reviewed(selection(&legacy), &legacy, false).is_err());
+    assert!(!tex(directory.path()).contains("pdf-a/plot.pdf"));
+}
+
+#[test]
+fn deleted_reviewed_main_is_a_prewrite_conflict_without_journal_mutation() {
+    let (directory, mut workspace) = fixture();
+    convert(&mut workspace, "pdf-a");
+    let expected = workspace.plan().unwrap();
+    let main = directory.path().join("main.tex");
+    let journal = directory.path().join(".texgo/conversions.json");
+    let journal_before = fs::read(&journal).unwrap();
+    fs::remove_file(&main).unwrap();
+    let error = workspace.apply_reviewed_checked(selection(&expected), &expected, false).unwrap_err();
+    assert!(matches!(error, texgo_desktop::ReviewApplyError::ReviewConflict { path, .. } if path == expected.files[0].path));
+    assert!(!main.exists());
+    assert_eq!(fs::read(journal).unwrap(), journal_before);
+    assert!(!directory.path().join(".texgo/reference-undo").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_reviewed_main_is_a_prewrite_conflict_without_touching_target() {
+    let (directory, mut workspace) = fixture();
+    convert(&mut workspace, "pdf-a");
+    let expected = workspace.plan().unwrap();
+    let main = directory.path().join("main.tex");
+    let outside = tempfile::tempdir().unwrap();
+    let target = outside.path().join("main.tex");
+    fs::write(&target, ORIGINAL).unwrap();
+    let journal = directory.path().join(".texgo/conversions.json");
+    let journal_before = fs::read(&journal).unwrap();
+    fs::remove_file(&main).unwrap();
+    std::os::unix::fs::symlink(&target, &main).unwrap();
+    let error = workspace.apply_reviewed_checked(selection(&expected), &expected, false).unwrap_err();
+    assert!(matches!(error, texgo_desktop::ReviewApplyError::ReviewConflict { path, .. } if path == expected.files[0].path));
+    assert_eq!(fs::read(target).unwrap(), ORIGINAL.as_bytes());
+    assert!(fs::symlink_metadata(main).unwrap().file_type().is_symlink());
+    assert_eq!(fs::read(journal).unwrap(), journal_before);
+    assert!(!directory.path().join(".texgo/reference-undo").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn replaced_workspace_root_is_rejected_before_creating_an_outside_lock() {
+    for symlink in [false, true] {
+        let (directory, mut workspace) = fixture();
+        convert(&mut workspace, "pdf-a");
+        let expected = workspace.plan().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let saved = directory.path().with_extension("review-saved");
+        fs::rename(directory.path(), &saved).unwrap();
+        if symlink { std::os::unix::fs::symlink(outside.path(), directory.path()).unwrap(); }
+        else { fs::create_dir(directory.path()).unwrap(); }
+        let result = workspace.apply_reviewed_checked(selection(&expected), &expected, false);
+        assert!(result.is_err());
+        assert!(!outside.path().join(".texgo").exists());
+        assert!(!directory.path().join(".texgo").exists());
+        if symlink { fs::remove_file(directory.path()).unwrap(); }
+        else { fs::remove_dir(directory.path()).unwrap(); }
+        fs::rename(saved, directory.path()).unwrap();
+    }
+}

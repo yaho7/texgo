@@ -28,7 +28,7 @@ impl ObservationRoot {
         Ok(directory)
     }
     pub(crate) fn path(&self) -> &Path { &self.path }
-    fn validate_current_root(&self) -> Result<(), String> {
+    pub(crate) fn validate_current_root(&self) -> Result<(), String> {
         let current = Self::open_root(&self.path).map_err(|error| error.to_string())?;
         let actual = current.dir_metadata().map_err(|error| error.to_string())?;
         let expected = self.directory.dir_metadata().map_err(|error| error.to_string())?;

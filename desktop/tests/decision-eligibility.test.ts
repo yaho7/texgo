@@ -19,3 +19,11 @@ describe("business decision ownership", () => {
     expect(mayStartOperation({ kind: "manual-block" }, "opening", "repair")).toBe(false);
   });
 });
+
+it("allows only an explicit rescan after a pre-write review conflict", () => {
+  const stale: BusinessDecision = { kind: "review", preview: { files: [], referenceCount: 1 }, repair: false, conflict: { path: "/paper/main.tex", message: "changed" } };
+  expect(mayStartOperation(stale, "applying", "apply-review")).toBe(false);
+  expect(mayStartOperation(stale, "reviewing", "rescan-review")).toBe(true);
+  expect(mayStartOperation(stale, "converting", "rescan-review")).toBe(false);
+  expect(mayStartOperation({ kind: "none" }, "reviewing", "rescan-review")).toBe(false);
+});

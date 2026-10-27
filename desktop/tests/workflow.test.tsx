@@ -128,7 +128,7 @@ describe("LaTeX 项目唯一工作流", () => {
     const user = await openProject();
     const dialog = await convertAndReview(user);
     expect(calls.find((call) => call.command === "convert_images")?.args.options).toMatchObject({ imageIds: ["a", "b"], dpi: 300, jpegQuality: 90 });
-    expect(within(dialog).getByRole("button", { name: "更新 2 处引用" })).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: "应用 2 处引用修改" })).toBeEnabled();
     expect(calls.some((call) => call.command === "apply_replacements")).toBe(false);
   });
   it("uses the Rust pending snapshot instead of inferring candidates from image format", async () => {
@@ -195,7 +195,7 @@ describe("LaTeX 项目唯一工作流", () => {
   it("only applies explicitly checked reference IDs and preserves the reviewed snapshot", async () => {
     const user = await openProject(); const dialog = await convertAndReview(user);
     await user.click(within(dialog).getByRole("checkbox", { name: "第 10 行" }));
-    await user.click(within(dialog).getByRole("button", { name: "更新 1 处引用" }));
+    await user.click(within(dialog).getByRole("button", { name: "应用 1 处引用修改" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     const apply = calls.find((call) => call.command === "apply_replacements")!;
     expect(apply.args.selection).toEqual(["change-a"]);
@@ -328,7 +328,7 @@ describe("LaTeX 项目唯一工作流", () => {
     const user = await openProject(); const dialog = await convertAndReview(user);
     handlers.apply_replacements = () => { throw new Error("部分写入失败"); };
     handlers.refresh_workspace = () => { throw new Error("源文件已移走"); };
-    await user.click(within(dialog).getByRole("button", { name: "更新 2 处引用" }));
+    await user.click(within(dialog).getByRole("button", { name: "应用 2 处引用修改" }));
     await screen.findByText(/部分写入失败；重新扫描失败/);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByText("拖入 main.tex 开始")).toBeInTheDocument();
@@ -336,7 +336,7 @@ describe("LaTeX 项目唯一工作流", () => {
   it("continues to show the reviewable result when history loading fails", async () => {
     const user = await openProject(); handlers.conversion_history = () => { throw new Error("记录不可读"); };
     const dialog = await convertAndReview(user);
-    expect(within(dialog).getByRole("button", { name: "更新 2 处引用" })).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: "应用 2 处引用修改" })).toBeEnabled();
     expect(calls.some((call) => call.command === "apply_replacements")).toBe(false);
   });
   it("offers an explicit safe retry for a failed source without writing immediately", async () => {
@@ -543,7 +543,7 @@ it("preserves the checked review snapshot across native workspace and completion
   });
   expect(within(dialog).getByRole("checkbox", { name: "第 8 行" })).not.toBeChecked();
   expect(screen.queryByRole("checkbox", { name: "第 99 行" })).not.toBeInTheDocument();
-  await user.click(within(dialog).getByRole("button", { name: "更新 1 处引用" }));
+  await user.click(within(dialog).getByRole("button", { name: "应用 1 处引用修改" }));
   await waitFor(() => expect(calls.find((call) => call.command === "apply_replacements")?.args).toMatchObject({ expected: original, selection: ["change-b"] }));
 });
 
@@ -637,4 +637,84 @@ it("defers a delayed background preview error after a foreground review decision
   expect(within(dialog).queryByText("后台引用读取失败")).not.toBeInTheDocument();
   await user.click(within(dialog).getByRole("button", { name: "关闭替换预览" }));
   expect(await screen.findByText("后台引用读取失败")).toBeVisible();
+});
+
+it("keeps a conflicted review disabled until explicit rescan and fresh confirmation", async () => {
+  const user = await openProject(); const dialog = await convertAndReview(user);
+  expect(within(dialog).getByText(/应用前请保存其他编辑器中的未保存修改/)).toBeInTheDocument();
+  expect(within(dialog).getByText(/已选择 1 个文件，2 处引用/)).toBeInTheDocument();
+  handlers.apply_replacements = () => { throw { kind: "reviewConflict", path: "/paper/main.tex", message: "main.tex 在审核期间已被修改。Texgo 未修改引用文件，请重新扫描引用。" }; };
+  await user.click(within(dialog).getByRole("checkbox", { name: "第 8 行" }));
+  await user.click(within(dialog).getByRole("button", { name: "应用 1 处引用修改" }));
+  expect(await within(dialog).findByText(/main.tex 在审核期间已被修改/)).toBeInTheDocument();
+  expect(within(dialog).getByRole("button", { name: "应用 1 处引用修改" })).toBeDisabled();
+  expect(calls.filter((call) => call.command === "refresh_workspace")).toHaveLength(1);
+  changes = { ...changes, files: changes.files.map((file) => ({ ...file, fingerprint: "fresh-full-file-hash" })) };
+  await user.click(within(dialog).getByRole("button", { name: "重新扫描" }));
+  const fresh = await screen.findByRole("dialog", { name: "检查引用变更" });
+  await waitFor(() => expect(within(fresh).getByRole("button", { name: "应用 2 处引用修改" })).toBeEnabled());
+  expect(calls.filter((call) => call.command === "apply_replacements")).toHaveLength(1);
+  expect(calls.filter((call) => call.command === "preview_changes")).toHaveLength(2);
+});
+
+it("rescans a repair with its original target and waits for another explicit apply", async () => {
+  const user = await openProject();
+  handlers.repair_candidates = () => [{ path: "/paper/figures/found.png", relativePath: "figures/found.png" }];
+  const preview: ChangePreview = { files: [{ path: "/paper/main.tex", fingerprint: "repair-before", changes: [{ id: "repair-1", line: 12, before: "lost.png", after: "figures/found.png" }] }], referenceCount: 1 };
+  handlers.preview_repair = () => structuredClone(preview);
+  await user.click(screen.getByRole("button", { name: "预览 figures/lost.png" }));
+  await user.click(screen.getByRole("button", { name: "修复" }));
+  const problem = await screen.findByRole("dialog", { name: "图片引用问题" });
+  await user.click(await within(problem).findByRole("radio", { name: "figures/found.png" }));
+  await user.click(within(problem).getByRole("button", { name: "查看修复" }));
+  const dialog = await screen.findByRole("dialog", { name: "检查引用变更" });
+  handlers.apply_replacements = () => { throw { kind: "reviewConflict", path: "/paper/main.tex", message: "main.tex changed" }; };
+  await user.click(within(dialog).getByRole("button", { name: "应用 1 处引用修改" }));
+  await within(dialog).findByText("main.tex changed");
+  preview.files[0].fingerprint = "repair-after";
+  await user.click(within(dialog).getByRole("button", { name: "重新扫描" }));
+  const fresh = await screen.findByRole("dialog", { name: "检查引用变更" });
+  await waitFor(() => expect(within(fresh).getByRole("button", { name: "应用 1 处引用修改" })).toBeEnabled());
+  const previews = calls.filter((call) => call.command === "preview_repair");
+  expect(previews).toHaveLength(2);
+  expect(previews[1].args).toEqual({ imageId: "missing", target: "/paper/figures/found.png" });
+  expect(calls.filter((call) => call.command === "apply_replacements")).toHaveLength(1);
+  expect(calls.find((call) => call.command === "apply_replacements")?.args.repair).toBe(true);
+});
+
+it("keeps an old plan disabled when rescanning fails and preserves generic partial-operation recovery", async () => {
+  const user = await openProject(); const dialog = await convertAndReview(user);
+  handlers.apply_replacements = () => { throw { kind: "reviewConflict", path: "/paper/main.tex", message: "main.tex changed" }; };
+  await user.click(within(dialog).getByRole("button", { name: "应用 2 处引用修改" }));
+  await within(dialog).findByText("main.tex changed");
+  handlers.preview_changes = () => { throw new Error("扫描失败"); };
+  await user.click(within(dialog).getByRole("button", { name: "重新扫描" }));
+  await within(dialog).findByText("扫描失败");
+  await waitFor(() => expect(within(dialog).getByRole("button", { name: "重新扫描" })).toBeEnabled());
+  expect(within(dialog).getByRole("button", { name: "应用 2 处引用修改" })).toBeDisabled();
+  await user.click(within(dialog).getByRole("button", { name: "返回" }));
+  handlers.preview_changes = () => structuredClone(changes);
+  await user.click(screen.getByRole("button", { name: "检查 2 处引用" }));
+  const retry = await screen.findByRole("dialog", { name: "检查引用变更" });
+  handlers.apply_replacements = () => { throw { kind: "operation", message: "替换未全部完成：保留恢复记录" }; };
+  await user.click(within(retry).getByRole("button", { name: "应用 2 处引用修改" }));
+  await screen.findByText("替换未全部完成：保留恢复记录");
+  expect(screen.queryByRole("dialog", { name: "检查引用变更" })).not.toBeInTheDocument();
+  expect(screen.queryByText(/Texgo 未修改/)).not.toBeInTheDocument();
+});
+
+it("ignores a rescan response from an unmounted review lifetime", async () => {
+  const user = await openProject(); const dialog = await convertAndReview(user);
+  handlers.apply_replacements = () => { throw { kind: "reviewConflict", path: "/paper/main.tex", message: "main.tex changed" }; };
+  await user.click(within(dialog).getByRole("button", { name: "应用 2 处引用修改" }));
+  await within(dialog).findByText("main.tex changed");
+  const late = deferred<ChangePreview>();
+  handlers.preview_changes = () => late.promise;
+  await user.click(within(dialog).getByRole("button", { name: "重新扫描" }));
+  await waitFor(() => expect(calls.filter((call) => call.command === "preview_changes")).toHaveLength(2));
+  cleanup();
+  await openProject();
+  await act(async () => { late.resolve({ files: [{ path: "/paper/main.tex", fingerprint: "obsolete", changes: [{ id: "obsolete", line: 1, before: "old.png", after: "old.pdf" }] }], referenceCount: 1 }); });
+  expect(screen.queryByRole("dialog", { name: "检查引用变更" })).not.toBeInTheDocument();
+  expect(screen.queryByText("old.pdf")).not.toBeInTheDocument();
 });

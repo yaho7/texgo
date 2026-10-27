@@ -29,7 +29,7 @@ export function useReviewFlow(ports: Ports) {
   const [repairCandidates, setRepairCandidates] = useState<RepairCandidate[]>([]);
   const [queuedReview, setQueuedReview] = useState<{ generation: number; preview: ChangePreview } | null>(null);
   function setReview(preview: ChangePreview | null) { if (preview) showReview(preview); else if (decisionRef.current.kind === "review") decide({ kind: "none" }); }
-  function showReview(preview: ChangePreview, kind: "conversion" | "repair" = "conversion") { decide({ kind: "review", preview, repair: kind === "repair" }); }
+  function showReview(preview: ChangePreview, kind: "conversion" | "repair" = "conversion", repairContext?: { imageId: string; target: string }) { decide({ kind: "review", preview, repair: kind === "repair", repairContext }); }
   function setProblemId(imageId: string | null) { if (imageId) decide({ kind: "problem", imageId }); else if (decisionRef.current.kind === "problem") decide({ kind: "none" }); }
   function setConversionBlocked(blocked: boolean) { if (blocked) decide({ kind: "manual-block" }); else if (decisionRef.current.kind === "manual-block") decide({ kind: "none" }); }
   function requestUndo(entry: ConversionHistoryEntry) { if (!currentOperationKind() && decisionRef.current.kind === "none") decide({ kind: "undo", entry }); }
@@ -67,7 +67,7 @@ export function useReviewFlow(ports: Ports) {
     const isCurrent = capture();
     void execute("reviewing", async () => {
       const preview = await invoke<ChangePreview>("preview_repair", { imageId, target });
-      if (isCurrent()) showReview(preview, "repair");
+      if (isCurrent()) showReview(preview, "repair", { imageId, target });
     }, "repair");
   }
 
@@ -77,28 +77,32 @@ export function useReviewFlow(ports: Ports) {
       const target = await open({ multiple: false, directory: false, title: "定位项目内的图片", defaultPath: project?.root, filters: [{ name: "图片或 PDF", extensions: ["png", "jpg", "jpeg", "svg", "webp", "tif", "tiff", "bmp", "pdf"] }] });
       if (!isCurrent() || typeof target !== "string") return;
       const preview = await invoke<ChangePreview>("preview_repair", { imageId, target });
-      if (isCurrent()) showReview(preview, "repair");
+      if (isCurrent()) showReview(preview, "repair", { imageId, target });
     }, "repair");
   }
 
   function replace(undo: boolean, selection: string[] = []) {
-    if (!project || (!undo && !review)) return;
+    if (!project || (!undo && (!review || (decisionRef.current.kind === "review" && decisionRef.current.conflict)))) return;
     const isCurrent = capture();
     void execute(undo ? "undoing" : "applying", async () => {
       let result: ReplacementResult;
       try { result = await invoke<ReplacementResult>(undo ? "undo_replacements" : "apply_replacements", undo ? undefined : { selection, expected: review, repair: reviewKind === "repair" }); }
       catch (reason) {
         if (!isCurrent()) return;
+        if (!undo && isReviewConflict(reason) && decisionRef.current.kind === "review") {
+          decide({ ...decisionRef.current, conflict: { path: reason.path, message: reason.message } });
+          return;
+        }
         // A failed write may still have created an undo record or changed some files.
         setReview(null);
         try { await refresh("操作中断，已重新读取工作区"); }
         catch (refreshError) {
           if (!isCurrent()) return;
           workspace.discardProject();
-          throw new Error(`${errorMessage(reason)}；重新扫描失败，请重新打开工作区：${errorMessage(refreshError)}`);
+          throw new Error(`${reviewErrorMessage(reason)}；重新扫描失败，请重新打开工作区：${errorMessage(refreshError)}`);
         }
         restoreFocus();
-        throw reason;
+        throw new Error(reviewErrorMessage(reason));
       }
       if (!isCurrent()) return;
       setReview(null);
@@ -110,7 +114,44 @@ export function useReviewFlow(ports: Ports) {
     }, undo ? undefined : "apply-review");
   }
 
+  function rescanReview() {
+    const stale = decisionRef.current;
+    if (!project || currentOperationKind() || stale.kind !== "review" || !stale.conflict) return;
+    const isCurrent = capture();
+    void execute("reviewing", async () => {
+      await refresh("已重新扫描，请重新审核引用变更");
+      if (!isCurrent()) return;
+      if (stale.repair) {
+        const context = stale.repairContext;
+        if (!context) { decide({ kind: "none" }); setNotice("修复预览已失效，请重新定位文件"); return; }
+        try {
+          const preview = await invoke<ChangePreview>("preview_repair", context);
+          if (isCurrent()) showReview(preview, "repair", context);
+        } catch (reason) {
+          if (!isCurrent()) return;
+          // A changed reference can have a new asset identity. Never reuse its
+          // previous repair plan; return to an explicit problem selection.
+          if (workspace.current.current?.images.some((image) => image.id === context.imageId)) {
+            setRepairCandidates([]); decide({ kind: "problem", imageId: context.imageId });
+          } else decide({ kind: "none" });
+          throw new Error(`修复预览已失效，请重新定位文件：${errorMessage(reason)}`);
+        }
+      } else {
+        const preview = await invoke<ChangePreview>("preview_changes");
+        if (isCurrent()) showReview(preview);
+      }
+    }, "rescan-review");
+  }
+
   return { decision, decisionRef, review, reviewKind, problemId, undoEntry, conversionBlocked, repairCandidates,
     setReview, showReview, setProblemId, setConversionBlocked, requestUndo, dismissUndo, queueReview, reset,
-    clearQueue: () => setQueuedReview(null), reviewChanges, inspectProblem, chooseRepair, locateRepair, replace };
+    clearQueue: () => setQueuedReview(null), reviewChanges, inspectProblem, chooseRepair, locateRepair, replace, rescanReview };
+}
+
+function isReviewConflict(reason: unknown): reason is { kind: "reviewConflict"; path: string; message: string } {
+  return typeof reason === "object" && reason !== null && "kind" in reason && reason.kind === "reviewConflict"
+    && "path" in reason && typeof reason.path === "string" && "message" in reason && typeof reason.message === "string";
+}
+function reviewErrorMessage(reason: unknown) {
+  return typeof reason === "object" && reason !== null && "message" in reason && typeof reason.message === "string" ? reason.message : errorMessage(reason);
 }

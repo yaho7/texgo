@@ -90,6 +90,24 @@ Rust `watcher/` 管理 notify watcher 的启动、替换和销毁。打开或切
 
 ## Phase 6：History / Errors / Settings
 
+### 2026-10-27 补充：实时检测，绝不实时改引用
+
+Watcher 仅检测并刷新状态。Smart Convert 只处理图片及 Texgo 托管的 PDF，
+不得自动应用引用计划或通过隐式恢复流程修改 `.tex`。引用变更进入 Pending Review，
+由用户明确点击应用。通知应说明图片更新结果及等待确认的引用数量。
+
+引用计划必须记录各目标文件完整内容的 fingerprint。确认时重新读取目标文件并比对
+生成计划时的 fingerprint；即使 watcher 已刷新且引用文本/位置未变，也不能绕过校验。
+冲突时停止该次应用、废弃旧计划，指出冲突文件并提供“重新扫描”；重新生成的计划
+仍须再次审核，不可自动提交。保留写入前逐文件校验和事务恢复记录，不能将部分写入
+失败误报为“未修改任何文件”。
+
+Desktop 无法可靠获知第三方编辑器的 dirty buffer。Review Dialog 底部常驻提醒用户
+先保存其他编辑器中的未保存修改，说明 Texgo 只能在写入前检查磁盘文件状态；
+不得宣称 fingerprint 未变即可证明外部编辑器没有未保存内容。
+
+该补充作为优先安全单元，在日志与发布功能之前落实并验证。
+
 时间线区分转换、引用应用与 rename。保留 Undo 具体阻止原因和可展开文件详情，旧 Journal 新字段需 serde 默认值兼容。rename 摘要从真实结果展示 PDF、引用、ignore 迁移，不凭 UI 猜测。
 
 错误按 status、inline、decision dialog、安全阻塞分层，保留原始技术详情但优先给出文件和恢复动作。结构化日志按 workspace/scanner/conversion/journal/watcher/automation/notification 分类；默认 warn/error，高级设置可启用 debug 和打开日志目录，不记录文件内容。

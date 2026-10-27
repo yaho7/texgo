@@ -78,6 +78,7 @@ pub(crate) fn prepare_selected(project: &Project, sources: &BTreeMap<PathBuf, Ve
         let count = changes.len();
         plan.files.push(FileChanges {
             path: path.to_string_lossy().into(),
+            fingerprint: digest(before),
             changes: changes.into_iter().map(|(start, _, line, before, after)| ReferenceChange { id: reference_id(&path.to_string_lossy(), start), line, before, after }).collect(),
         });
         plan.reference_count += count;
@@ -95,7 +96,22 @@ pub(crate) fn verify_review(current: &ReplacementPlan, expected: &ReplacementPla
     Ok(())
 }
 
+// Validate the entire reviewed target set before selection and before any write.
+// Reuse the retained no-follow directory capability for desktop workspaces.
+pub(crate) fn verify_fingerprints(anchor: &crate::observation::ObservationRoot, expected: &ReplacementPlan) -> Result<(), crate::models::ReviewApplyError> {
+    for file in &expected.files {
+        if file.fingerprint.is_empty() || crate::observation::verified_metadata(anchor, Path::new(&file.path), &file.fingerprint).is_none() {
+            let relative = Path::new(&file.path).strip_prefix(anchor.path()).unwrap_or(Path::new(&file.path)).display();
+            return Err(crate::models::ReviewApplyError::ReviewConflict { path: file.path.clone(),
+                message: format!("{relative} 在审核期间已被修改或无法验证。Texgo 未修改引用文件，请重新扫描引用。") });
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn prepare_reviewed(project: &Project, sources: &BTreeMap<PathBuf, Vec<u8>>, converted: &BTreeMap<String, StoredConversion>, selection: &HashSet<String>, expected: &ReplacementPlan) -> Result<Prepared, String> {
+    let anchor = crate::observation::ObservationRoot::open(Path::new(&project.root))?;
+    verify_fingerprints(&anchor, expected).map_err(|error| error.to_string())?;
     let current = prepare(project, sources, converted)?;
     verify_review(&current.plan, expected)?;
     prepare_selected(project, sources, converted, Some(selection))

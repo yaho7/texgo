@@ -315,7 +315,7 @@ export default function App() {
       </DialogContent>
     </Dialog>
     {problemId && project && <AssetProblems asset={project.images.find((image) => image.id === problemId) ?? null} projectRoot={project.root} busy={busy} candidates={repairCandidates} candidatesLoading={operation === "reviewing"} error={error} onClose={() => { setProblemId(null); setError(null); restoreFocus(); }} onLocate={locateRepair} onChoose={chooseRepair} onIgnore={(id) => { void ignoreAsset(id); }} />}
-    {review && project && <ReviewDialog key={JSON.stringify(review)} preview={review} root={project.root} busy={busy} error={error} onClose={() => { if (!currentOperationKind()) { setReview(null); setError(null); restoreFocus(); } }} onApply={(selection) => replace(false, selection)} />}
+    {review && project && <ReviewDialog key={JSON.stringify(review)} preview={review} root={project.root} busy={busy} error={error} conflict={reviewFlow.decision.kind === "review" ? reviewFlow.decision.conflict : undefined} onRescan={reviewFlow.rescanReview} onClose={() => { if (!currentOperationKind()) { setReview(null); setError(null); restoreFocus(); } }} onApply={(selection) => replace(false, selection)} />}
     <Dialog open={conversionBlocked} onOpenChange={setConversionBlocked}>
       <DialogContent onCloseAutoFocus={(event) => { event.preventDefault(); restoreFocus(); }}>
         <DialogHeader><DialogTitle>请先审核引用</DialogTitle><DialogDescription>当前有 {project?.status.pendingReferences ?? 0} 处引用尚未审核。建议先完成引用审核，再开始新的转换。</DialogDescription></DialogHeader>

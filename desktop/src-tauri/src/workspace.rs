@@ -108,8 +108,7 @@ impl Workspace {
         self.observation_root.validate_project(main)?;
         let root = Path::new(&self.scan.project.root);
         if root.join(".texgo/rename-active.json").symlink_metadata().is_ok() {
-            let _lock = transaction::lock_project(root)?;
-            crate::rename::recover(root)?;
+            return Err("存在未完成的重命名恢复，请重新打开项目以安全恢复；自动检测和智能转换已暂停".into());
         }
         let scan = scanner::scan(main)?;
         self.observation_root.validate_project(main)?;
@@ -610,13 +609,24 @@ impl Workspace {
     }
 
     pub fn apply_reviewed(&mut self, selection: HashSet<String>, expected: &ReplacementPlan, repair: bool) -> Result<MutationResult, String> {
-        let result = (|| {
+        self.apply_reviewed_checked(selection, expected, repair).map_err(|error| error.to_string())
+    }
+
+    pub fn apply_reviewed_checked(&mut self, selection: HashSet<String>, expected: &ReplacementPlan, repair: bool) -> Result<MutationResult, ReviewApplyError> {
+        // Reject a replaced root before creating a lock at its pathname. Target
+        // validation follows fingerprint checks so missing/rebound reviewed files
+        // retain the pre-write conflict outcome and explicit rescan path.
+        self.observation_root.validate_current_root()?;
+        let result: Result<MutationResult, ReviewApplyError> = (|| {
             let root = Path::new(&self.scan.project.root);
             let _lock = transaction::lock_project(root)?;
+            self.observation_root.validate_current_root()?;
+            transaction::verify_fingerprints(&self.observation_root, expected)?;
+            self.observation_root.validate_project(Path::new(&self.scan.project.main_file))?;
             let mut journal = Journal::load(root)?;
             journal.ensure_settled()?;
             let prepared = if repair {
-                let (id, target, reviewed) = self.pending_repair.as_ref().ok_or("修复预览已失效，请重新定位文件")?;
+                let (id, target, reviewed) = self.pending_repair.as_ref().ok_or_else(|| "修复预览已失效，请重新定位文件".to_string())?;
                 transaction::verify_review(reviewed, expected)?;
                 crate::repair::prepare_reviewed(&self.scan, id, target, expected, &selection)?
             } else { transaction::prepare_reviewed(&self.review_project(), &self.scan.sources, &self.converted, &selection, expected)? };
@@ -629,9 +639,11 @@ impl Workspace {
                 journal.finish_batch(root, index, false)?;
                 journal.latest_batch_id().map(str::to_owned)
             } else { candidate };
-            transaction::apply_linked(&self.scan.project, prepared, batch_id.as_deref())
+            transaction::apply_linked(&self.scan.project, prepared, batch_id.as_deref()).map_err(ReviewApplyError::from)
         })();
         if result.is_ok() { self.pending_repair = None; }
+        // Keep a conflict available for explicit rescanning; refresh clears repair context.
+        if matches!(result, Err(ReviewApplyError::ReviewConflict { .. })) { return result; }
         self.refresh()?;
         result
     }
@@ -867,4 +879,18 @@ mod native_observation_tests {
         fs::write(root.join("main.tex"), r"\includegraphics{missing.png}").unwrap();
         assert!(workspace.poll_changes().unwrap().unwrap().images.iter().any(|asset| asset.relative_path == "missing.png"));
     }
+    #[test]
+    fn native_observation_refuses_pending_rename_recovery_without_tex_writes() {
+        let (_directory, root, mut workspace) = fixture();
+        let main = root.join("main.tex");
+        let before = fs::read(&main).unwrap();
+        fs::create_dir_all(root.join(".texgo")).unwrap();
+        let pending = root.join(".texgo/rename-active.json");
+        fs::write(&pending, b"{}").unwrap();
+        let error = workspace.reconcile_observation(&[pending.clone()], true).unwrap_err();
+        assert!(error.contains("重新打开"));
+        assert_eq!(fs::read(main).unwrap(), before);
+        assert_eq!(fs::read(pending).unwrap(), b"{}");
+    }
+
 }

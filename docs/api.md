@@ -326,7 +326,17 @@ Desktop review submits selected IDs and the **complete** reviewed `ReplacementPl
 An empty selection changes nothing; unknown IDs are rejected. Never recreate a
 preview at apply time and treat it as the user's expected plan: retain the preview
 that was actually displayed. Any difference in file, ID, line, before/after text,
-ordering, or count rejects application and requires review again.
+ordering, complete-file fingerprint, or count rejects application and requires review again.
+Each `FileChanges.fingerprint` is SHA-256 of the complete TeX bytes at preview time.
+Missing/empty fingerprints reject legacy previews safely. Under the project lock,
+`Workspace::apply_reviewed_checked` rechecks every reviewed target through the retained
+no-follow directory capability before selecting edits or changing the journal.
+Workspace refreshes cannot renew an old preview. This includes unselected targets.
+The serialized desktop error `{ kind: "reviewConflict", path, message }` denotes only
+a rejection before writes; `{ kind: "operation", message }` retains ordinary and
+potentially partial failure semantics. The original `apply_reviewed` string-error
+wrapper remains available. A conflict requires explicit rescan, fresh review and
+a second application; repair rescans must regenerate their target-specific plan.
 
 Workspace integration (crate-private Rust interfaces):
 
@@ -352,7 +362,8 @@ recovery but before PDF recovery is retryable; already restored files are recogn
 `transaction::prepare_selected(..., Option<&HashSet<String>>)` is the filtering
 primitive; `None` and original `prepare(...)` preserve full-selection CLI behavior.
 Filtering alone is not proof of review: desktop callers must use
-`prepare_reviewed` or compare the complete plan with `verify_review` first.
+`prepare_reviewed`, or validate complete-file fingerprints and compare the complete
+plan with `verify_review` first. Per-write validation remains mandatory afterwards.
 
 Recovery records retain version 1 with optional `batch_id`. Missing `batch_id`
 means a legacy standalone operation. Only `undo(project)` / `undo_locked(project,

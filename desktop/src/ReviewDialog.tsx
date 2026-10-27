@@ -16,6 +16,8 @@ interface Props {
   error: string | null;
   onClose: () => void;
   onApply: (selectionIds: string[]) => void;
+  conflict?: { path: string; message: string };
+  onRescan?: () => void;
 }
 
 export default function ReviewDialog(props: Props) {
@@ -25,6 +27,7 @@ export default function ReviewDialog(props: Props) {
   const ids = props.preview.files.flatMap((file) => file.changes.map(idOf)).filter(Boolean);
   const [selection, setSelection] = useState(() => new Set(ids));
   const selected = ids.filter((id) => selection.has(id));
+  const selectedFiles = props.preview.files.map((file) => ({ path: relativeFile(file.path, props.root), count: file.changes.filter((change) => selection.has(idOf(change))).length })).filter((file) => file.count > 0);
   const toggle = (values: string[], checked: boolean) => setSelection((previous) => {
     const next = new Set(previous);
     for (const id of values.filter(Boolean)) { if (checked) next.add(id); else next.delete(id); }
@@ -78,12 +81,18 @@ export default function ReviewDialog(props: Props) {
             </section>
           ))}
         </div>
-        {props.error && <div className="shrink-0 px-5 pb-4"><Alert variant="destructive"><FileWarning aria-hidden="true" /><AlertDescription>{props.error}</AlertDescription></Alert></div>}
+        {(props.conflict || props.error) && <div className="shrink-0 px-5 pb-4"><Alert variant="destructive"><FileWarning aria-hidden="true" /><AlertDescription>{props.conflict && <span>{props.conflict.message}</span>}{props.error && <span>{props.error}</span>}</AlertDescription></Alert></div>}
         <Separator />
+        <div className="shrink-0 px-5 pt-4 text-sm" aria-live="polite">
+          <p>已选择 {selectedFiles.length} 个文件，{selected.length} 处引用</p>
+          <ul className="max-h-16 overflow-y-auto break-words text-xs text-muted-foreground" aria-label="所选文件">{selectedFiles.length ? selectedFiles.map((file) => <li key={file.path}>{file.path}（{file.count} 处）</li>) : <li>未选择文件</li>}</ul>
+          <p className="mt-3 text-xs text-muted-foreground">应用前请保存其他编辑器中的未保存修改。Texgo无法检测这些未保存内容，会在写入前检查磁盘文件是否被外部修改。</p>
+        </div>
         <DialogFooter className="shrink-0 p-5">
           <DialogClose asChild><Button variant="outline" disabled={props.busy}>返回</Button></DialogClose>
-          <Button disabled={props.busy || selected.length === 0} onClick={() => props.onApply(selected)}>
-            {props.busy ? <LoaderCircle data-icon="inline-start" className="animate-spin" aria-hidden="true" /> : <ArrowRight data-icon="inline-start" aria-hidden="true" />}更新 {selected.length} 处引用
+          {props.conflict && <Button variant="outline" disabled={props.busy} onClick={props.onRescan}>重新扫描</Button>}
+          <Button disabled={props.busy || Boolean(props.conflict) || selected.length === 0} onClick={() => props.onApply(selected)}>
+            {props.busy ? <LoaderCircle data-icon="inline-start" className="animate-spin" aria-hidden="true" /> : <ArrowRight data-icon="inline-start" aria-hidden="true" />}应用 {selected.length} 处引用修改
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -234,6 +234,9 @@ pub struct ReplacementPlan {
 #[serde(rename_all = "camelCase")]
 pub struct FileChanges {
     pub path: String,
+    /// SHA-256 of the complete source bytes reviewed by the user.
+    #[serde(default)]
+    pub fingerprint: String,
     pub changes: Vec<ReferenceChange>,
 }
 
@@ -267,4 +270,21 @@ pub struct SmartReport {
     pub batch_ids: Vec<String>,
     pub problem_ids: Vec<String>,
     pub pending_references: usize,
+}
+
+/// Only ReviewConflict certifies rejection before any reference write or journal
+/// mutation. Later failures remain Operation, even if they mention changed files.
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum ReviewApplyError {
+    ReviewConflict { path: String, message: String },
+    Operation { message: String },
+}
+impl From<String> for ReviewApplyError {
+    fn from(message: String) -> Self { Self::Operation { message } }
+}
+impl std::fmt::Display for ReviewApplyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self { Self::ReviewConflict { message, .. } | Self::Operation { message } => f.write_str(message) }
+    }
 }

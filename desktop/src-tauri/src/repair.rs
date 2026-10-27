@@ -183,7 +183,7 @@ fn prepare_selected(scan: &scanner::Scan, id: &str, target: &Path, selection: Op
             after.replace_range(reference.start..reference.end, &change.after);
         }
         prepared.plan.reference_count += changes.len();
-        prepared.plan.files.push(FileChanges { path: path.to_string_lossy().into(), changes });
+        prepared.plan.files.push(FileChanges { path: path.to_string_lossy().into(), fingerprint: crate::workspace::digest(before), changes });
         prepared.files.push((path, before.clone(), after.into_bytes()));
     }
     Ok(prepared)
@@ -192,6 +192,8 @@ fn prepare_selected(scan: &scanner::Scan, id: &str, target: &Path, selection: Op
 /// Read-only preparation for a task-linked transaction. The expected plan must
 /// include ALL references, not only checked rows. Caller owns any required lock.
 pub(crate) fn prepare_reviewed(scan: &scanner::Scan, id: &str, target: &Path, expected: &ReplacementPlan, selection: &HashSet<String>) -> Result<transaction::Prepared, String> {
+    let anchor = crate::observation::ObservationRoot::open(Path::new(&scan.project.root))?;
+    transaction::verify_fingerprints(&anchor, expected).map_err(|error| error.to_string())?;
     let complete = prepare(scan, id, target)?;
     if serde_json::to_vec(&complete.plan).map_err(|e| e.to_string())?
         != serde_json::to_vec(expected).map_err(|e| e.to_string())? {

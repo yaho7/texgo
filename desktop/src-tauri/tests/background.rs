@@ -354,3 +354,52 @@ fn retry_does_not_bypass_safe_overwrite_and_a_second_failure_is_still_a_problem(
     assert!(ws.retry_asset(&id).is_err());
     assert_eq!(fs::read(&output).unwrap(), b"external edit");
 }
+
+#[test]
+fn background_paths_never_recover_pending_rename_or_write_tex() {
+    let dir = tempfile::tempdir().unwrap();
+    make_png(dir.path(), "a.png", 1);
+    let main = dir.path().join("main.tex");
+    fs::write(&main, r"\includegraphics{a.png}").unwrap();
+    let mut ws = Workspace::open(&main).unwrap();
+    fs::create_dir_all(dir.path().join(".texgo")).unwrap();
+    let pending = dir.path().join(".texgo/rename-active.json");
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    let original = fs::read(&main).unwrap();
+    let renamed = br"\includegraphics{a.png}% interrupted rename";
+    let record = serde_json::json!({ "version": 1, "id": "r1-0", "main_file": main,
+        "files": [{ "path": "main.tex", "before": STANDARD.encode(&original), "after": STANDARD.encode(renamed) }] });
+    let record_bytes = serde_json::to_vec(&record).unwrap();
+    fs::write(&pending, &record_bytes).unwrap();
+    fs::write(&main, renamed).unwrap();
+    let before = fs::read(&main).unwrap();
+    let error = ws.refresh().unwrap_err();
+    assert!(error.contains("重新打开"), "{error}");
+    assert!(ws.poll_changes().is_err());
+    let mut preferences = texgo_desktop::preferences::Preferences::default();
+    preferences.allow_unreviewed = true;
+    assert!(ws.smart_convert(&preferences, &AtomicBool::new(false), |_| {}, |_| {}).is_err());
+    assert_eq!(fs::read(&main).unwrap(), before);
+    assert_eq!(fs::read(&pending).unwrap(), record_bytes);
+    // Reopening is an explicit foreground recovery boundary.
+    Workspace::open(&main).unwrap();
+    assert_eq!(fs::read(&main).unwrap(), original);
+    assert!(!pending.exists());
+}
+
+#[test]
+fn smart_allow_unreviewed_generates_pdfs_and_keeps_new_references_pending() {
+    let dir = tempfile::tempdir().unwrap();
+    make_png(dir.path(), "a.png", 1);
+    let main = dir.path().join("main.tex");
+    fs::write(&main, r"\includegraphics{a.png}").unwrap();
+    let mut ws = Workspace::open(&main).unwrap();
+    let before = fs::read(&main).unwrap();
+    let mut preferences = texgo_desktop::preferences::Preferences::default();
+    preferences.allow_unreviewed = true;
+    let report = ws.smart_convert(&preferences, &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+    assert_eq!(report.result.images.len(), 1);
+    assert_eq!(report.pending_references, 1);
+    assert_eq!(fs::read(main).unwrap(), before);
+    assert_eq!(ws.plan().unwrap().reference_count, 1);
+}

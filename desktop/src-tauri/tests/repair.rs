@@ -382,3 +382,32 @@ fn reviewed_apply_rejects_empty_unknown_and_unreviewed_selections_without_tex_wr
     assert_eq!(fs::read(dir.path().join("main.tex")).unwrap(), source.as_bytes());
     assert!(!dir.path().join(".texgo/undo.json").exists());
 }
+
+#[test]
+fn repair_review_pins_complete_bytes_across_refresh_and_rejects_missing_fingerprint() {
+    for refresh in [false, true] {
+        let dir = tempdir();
+        write(dir.path(), "plot.png", b"image");
+        let original = "\\includegraphics{missing}\n";
+        write(dir.path(), "main.tex", original);
+        let main = dir.path().join("main.tex");
+        let target = dir.path().join("plot.png");
+        let mut ws = workspace::Workspace::open(&main).unwrap();
+        let id = ws.project().images[0].id.clone();
+        let expected = ws.preview_repair(&id, &target).unwrap();
+        let changed = format!("{original}% external comment\n");
+        write(dir.path(), "main.tex", &changed);
+        if refresh { ws.refresh().unwrap(); }
+        let selected = expected.files.iter().flat_map(|file| file.changes.iter().map(|change| change.id.clone())).collect();
+        assert!(matches!(ws.apply_reviewed_checked(selected, &expected, true), Err(ReviewApplyError::ReviewConflict { .. })));
+        assert_eq!(fs::read(&main).unwrap(), changed.as_bytes());
+        assert!(!dir.path().join(".texgo/journal.json").exists());
+        let fresh = scanner::scan(&main).unwrap();
+        let fresh_id = &fresh.project.images[0].id;
+        let mut legacy = repair::prepare(&fresh, fresh_id, &target).unwrap().plan;
+        legacy.files[0].fingerprint.clear();
+        let selection = legacy.files[0].changes.iter().map(|change| change.id.clone()).collect();
+        assert!(repair::prepare_reviewed(&fresh, fresh_id, &target, &legacy, &selection).is_err());
+        assert_eq!(fs::read(main).unwrap(), changed.as_bytes());
+    }
+}
