@@ -189,7 +189,7 @@ export default function App() {
     catch (reason) { if (isMounted() && (workspace.generation.current === generation || !projectRef.current)) setError(errorMessage(reason)); }
   }
 
-  const { revealAsset, copyAssetPath } = useAssetFileActions({ currentProject: () => projectRef.current, isBusy: () => Boolean(currentOperationKind()), captureWorkspace, execute, onNotice: setNotice });
+  const { revealAsset, revealPdf, copyAssetPath } = useAssetFileActions({ currentProject: () => projectRef.current, isBusy: () => Boolean(currentOperationKind()), captureWorkspace, execute, onNotice: setNotice });
 
   function clearAssetState() {
     selection.reset();
@@ -313,7 +313,7 @@ export default function App() {
         }}>
           <div className="workspace-grid" hidden={view !== "assets"} data-view={view} style={layoutStyle}>
             <div className="workspace-library"><AssetList showSummary={narrow || !sidebarExpanded} thumbnailContext={{ mainFile: project.mainFile, revision, enabled: !homeVisible && !settingsPage && view === "assets" }} showSearchAndFilters={false} images={visibleImages} allImages={project.images} ignored={ignored} pendingIds={pendingIds} problemIds={problemIds} completedIds={completedIds}
-              onReveal={revealAsset} onCopyPath={copyAssetPath} selectionMode={selectionMode} renameRequest={renameRequest} onRename={renameAsset} convertibleIds={convertibleIds} onManualConvert={(id) => convert("reconvert", [id])} onIgnore={(id, value) => { void ignoreAsset(id, value); }} onInspect={inspectProblem} onLocate={locateRepair} total={project.status.totalImages} selected={selected} activeId={activeId} results={results}
+              onReveal={revealAsset} onRevealPdf={revealPdf} onCopyPath={copyAssetPath} selectionMode={selectionMode} renameRequest={renameRequest} onRename={renameAsset} convertibleIds={convertibleIds} onManualConvert={(id) => convert("reconvert", [id])} onIgnore={(id, value) => { void ignoreAsset(id, value); }} onInspect={inspectProblem} onLocate={locateRepair} total={project.status.totalImages} selected={selected} activeId={activeId} results={results}
               busy={busy} previewDisabled={busy && operation !== "converting"} search={search} filter={filter} onSearch={setSearch} onFilter={setFilter} onActivate={setActiveId}
               onSelect={(id) => { if (!busy) selection.toggleSelected(id); }}
               onSelectAll={(ids, select) => { if (!busy) selection.selectMany(ids, select); }} /></div>

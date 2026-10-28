@@ -13,10 +13,12 @@ interface Ports {
 }
 export function useAssetFileActions(ports: Ports) {
   const latest = useRef(ports); latest.current = ports;
-  async function perform(imageId: string, action: "reveal" | "copyPath") {
+  async function perform(imageId: string, action: "reveal" | "revealPdf" | "copyPath") {
     const current = latest.current;
     const project = current.currentProject();
-    if (!project || current.isBusy() || !project.images.some((asset) => asset.id === imageId && asset.path && !["missing", "ambiguous"].includes(asset.status))) return;
+    if (!project || current.isBusy()) return;
+    const asset = project.images.find(asset => asset.id === imageId);
+    if (!asset || (action === "revealPdf" ? !project.convertedImages.some(image => image.id === imageId && image.pdfPath) : !asset.path || ["missing", "ambiguous"].includes(asset.status))) return;
     const isCurrent = current.captureWorkspace();
     await current.execute("updating", async () => {
       if (!isCurrent() || current.currentProject()?.mainFile !== project.mainFile) return;
@@ -25,5 +27,5 @@ export function useAssetFileActions(ports: Ports) {
       if (isCurrent()) current.onNotice(action === "copyPath" ? t("assetFileActions.copiedTheFullImagePath") : t("assetFileActions.revealedTheImageInTheFileManager"));
     });
   }
-  return { revealAsset: (id: string) => { void perform(id, "reveal"); }, copyAssetPath: (id: string) => { void perform(id, "copyPath"); } };
+  return { revealPdf: (id: string) => { void perform(id, "revealPdf"); }, revealAsset: (id: string) => { void perform(id, "reveal"); }, copyAssetPath: (id: string) => { void perform(id, "copyPath"); } };
 }

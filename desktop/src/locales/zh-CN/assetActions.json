@@ -1,7 +1,7 @@
 {
-  "revealInFinder": "在 Finder 中显示",
-  "showInFileExplorer": "在文件资源管理器中显示",
-  "showInFileManager": "在文件管理器中显示",
+  "revealInFinder": "在 Finder 中显示{target}",
+  "showInFileExplorer": "在文件资源管理器中显示{target}",
+  "showInFileManager": "在文件管理器中显示{target}",
   "rename": "重命名",
   "viewDetails": "查看详细信息",
   "reviewAndRepair": "查看并修复",
@@ -12,5 +12,6 @@
   "copyPath": "复制路径",
   "resumeProcessing": "恢复处理",
   "ignoreThisSession": "忽略本次",
-  "alwaysIgnore": "始终忽略"
+  "alwaysIgnore": "始终忽略",
+  "originalImage": "原图"
 }

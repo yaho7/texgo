@@ -52,3 +52,11 @@ it("does not report a late platform error after the workspace is closed", async 
   await act(async () => { fail(new Error("file manager unavailable")); });
   expect(onError).not.toHaveBeenCalled(); expect(p.onNotice).not.toHaveBeenCalled();
 });
+
+it("reveals the managed PDF by identity without accepting a caller-supplied path", async () => {
+  const invoke = vi.fn(); mockIPC(invoke);
+  const p = ports(); p.currentProject = () => ({ ...project, convertedImages: [{ id: "plot", pdfPath: "/paper/pdf/图像.pdf", bytes: 20, cached: true, error: null }] });
+  const { result } = renderHook(() => useAssetFileActions(p));
+  await act(async () => result.current.revealPdf("plot"));
+  expect(invoke).toHaveBeenCalledWith("asset_file_action", { imageId: "plot", action: "revealPdf", expectedMainFile: "/paper/main.tex" });
+});

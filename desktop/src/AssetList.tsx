@@ -48,6 +48,7 @@ interface Props {
   convertibleIds?: Set<string>;
   onManualConvert?: (id: string) => void;
   onReveal?: (id: string) => void;
+  onRevealPdf?: (id: string) => void;
   onCopyPath?: (id: string) => void;
   onInspect?: (id: string) => void;
   onLocate?: (id: string) => void;
@@ -201,7 +202,7 @@ export default function AssetList(props: Props) {
     return assetActions({ asset, ignoreMode, ignored: ignoreMode !== "none", problem: current.problemIds.has(asset.id),
       convertible: (current.convertibleIds ?? current.pendingIds).has(asset.id), blocked: current.busy || isExiting || Boolean(currentRename.current) || savingRename.current,
       available: { details: true, rename: Boolean(current.onRename), inspect: Boolean(current.onInspect), locate: Boolean(current.onLocate), convert: Boolean(current.onManualConvert),
-        reveal: Boolean(current.onReveal), copyPath: Boolean(current.onCopyPath), restore: Boolean(current.onIgnore), ignoreSession: Boolean(current.onIgnore), ignorePermanent: Boolean(current.onIgnore) } });
+        reveal: Boolean(current.onReveal), revealPdf: Boolean(current.onRevealPdf && current.results[asset.id]?.pdfPath), copyPath: Boolean(current.onCopyPath), restore: Boolean(current.onIgnore), ignoreSession: Boolean(current.onIgnore), ignorePermanent: Boolean(current.onIgnore) } });
   }
   function selectAction(id: string, action: AssetActionId) {
     const current = latestProps.current;
@@ -213,6 +214,7 @@ export default function AssetList(props: Props) {
     else if (action === "locate") current.onLocate?.(id);
     else if (action === "convert") current.onManualConvert?.(id);
     else if (action === "reveal") current.onReveal?.(id);
+    else if (action === "revealPdf") current.onRevealPdf?.(id);
     else if (action === "copyPath") current.onCopyPath?.(id);
     else current.onIgnore?.(id, action === "restore" ? "none" : action === "ignoreSession" ? "session" : "permanent");
   }

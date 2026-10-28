@@ -1,7 +1,7 @@
 {
-  "revealInFinder": "Reveal in Finder",
-  "showInFileExplorer": "Show in File Explorer",
-  "showInFileManager": "Show in file manager",
+  "revealInFinder": "Reveal {target} in Finder",
+  "showInFileExplorer": "Show {target} in File Explorer",
+  "showInFileManager": "Show {target} in File Manager",
   "rename": "Rename",
   "viewDetails": "View details",
   "reviewAndRepair": "Review and repair",
@@ -12,5 +12,6 @@
   "copyPath": "Copy path",
   "resumeProcessing": "Resume processing",
   "ignoreThisSession": "Ignore this session",
-  "alwaysIgnore": "Always ignore"
+  "alwaysIgnore": "Always ignore",
+  "originalImage": "original image"
 }
