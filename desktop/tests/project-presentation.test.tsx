@@ -19,8 +19,8 @@ it("exposes a single LaTeX opening flow and recent projects", async () => {
   const user = userEvent.setup(); const open = vi.fn(); const recent = vi.fn();
   render(<Home busy={false} onOpenTex={open} recents={[{ path: "/paper/main.tex", openedAt: 1 }]} onRecent={recent} />);
   expect(screen.queryByText("批量转换图片")).not.toBeInTheDocument();
-  expect(screen.getByText("或拖入 .tex 主文件")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "打开项目" })); expect(open).toHaveBeenCalledOnce();
+  expect(screen.getByRole("button", { name: "打开或拖入 .tex 文件" })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "打开或拖入 .tex 文件" })); expect(open).toHaveBeenCalledOnce();
   await user.click(screen.getByRole("button", { name: /main.tex/ })); expect(recent).toHaveBeenCalledWith({ path: "/paper/main.tex", openedAt: 1 });
 });
 

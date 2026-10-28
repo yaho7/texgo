@@ -63,3 +63,7 @@ counts. Column headers match contents: name left, format/status centered, size r
 All 299 frontend tests, TypeScript and production build pass. Browser fixtures verified the
 Home and project navigation; screenshots are in `/private/tmp/texgo-home-wordmark.png` and
 `/private/tmp/texgo-sidebar-home-icon.png`.
+
+The final Home refinement removes the topbar entirely and uses one “打开或拖入 .tex 文件”
+button backed by the existing single-file native `.tex` picker. The separate drag hint is gone.
+The border/padding formerly separating the sidebar is removed on Home as well.

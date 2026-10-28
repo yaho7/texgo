@@ -281,18 +281,18 @@ export default function App() {
     onRemove={workspace.forgetRecent} />;
 
   return <TooltipProvider delayDuration={350}><div className="app-shell mac-workspace">
-    <div className="workbench" inert={review !== null || undoEntry !== null || problemId !== null || updateOpen || conversionBlocked}>
+    <div className={homeLanding ? "workbench pl-0!" : "workbench"} inert={review !== null || undoEntry !== null || problemId !== null || updateOpen || conversionBlocked}>
       <a href="#main-content" className="skip-link">跳转到工作区</a>
       {!homeLanding && !narrow && <aside className="workspace-sidebar" data-collapsed={!sidebarExpanded} aria-hidden={!sidebarExpanded} inert={!sidebarExpanded}>{sidebar}</aside>}
-      <div className="workspace-main">
-      <header className="app-toolbar">
+      <div className={homeLanding ? "workspace-main border-l-0!" : "workspace-main"}>
+      {!homeLanding && <header className="app-toolbar">
         {!homeLanding && <IconButton id="sidebar-toggle" label={narrow ? "打开项目导航" : sidebarExpanded ? "收起侧栏" : "展开侧栏"} aria-expanded={narrow ? drawerOpen : sidebarExpanded} onClick={() => narrow ? setDrawerOpen(true) : setSidebarOpen((value) => !value)}><PanelLeft aria-hidden="true" /></IconButton>}
         {(narrow || !sidebarExpanded) && (!homeVisible || settingsPage) && <Button variant="ghost" className="px-2!" aria-label="Texgo 首页" disabled={busy} onClick={showHome}>Texgo</Button>}<div className="project-title">{project && !homeVisible && !settingsPage ? <><h1 title={project.mainFile}>{fileName(project.mainFile)}</h1><p title={project.root}>{project.root}</p></> : null}</div>
         {project && !homeVisible && !settingsPage && view === "assets" && <WorkspaceSearch value={search} onChange={setSearch} />}
         <div className="toolbar-actions"><WorkbenchMenu busy={busy} hasProject={Boolean(project)} canUndo={history.some((entry) => entry.canUndo) || Boolean(project?.undoAvailable)} onOpen={openProject} onClose={closeProject} onRefresh={() => { void execute("opening", () => refresh()); }} onUpdate={() => setUpdateOpen(true)} onUndo={() => {
           const entry = history.find((item) => item.canUndo); if (entry) { rememberFocus(); reviewFlow.requestUndo(entry); } else if (project?.undoAvailable) replace(true);
         }} /></div>
-      </header>
+      </header>}
       {error && !review && !undoEntry && !problemId && <ErrorNotice message={error} className="workbench-alert" onClose={() => setError(null)} />}
       {project?.status.blockingReason && !homeVisible && !settingsPage && <Alert variant="destructive" role="alert" className="workbench-alert"><TriangleAlert aria-hidden="true" /><AlertTitle>需要先解决安全问题</AlertTitle><AlertDescription>{project.status.blockingReason}</AlertDescription></Alert>}
       <div className="page-enter settings-view" hidden={!settingsPage} inert={!settingsPage}><SettingsView active={settingsPage} value={preferences} onSaved={(next) => { preferencesRef.current = next; setPreferences(next); }} onClose={() => setSettingsPage(false)} /></div>

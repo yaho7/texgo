@@ -86,7 +86,7 @@ beforeEach(() => {
 });
 async function openProject() {
   const user = userEvent.setup(); render(<App />);
-  await user.click(screen.getByRole("button", { name: "打开项目" }));
+  await user.click(screen.getByRole("button", { name: "打开或拖入 .tex 文件" }));
   await screen.findByRole("button", { name: "预览 figures/alpha.png" }); return user;
 }
 async function menu(user: ReturnType<typeof userEvent.setup>, name: string) {
@@ -124,7 +124,7 @@ describe("LaTeX 项目唯一工作流", () => {
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     expect(screen.queryByRole("tab")).not.toBeInTheDocument();
     await menu(user, "关闭当前项目");
-    expect(await screen.findByText("或拖入 .tex 主文件")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "打开或拖入 .tex 文件" })).toBeInTheDocument();
     expect(calls.filter((call) => call.command === "close_workspace")).toHaveLength(1);
     expect(calls.some((call) => call.command === "open_directory")).toBe(false);
   });
@@ -334,7 +334,7 @@ describe("LaTeX 项目唯一工作流", () => {
     await user.click(within(dialog).getByRole("button", { name: "应用 2 处引用修改" }));
     await screen.findByText(/部分写入失败；重新扫描失败/);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByText("或拖入 .tex 主文件")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开或拖入 .tex 文件" })).toBeInTheDocument();
   });
   it("continues to show the reviewable result when history loading fails", async () => {
     const user = await openProject(); handlers.conversion_history = () => { throw new Error("记录不可读"); };
@@ -385,11 +385,12 @@ describe("LaTeX 项目唯一工作流", () => {
     const opens = calls.filter(call => call.command === "open_project").length;
     await user.click(screen.getByRole("button", { name: "Texgo 首页" }));
     expect(screen.getByRole("heading", { name: "加快 LaTeX 编译" })).toBeVisible();
-    expect(screen.getAllByRole("button", { name: "打开项目" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "打开或拖入 .tex 文件" })).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Texgo 首页" })).not.toBeInTheDocument();
     expect(screen.getByText("Texgo", { exact: true })).toBeVisible();
     expect(screen.queryByRole("button", { name: /展开侧栏|打开项目导航/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "项目导航" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("banner")).not.toBeInTheDocument();
     expect(screen.getAllByRole("region", { name: "最近项目" })).toHaveLength(1);
     expect(document.querySelectorAll("#main-content")).toHaveLength(1);
     await user.click(within(screen.getByRole("region", { name: "最近项目" })).getByRole("button", { name: /^main\.tex/ }));

@@ -17,8 +17,7 @@ export default function Home(props: Props) {
   return <main id="main-content" tabIndex={-1} className="home-workspace page-transition py-8!">
     <section className="home-opening gap-4!" aria-labelledby="home-title">
       <div className="flex flex-col items-center gap-2"><p className="text-[18px] font-semibold leading-6 text-foreground/65" translate="no">Texgo</p><h1 id="home-title">加快 LaTeX 编译</h1></div>
-      <Button aria-busy={props.busy} disabled={props.busy} onClick={props.onOpenTex}>{props.busy ? <LoaderCircle className="animate-spin" data-icon="inline-start" aria-hidden="true" /> : <FolderOpen data-icon="inline-start" aria-hidden="true" />}{props.busy ? "正在扫描…" : "打开项目"}</Button>
-      <p className="home-drop-hint">或拖入 .tex 主文件</p>
+      <Button aria-busy={props.busy} disabled={props.busy} onClick={props.onOpenTex}>{props.busy ? <LoaderCircle className="animate-spin" data-icon="inline-start" aria-hidden="true" /> : <FolderOpen data-icon="inline-start" aria-hidden="true" />}{props.busy ? "正在扫描…" : "打开或拖入 .tex 文件"}</Button>
       <details className="w-full max-w-[440px] text-left text-xs leading-relaxed">
         <summary className="mx-auto w-fit cursor-pointer rounded px-2 py-1 text-muted-foreground focus-visible:outline-2 focus-visible:outline-primary">工作原理与权限</summary>
         <div className="mt-3 space-y-3 rounded-lg border border-border bg-secondary/50 p-4">
