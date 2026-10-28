@@ -2,57 +2,65 @@
 
 [中文](README.zh.md)
 
-A local LaTeX project image assistant for Windows, macOS and Linux, built with
-Tauri 2, Rust, React and shadcn/ui. Every installer includes both the desktop
-application and the independent `texgo-engine` CLI/JSON-RPC API.
+**Speed up LaTeX compilation.** Texgo prepares project images as PDFs, keeps them
+up to date, and lets you review reference changes before touching your `.tex` files.
+Available for Windows, macOS and Linux. Projects stay on your computer.
 
-## Download
+[Download](https://github.com/yaho7/texgo/releases/latest) ·
+[User guide](desktop/README.md) · [Troubleshooting](docs/troubleshooting.md)
 
-Get the installer for your platform from [GitHub Releases](https://github.com/yaho7/texgo/releases/latest).
-macOS requires 13.3+ and an updated Safari 18+ WebKit for PDF previews.
-Windows packages are unsigned; macOS packages use Developer ID signing and Apple notarization. See [platform requirements and signing](docs/desktop-release.md).
+## Open, process, review
 
-## Workflow
+1. Open or drop the main `.tex` file. Texgo scans its included files and images.
+2. Process pending images; compare the original with the resulting PDF.
+3. Review proposed LaTeX reference changes and explicitly apply your selection.
 
-1. Open or drop a LaTeX main file. Texgo discovers the project's image references.
-2. Follow the single recommended action: review references, update pending images, or resolve problems.
-3. Update all pending images by default. Use “Select some images” only when needed; output parameters live in the bottom command bar.
-4. Compare the original on the left and PDF on the right with an overlay divider. Reference changes open for review automatically and are applied only after confirmation.
-5. Browse images and operation records from the sidebar. Undo restores the operation's references and PDFs together.
+Background monitoring refreshes status. Smart Convert can update Texgo-managed
+PDFs, but neither feature edits `.tex` files automatically. Before applying a
+reference plan, Texgo rereads target files and checks their complete fingerprints.
+Changed files stop the write and require a new scan. Save unsaved changes in other
+editors before applying; Desktop cannot inspect their in-memory buffers.
 
-Image changes are detected in the background. The application menu contains
-GitHub release checks, manual rescanning and other less frequent actions.
+Operation history provides guarded Undo. Image menus offer rename, retry, temporary
+or permanent ignore, and explicit reconversion. Settings include Chinese/English,
+processing defaults, background behavior, notifications and global shortcuts.
 
-Conversion does not require GraphicsMagick or TeX. Document compilation through
-the engine requires an installed TeX distribution and `latexmk`. Quality 100
-uses lossless image encoding; lower DPI never upscales the source image.
+### Home
 
-## Automation
+![Texgo Home](docs/images/home.jpg)
 
-The bundled engine works independently of the GUI. Use a versioned JSON
-configuration or JSON-RPC to scan, convert, compile and watch projects from
-VS Code or another editor. No second engine installation is needed.
+### Workspace
 
-- [CLI and API](docs/api.md)
-- [Project configuration schema](docs/project.schema.json)
-- [VS Code and LaTeX Workshop example](examples/vscode/)
-- [Installed engine paths](docs/desktop-release.md#one-install-gui-and-cli)
+![Texgo workspace](docs/images/workspace.jpg)
 
-## Development
+### Compare
 
-Application source is in `desktop/`. With development dependencies installed,
-run the local no-output static check:
+![Original and PDF comparison](docs/images/compare.jpg)
 
-```sh
-cd desktop
-npm run check
-```
+Screenshots show the production frontend with deterministic sample data and mocked
+native services. The preview opens a sample project; the installed desktop app opens
+a native file picker. These are UI illustrations, not installed-platform acceptance tests.
 
-Every successful push packages all four platforms and automatically publishes
-a uniquely tagged GitHub Release. Main releases become Latest. Compilation,
-packaging and publication are handled by GitHub Actions.
-See [desktop development](desktop/README.md) and [release workflow](docs/desktop-release.md).
+## Desktop and automation
 
-## License
+One installer includes the desktop app and the independent `texgo-engine` CLI/JSON-RPC
+engine. Image processing needs neither TeX nor GraphicsMagick. Existing engine
+compilation commands require a local TeX distribution and `latexmk`.
 
-[MIT](LICENSE).
+- [CLI and API](docs/api.md), [configuration schema](docs/project.schema.json),
+  [VS Code / LaTeX Workshop configuration example](examples/vscode/)
+- [Platform requirements, installed engine paths and signed updates](docs/desktop-release.md)
+- [Development](docs/development.md), [contributing](CONTRIBUTING.md),
+  [architecture and delivery status](docs/product-upgrade-report.md)
+
+Built with Tauri 2, Rust, React and Tailwind CSS. Branch builds produce artifacts;
+only an exact `v<manifest version>` tag can publish a release after all four platform
+builds pass. Windows installers are unsigned; macOS signing and notarization results
+must be checked in the release workflow.
+
+## Contributors
+
+[yaho7](https://github.com/yaho7), with AI-assisted contributions from Codex in
+implementation, verification and documentation.
+
+[MIT license](LICENSE).

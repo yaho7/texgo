@@ -1,47 +1,85 @@
 # Texgo Desktop
 
-Tauri 2 + Rust + React + Tailwind CSS, with application-owned controls and Radix accessibility primitives. Texgo maintains images referenced by a LaTeX project. Open or drop the main `.tex` file; the sidebar is the only main navigation.
+[中文](README.zh.md) · [Download](https://github.com/yaho7/texgo/releases/latest)
 
-Rust publishes one `WorkspaceStatus` snapshot for the GUI, Smart Convert, tray and notifications. The next action is reference review, image updates, problem resolution, or up to date, in that order. The bottom command bar is the only primary action area. Updates include all pending images by default; temporary selection mode supports partial updates.
+Texgo prepares project images to speed up LaTeX compilation. The Tauri desktop
+app uses Rust, React, Tailwind CSS and owned controls with Radix primitives.
 
-The current-image inspector contains the original/PDF overlay (original left, PDF right), metadata, reference locations and problem details. Conversions open reference review automatically only when paths change. Output settings are a lightweight popover with three presets; custom values are inferred. Operation records contain guarded Undo with technical details folded away.
+## Everyday workflow
 
-Settings cover general behavior, conversion defaults, background/notifications, recorded global shortcuts and advanced safety controls. Page, action, badge, preview and surface transitions share CSS motion tokens and respect reduced motion. Refresh and navigation preserve browsing context.
+Open or drop the main `.tex` file. Home has no sidebar or topbar; its Settings
+entry sits at the bottom left. In the workspace, Open project and History share
+one navigation group, followed by Library filters and recent projects. The Home
+icon returns to the landing page without closing the project. Only Close current
+project closes the native workspace.
 
-Every installer includes the independent `texgo-engine` CLI/JSON-RPC API.
-Install once for both GUI and automation; no second engine download is needed.
-Use its [installed path](../docs/desktop-release.md#one-install-gui-and-cli)
-in VS Code or another editor. Compilation needs an installed TeX distribution
-and `latexmk`; image conversion does not need GraphicsMagick or TeX.
+The bottom command bar recommends reference review, pending image processing,
+problem resolution or up to date, in that order. It processes all pending images
+by default. Temporary selection supports partial processing. Manual reconversion
+remains available for the current image or every convertible image; it bypasses
+cache reuse, never file ownership or safety checks.
 
-## Development
+Select an image to inspect its original, PDF or overlay comparison. Thumbnails
+help locate images; dimensions appear in the inspector. Parameters live in a
+popover with Balanced, High quality and Small file size presets. DPI never
+upscales the source; quality 100 uses lossless image encoding. See the
+[image and parser details](README.zh.md).
 
-Local static check, with development dependencies installed:
+## Reference review and recovery
 
-```sh
-npm run check
-```
+Monitoring scans and refreshes status. Smart Convert updates managed PDFs only.
+Neither edits `.tex` automatically. Changed reference paths become a Pending
+Review plan, selectable by file or individual occurrence.
 
-Compilation and packaging happen on GitHub Actions, not locally. Existing unit
-tests and browser fixtures remain available for explicitly requested testing.
+Applying a plan rereads all targets and verifies the complete-file SHA-256
+fingerprints recorded when the plan was generated. Changed files stop application
+before writes. Rescan and confirm a fresh plan; background refresh does not silently
+refresh an existing plan's fingerprints. Save other editors before applying:
+Desktop cannot detect their unsaved buffers.
 
-## Packaging
+History groups operations by date, leads with the result, and keeps file details
+collapsed. Undo validates the entire recovery operation before restoring references
+and PDFs. External changes stop recovery. Keep `.texgo/`, which contains managed
+mappings, journals and recovery data.
 
-Push and manual dispatch run frontend typechecking, frontend/PDF tests and headless Rust tests. Four native package jobs then test and package Windows x64, Linux x64, macOS Apple Silicon and Intel. The engine is built first and bundled with Tauri. Successful main/tag runs publish installers and `SHA256SUMS`; other branches only upload artifacts.
+## Image actions
 
-Local test/build commands are not used in this workflow; use no-emit static checking locally and GitHub Actions for executable validation.
+Ignore for this session or persist an ignore rule in `.texgo/ignore.json`. Ignored
+images remain visible and can be restored or processed explicitly once. Corrupt
+rules block writes rather than being overwritten.
 
-macOS requires 13.3+; PDF previews require an updated Safari 18+ WebKit runtime.
-Windows requires current WebView2; Linux requires current WebKitGTK
-4.1. Windows builds are unsigned; macOS builds use Developer ID signing and Apple notarization. See [packaging and installed paths](../docs/desktop-release.md),
-[Chinese guide](README.zh.md), [API](../docs/api.md),
-[schema](../docs/project.schema.json) and [editor example](../examples/vscode/).
-The repository's [MIT license](../LICENSE) applies.
+Double-click a filename, press F2, or choose Rename to edit its basename; its
+extension stays fixed. Enter submits, Escape or blur cancels. The Rust transaction
+migrates the source, managed PDFs, verified reference spans, mappings and ignore
+identity. It records durable before/after states and supports guarded Undo.
+Conflicts, unsafe paths, external edits and unfinished recovery block writes.
+Case-only names, dotted names with extensionless references and external SVG
+resources are conservatively rejected.
 
-## Explicit asset control
+## Settings and background use
 
-The Command Bar recommends one primary action but keeps manual conversion available in every project state. Its conversion menu updates pending images, selects a temporary subset, or explicitly reconverts the current/all convertible assets. A manual reconvert bypasses cache reuse, never output ownership, external-edit, symlink, journal, or pending-reference protection. Smart Convert remains pending-only.
+Settings is a standalone page. Chinese and English apply after Save and persist
+across launches. General behavior, image defaults, automation, notifications,
+recorded global shortcuts and advanced controls are separate groups.
 
-Asset menus distinguish session ignore from permanent project ignore (`.texgo/ignore.json`, version 1). Permanent identities use normalized project-relative source paths, or relative TeX file plus original reference argument for unresolved assets; IDs and line numbers are not persisted. Ignored assets can be converted explicitly once without removing their ignore rule. Corrupt rules block writes rather than being overwritten.
+The default global shortcut is Cmd+Option+Enter on macOS and Ctrl+Alt+Enter on
+Windows/Linux. Closing normally keeps Texgo in the background; use the tray or
+Dock to reopen it. Availability depends on OS permissions and desktop services.
+See [background behavior](../docs/background-workflow.md).
 
-Double-click the filename text, press F2, or choose Rename to edit its basename with a fixed extension. Enter submits; Escape/blur cancels; errors remain inline. The Rust transaction migrates the source, managed PDFs, verified TeX reference spans, ownership, mappings, and ignore identities. It records durable before/after states before writing and rolls back interrupted work before scanning. History and safe reverse-order Undo include rename operations. Keep `.texgo/` to preserve recovery data. Case-only names, dotted names with extensionless references, and assets referenced as external SVG resources are conservatively rejected.
+App updates require explicit download, install and restart actions. Signatures
+and version are checked at download and again at install. On Windows, the explicit
+install action lets the installer quit and relaunch the app. See
+[release and platform requirements](../docs/desktop-release.md).
+
+## Development and integration
+
+See [local setup and checks](../docs/development.md) and
+[contribution guidelines](../CONTRIBUTING.md). Branch builds produce artifacts;
+only an exact `v<manifest version>` tag can publish after all four targets pass.
+
+Every installer includes the independent `texgo-engine` CLI/JSON-RPC engine.
+Image processing needs neither TeX nor GraphicsMagick. Existing document compilation
+commands need a local TeX distribution and `latexmk`.
+[API](../docs/api.md) · [Schema](../docs/project.schema.json) ·
+[VS Code configuration example](../examples/vscode/) · [MIT](../LICENSE)

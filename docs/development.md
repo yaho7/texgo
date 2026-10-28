@@ -6,7 +6,9 @@ Texgo's frontend requires Node.js 22 and npm. Native tests require Rust/Cargo an
 cd desktop
 npm ci
 npm run check
+npm run check:i18n
 npm test
+npm run test:release
 npm run test:pdf
 cargo test --locked --manifest-path src-tauri/Cargo.toml --no-default-features --features automation
 ```
@@ -19,7 +21,7 @@ cargo build --locked --manifest-path src-tauri/Cargo.toml --no-default-features 
 mkdir -p src-tauri/binaries
 cp src-tauri/target/debug/texgo-engine src-tauri/binaries/texgo-engine-aarch64-apple-darwin
 npm exec tauri icon app-icon.svg
-cargo test --locked --manifest-path src-tauri/Cargo.toml
+cargo test --locked --manifest-path src-tauri/Cargo.toml --features updater-tests
 ```
 
 Use the host triple reported by `rustc -vV` for the sidecar filename on other platforms; Windows additionally uses `.exe`. CI's package job shows platform-specific staging. Generated binaries, icons, target files and frontend distributions remain ignored. Do not commit fake sidecars or bypass resource checks to get tests running.
@@ -28,7 +30,19 @@ Passing local tests does not verify installed-app notifications, global shortcut
 
 Native observation tests include a real filesystem-event smoke test. On macOS a restricted agent sandbox can deny FSEvents stream initialization; run that test with the environment's normal permission review rather than treating a fallback-only run as proof of native events. The product-upgrade verification exercised real macOS FSEvents outside the sandbox. Windows/Linux runtime checks still require their native environments.
 
-The October 26 baseline passed 145 frontend tests, one PDF test, 209 headless Rust tests and 197 default desktop Rust tests. The Rust feature sets deliberately discover different tests. An existing unused-import warning in `manifest.rs` was recorded separately from failures.
+The October 28 local verification passed 308 frontend tests, one PDF renderer test,
+12 release/signature/feed tests, 293 headless Rust tests and 288 desktop Rust tests
+with `updater-tests`. The Rust feature sets deliberately discover different tests.
+These counts describe the recorded run; rerun the relevant checks after changes.
+Language maintenance is documented in [the locale guide](../desktop/src/locales/README.md).
+
+For local UI development, run `npm run tauri dev` after preparing the resources.
+`npm run dev` serves the frontend alone and cannot provide native file dialogs or
+project filesystem operations. `scripts/review-ui.mjs` is a separate CI-only visual
+harness with deterministic data and mocked native IPC; its file picker intentionally
+returns a fixture path. It is not a browser edition of Texgo. The manual UI review
+workflow uploads screenshots and a report; inspect its actual run before claiming CI
+visual acceptance.
 
 ### Desktop diagnostic logs
 

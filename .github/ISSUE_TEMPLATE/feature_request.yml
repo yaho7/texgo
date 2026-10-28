@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest an improvement to Texgo
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: input
+    id: platform
+    attributes:
+      label: Platforms and Texgo version
+  - type: textarea
+    id: context
+    attributes:
+      label: Examples or additional context

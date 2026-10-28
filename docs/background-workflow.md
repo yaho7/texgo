@@ -10,7 +10,7 @@ The action priority is reference review → update pending images → resolve pr
 
 ## User workflow
 
-Open or drop `main.tex`. The sidebar contains project images, operation records, recent projects and settings. There is no Home navigation for an open project. Only the explicit project-menu action closes the native Workspace; changing pages does not interrupt background work.
+Open or drop `main.tex`. The sidebar groups Open project and History together, followed by the Library and recent projects. Its trailing Home icon returns to the Home page without closing the project. Settings opens as a standalone page; Home has neither a sidebar nor a topbar. Only the explicit project-menu action closes the native Workspace; changing pages does not interrupt background work.
 
 The fixed command bar is the only primary action area. It updates every pending image by default. “Select some images” temporarily enables checkboxes and a visible selection count; Escape exits that mode without clearing search/filter. Three parameter presets live in a popover: balanced 300/90, high quality 300/100, small 150/75. Editing values implies custom settings.
 

@@ -2,54 +2,46 @@
 
 [English](README.md)
 
-面向 Windows、macOS 和 Linux 的本地 LaTeX 项目图片维护工具，使用 Tauri 2、Rust、React 和 shadcn/ui。安装一个应用即可同时获得图形界面和独立的 `texgo-engine` CLI/JSON-RPC 引擎；项目文件不会上传到服务器。
+**加快 LaTeX 编译。** Texgo 将项目图片预处理为 PDF，持续更新图片，并让你在修改 `.tex` 引用前审核变更。支持 Windows、macOS 和 Linux，项目文件保留在本机。
 
-## 下载
+[下载](https://github.com/yaho7/texgo/releases/latest) · [使用说明](desktop/README.zh.md) · [常见问题](docs/troubleshooting.md)
 
-从 [GitHub Releases](https://github.com/yaho7/texgo/releases/latest) 下载对应平台的安装包。
+## 打开、处理、审核
 
-macOS 最低要求为 13.3，PDF 预览还需要 Safari 18+ 对应的 WebKit。Windows 安装包未签名，macOS 使用 Developer ID 正式签名并经过 Apple 公证；详细说明见[平台要求和签名](docs/desktop-release.md)。
+1. 打开或拖入 `.tex` 主文件，扫描子文件和图片。
+2. 处理待更新图片，对比原图与生成的 PDF。
+3. 检查引用变更，选择后明确点击应用。
 
-## 使用流程
+后台检测只刷新状态；Smart Convert 可以更新 Texgo 管理的 PDF，两者都不会自动修改 `.tex`。应用引用变更前，Texgo 会重新读取目标文件并核对完整 fingerprint；文件变化则停止写入，要求重新扫描。应用前请先保存其他编辑器的未保存内容，桌面版无法检测外部编辑器内存中的修改。
 
-1. 打开或拖入 LaTeX 的 `.tex` 主文件，自动识别子文件和图片引用。
-2. 按底部推荐操作维护项目：审核引用、更新图片、处理问题，或确认项目已是最新。
-3. 默认更新全部待处理图片；需要部分处理时进入临时选择模式，按 Esc 退出。预设、DPI、质量和输出目录收纳在底部参数弹层中。
-4. 使用覆盖式对比：原图在左，PDF 在右。转换引起的引用变化会自动打开审核，可按文件或逐条选择后确认；同路径 PDF 更新不重复审核。
-5. 从侧栏切换“图片”和“操作记录”。操作记录提供统一撤销，恢复引用和 PDF，保留源图片。
+操作记录支持安全撤销。图片菜单提供重命名、重试、临时或永久忽略，以及手动重新处理。设置支持中英文切换、处理默认值、后台行为、通知和全局快捷键。
 
-图片变化在后台自动检测，刷新保留当前图片、搜索、筛选和对比位置。普通问题在“问题”筛选和当前图片信息中处理，只有安全阻塞才显示顶部提示。项目菜单中的“关闭当前项目”会明确关闭项目；切换到设置或操作记录不会中断后台维护。
+### 首页
 
-图片转换不需要 GraphicsMagick 或 TeX。质量 100 使用无损图像编码，DPI 不会放大原图。需要编译文档时，本机还需安装 TeX 发行版和 `latexmk`。
+![Texgo 首页](docs/images/home.jpg)
 
-## 开发者接入
+### 工作区
 
-内置引擎可在桌面应用未运行时独立调用，支持版本化 JSON 配置和标准输入输出上的 JSON-RPC。可以接入 VS Code、LaTeX Workshop 或其他编辑器，完成扫描、转换、编译及自动监听，无需再安装第二套工具。
+![Texgo 工作区](docs/images/workspace.jpg)
 
-- [CLI 与 API 文档](docs/api.md)
-- [JSON 配置定义](docs/project.schema.json)
-- [VS Code 接入示例](examples/vscode/)
-- [引擎安装路径](docs/desktop-release.md#one-install-gui-and-cli)
-- [详细使用说明](desktop/README.zh.md)
+### 对比
 
-## 开发与发布
+![原图与 PDF 对比](docs/images/compare.jpg)
 
-应用源码位于 `desktop/`。安装开发依赖后，在本地执行无输出静态检查：
+截图来自正式前端，使用固定示例数据与模拟原生接口。网页预览会打开示例项目，安装后的桌面应用会弹出系统文件选择器。截图用于说明界面，不代表已完成各平台安装验收。
 
-```sh
-cd desktop
-npm run check
-```
+## 桌面应用与自动化
 
-每次 push 的四个平台全部打包成功后，自动发布到 GitHub Release，main 发布会标记为 Latest，无需手动创建标签。编译、打包与发布交给 GitHub Actions，不在本地执行。见[开发说明](desktop/README.md)和[发布流程](docs/desktop-release.md)。
+一个安装包包含图形界面和独立的 `texgo-engine` CLI/JSON-RPC 引擎。图片处理不依赖 TeX 或 GraphicsMagick；现有引擎编译命令需要本机 TeX 发行版与 `latexmk`。
 
-## 许可证
+- [CLI 与 API](docs/api.md)、[配置定义](docs/project.schema.json)、[VS Code / LaTeX Workshop 配置示例](examples/vscode/)
+- [平台要求、引擎安装路径与签名更新](docs/desktop-release.md)
+- [开发](docs/development.md)、[贡献指南](CONTRIBUTING.md)、[架构与交付状态](docs/product-upgrade-report.md)
 
-[MIT](LICENSE)。
+使用 Tauri 2、Rust、React 与 Tailwind CSS。分支构建仅生成产物；只有与项目版本完全一致的 `v版本号` 标签，在四个平台构建通过后才能发布。Windows 安装包未签名；macOS 签名与公证结果以实际发布工作流为准。
 
+## 贡献者
 
-### 后台快速转换与设置
+[yaho7](https://github.com/yaho7)；Codex 提供 AI 开发、验证与文档协助。
 
-侧栏底部的“设置”集中管理默认预设、通知、自动检测、启动与关闭行为。系统级快捷键默认为 macOS `Cmd + Option + Enter`、Windows / Linux `Ctrl + Alt + Enter`，可直接录制新组合或关闭。Smart Convert 和前台共用项目状态：处理待更新图片，已有 PDF 沿用原输出位置；存在待审核引用时优先审核，不自动修改 TeX。
-
-关闭窗口默认保持后台运行，可从托盘打开、快速转换或退出。转换结果通过系统通知提示，点击通知可定位到对应操作记录或问题。Windows 通知点击依赖已安装应用，且系统插件仅报告屏幕上仍可见的 toast 点击；三平台的交付行为以系统通知权限为准。详见[后台工作流与实现说明](docs/background-workflow.md)。
+[MIT 许可证](LICENSE)。

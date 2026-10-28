@@ -1,0 +1,54 @@
+name: Bug report
+description: Report a reproducible problem in Texgo
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and architecture
+      placeholder: macOS 15 arm64 / Windows 11 x64 / Ubuntu 24.04 x64
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Texgo version
+    validations:
+      required: true
+  - type: input
+    id: engine
+    attributes:
+      label: LaTeX engine and distribution
+      description: Enter the engine/distribution, or N/A for image-only issues.
+      placeholder: XeLaTeX / LuaLaTeX / pdfLaTeX, TeX Live version
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs and screenshots
+      description: Settings → Advanced can open the log folder. Remove private information before attaching files.
+  - type: textarea
+    id: sample
+    attributes:
+      label: Minimal example (optional)
+      description: A small non-private project or image that reproduces the problem.
