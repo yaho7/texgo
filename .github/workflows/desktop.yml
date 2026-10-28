@@ -127,10 +127,12 @@ jobs:
           cp "src-tauri/target/$TARGET/release/texgo-engine$extension" "src-tauri/binaries/texgo-engine-$TARGET$extension"
           npx tauri icon app-icon.svg
       - name: Test desktop integration on native platform
-        run: cargo test --no-fail-fast --manifest-path src-tauri/Cargo.toml --locked --target ${{ matrix.target }}
+        run: cargo test --no-fail-fast --manifest-path src-tauri/Cargo.toml --locked --features updater-tests --target ${{ matrix.target }}
       - name: Build desktop installer with bundled engine
         uses: tauri-apps/tauri-action@v1
         env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ needs.verify.outputs.publish == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
           APPIMAGE_EXTRACT_AND_RUN: '1'
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -140,7 +142,7 @@ jobs:
         with:
           projectPath: desktop
           tauriScript: npx tauri
-          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked --bin texgo-desktop
+          args: --config '{"bundle":{"createUpdaterArtifacts":${{ needs.verify.outputs.publish }}}}' --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked --bin texgo-desktop
           uploadWorkflowArtifacts: false
           uploadUpdaterJson: false
       - name: Collect installers
@@ -167,6 +169,11 @@ jobs:
           pattern: desktop-installers-*
           path: release
           merge-multiple: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify signed updater artifacts and assemble feed
+        run: node desktop/scripts/generate-updater-feed.mjs release
       - name: Generate checksums and publish
         env:
           GH_TOKEN: ${{ github.token }}

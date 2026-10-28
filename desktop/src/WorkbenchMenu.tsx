@@ -17,7 +17,7 @@ export default function WorkbenchMenu(props: Props) {
         <DropdownMenuItem disabled={props.busy || !props.hasProject} onSelect={props.onClose}><X aria-hidden="true" />关闭当前项目</DropdownMenuItem>
       </DropdownMenuGroup>
       <DropdownMenuSeparator />
-      <DropdownMenuGroup><DropdownMenuItem onSelect={props.onUpdate}><Download aria-hidden="true" />检查应用更新</DropdownMenuItem></DropdownMenuGroup>
+      <DropdownMenuGroup><DropdownMenuItem disabled={props.busy} onSelect={props.onUpdate}><Download aria-hidden="true" />检查应用更新</DropdownMenuItem></DropdownMenuGroup>
     </DropdownMenuContent>
   </DropdownMenu>;
 }

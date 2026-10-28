@@ -49,7 +49,7 @@ npm run check
 npm test
 npm run test:pdf
 npm run build
-cargo test --manifest-path src-tauri/Cargo.toml --locked
+cargo test --manifest-path src-tauri/Cargo.toml --locked --features updater-tests
 cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features --features automation
 ```
 
@@ -120,4 +120,39 @@ bundle names and the `desktop` prefix are omitted. Collection rejects multiple c
 empty/nonregular installers and existing destination names instead of silently overwriting.
  Compare the SHA-256
 of the download against its matching line in `SHA256SUMS`. Windows packages
-are unsigned. The workflow supports a Developer ID Application certificate and Apple notarization through Tauri’s supported environment variables; successful signing/notarization must be verified in the actual release job. The workflow references the five Apple repository Secrets without printing their values. Both macOS architectures share the same signing step. Signed updater integration is the next release unit; a configured secret or a local build is not an installed-upgrade acceptance result.
+are unsigned. The workflow supports a Developer ID Application certificate and Apple notarization through Tauri’s supported environment variables; successful signing/notarization must be verified in the actual release job. The workflow references the five Apple repository Secrets without printing their values. Both macOS architectures share the same signing step. A configured secret or local test is not an installed-upgrade acceptance result.
+
+
+## Signed application updates
+
+The application pins a real updater public key in `src-tauri/tauri.conf.json`. Its private key
+belongs only in the repository Actions secret `TAURI_SIGNING_PRIVATE_KEY`, with an empty
+password for this generated key. Neither key generation output nor the private key is committed.
+Keep the same signing key across releases; replacing it requires a planned key migration.
+Tauri's updater signature is separate from Apple code signing and Windows Authenticode.
+
+Exact release tags produce version-bound Tauri updater signatures. Branch builds disable
+updater artifact creation and do not receive the updater signing secret. macOS also publishes
+`texgo_<version>_macos_<arch>.app.tar.gz` and its `.sig`; Windows reuses the `.exe`, Linux the
+`.AppImage`. Debian packages use their normal package-manager update path. The release job
+cryptographically checks all four updater packages against the pinned key, including their signed
+versions, before assembling `latest.json` and calculating checksums. Internal per-target JSON
+parts are removed before upload. Beta feeds stay on their prereleases; installed apps follow
+the stable Latest feed, and the native comparator rejects prereleases and downgrades.
+
+Checking only reads metadata. Downloading verifies the package and signed version; installation
+verifies them again. Failed signatures, invalid HTTPS origins, missing feeds and network failures
+remain visible errors. There is no unsigned execution fallback. Update bytes stay in native
+memory behind an opaque token and are discarded when replaced or the application exits.
+
+Installation and restart each require an explicit action. A native guard holds the conversion
+flag and workspace mutex through installation or restart; conflicts fail immediately and can be
+retried. The update dialog cannot replace an active reference review, and background UI decisions
+queue while it owns the window. On Windows, the official installer exits and relaunches the app
+as part of the explicit install action. macOS/Linux offer a separate Restart action after install.
+
+Local acceptance verifies a real CLI-generated signature through both the official plugin and
+the release verifier, rejects tampered bytes and forged versions, and exercises native operation
+locks and explicit UI actions. It does not install the fixture payload. Actual signed release
+packaging, notarization and an installed upgrade on Windows, macOS and AppImage remain checks
+for CI and the corresponding devices. No release has been published by this local task.

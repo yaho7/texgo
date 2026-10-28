@@ -1,45 +1,54 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import userEvent from "@testing-library/user-event";
 import { mockIPC } from "@tauri-apps/api/mocks";
-import { afterEach, expect, it, vi } from "vitest";
+import { expect, it, vi } from "vitest";
 import ApplicationUpdate from "../src/ApplicationUpdate";
-
-afterEach(() => vi.unstubAllGlobals());
-
-it("does not report a disposed StrictMode request as a timeout", async () => {
-  vi.stubGlobal("fetch", vi.fn((_url, { signal }: { signal: AbortSignal }) => new Promise((resolve, reject) => {
-    signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
-    queueMicrotask(() => resolve({ ok: true, json: async () => ({ tag_name: "v1", name: "Texgo 1", html_url: "https://github.com/yaho7/texgo/releases/tag/v1" }) }));
-  })));
-  render(<StrictMode><ApplicationUpdate onClose={() => {}} /></StrictMode>);
-  await screen.findByText("最新发行版：Texgo 1");
-  expect(screen.queryByText(/检查超时/)).not.toBeInTheDocument();
+const available = { currentVersion: "0.3.0", version: "0.4.0", token: 7, stage: "available" };
+it("checks once through StrictMode without downloading or installing", async () => {
+  const ipc = vi.fn((_command: string) => available); mockIPC(ipc);
+  render(<StrictMode><ApplicationUpdate onClose={vi.fn()} /></StrictMode>);
+  await screen.findByText("新版本：0.4.0");
+  expect(ipc).toHaveBeenCalledTimes(1);
+  expect(ipc.mock.calls[0][0]).toBe("check_application_update");
 });
-
-it("checks GitHub releases and opens the verified release URL", async () => {
-  const url = "https://github.com/yaho7/texgo/releases/tag/desktop-v0.3.0";
-  const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ tag_name: "desktop-v0.3.0", name: "Texgo 0.3.0", html_url: url }) });
-  vi.stubGlobal("fetch", fetcher);
-  const open = vi.fn();
-  mockIPC((command, payload) => { if (command === "open_release_page") open(payload); });
-  render(<ApplicationUpdate onClose={() => {}} />);
-  await screen.findByText("最新发行版：Texgo 0.3.0");
-  expect(fetcher.mock.calls[0][0]).toBe("https://api.github.com/repos/yaho7/texgo/releases/latest");
-  await userEvent.click(screen.getByRole("button", { name: "查看发行版" }));
-  expect(open).toHaveBeenCalledWith({ url });
+it("requires separate download, install and restart actions with the native token", async () => {
+  const user = userEvent.setup(); const calls: { command: string; args: unknown }[] = [];
+  mockIPC((command, args) => { calls.push({ command, args }); return command === "download_application_update" ? { ...available, stage: "ready" } : command === "install_application_update" ? { ...available, stage: "installed" } : available; });
+  render(<ApplicationUpdate onClose={vi.fn()} />);
+  await user.click(await screen.findByRole("button", { name: "下载更新" }));
+  await screen.findByText("0.4.0 签名验证通过，可以安装");
+  expect(calls.map(c => c.command)).toEqual(["check_application_update", "download_application_update"]);
+  expect(calls[1].args).toEqual({ token: 7 });
+  await user.click(screen.getByRole("button", { name: "安装更新" }));
+  await screen.findByText("更新已安装，重启后生效");
+  expect(calls.at(-1)).toEqual({ command: "install_application_update", args: { token: 7 } });
+  await user.click(screen.getByRole("button", { name: "重启应用" }));
+  expect(calls.at(-1)).toEqual({ command: "restart_after_update", args: { token: 7 } });
 });
-
-it("does not expose a download action for an unexpected GitHub URL", async () => {
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ tag_name: "x", html_url: "https://example.com/download" }) }));
-  render(<ApplicationUpdate onClose={() => {}} />);
-  await screen.findByText("GitHub 返回了无效的发行版信息");
-  expect(screen.queryByRole("button", { name: "查看发行版" })).not.toBeInTheDocument();
+it("keeps installation unavailable after signature failure and permits retry", async () => {
+  const user = userEvent.setup(); let fail = true;
+  mockIPC(command => { if (command === "download_application_update") { if (fail) throw new Error("签名验证失败，未安装更新"); return { ...available, stage: "ready" }; } return available; });
+  render(<ApplicationUpdate onClose={vi.fn()} />);
+  await user.click(await screen.findByRole("button", { name: "下载更新" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("签名验证失败");
+  expect(screen.queryByRole("button", { name: "安装更新" })).not.toBeInTheDocument();
+  fail = false; await user.click(screen.getByRole("button", { name: "下载更新" }));
+  expect(await screen.findByRole("button", { name: "安装更新" })).toBeEnabled();
 });
-
-it("explains GitHub rate limits without reporting the app as current", async () => {
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 403 }));
-  render(<ApplicationUpdate onClose={() => {}} />);
-  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("GitHub 请求次数受限"));
-  expect(screen.queryByText("已是最新发行版")).not.toBeInTheDocument();
+it("blocks dismissal and double download while verification is running", async () => {
+  const user = userEvent.setup(); const close = vi.fn(); let resolve!: (value: unknown) => void;
+  mockIPC(command => command === "check_application_update" ? available : new Promise(yes => { resolve = yes; }));
+  render(<ApplicationUpdate onClose={close} />);
+  await user.click(await screen.findByRole("button", { name: "下载更新" }));
+  expect(screen.getByRole("button", { name: "关闭" })).toBeDisabled();
+  await user.keyboard("{Escape}"); expect(close).not.toHaveBeenCalled();
+  await act(async () => resolve({ ...available, stage: "ready" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "关闭" })).toBeEnabled());
+});
+it("reports check failures without claiming the app is up to date", async () => {
+  mockIPC(() => { throw new Error("更新服务器不可用"); });
+  render(<ApplicationUpdate onClose={vi.fn()} />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("更新服务器不可用");
+  expect(screen.queryByText("已是最新版本")).not.toBeInTheDocument();
 });

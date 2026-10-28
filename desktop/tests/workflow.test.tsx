@@ -585,6 +585,14 @@ it("keeps settings accelerators behind an open review decision", async () => {
   expect(screen.getByRole("button", { name: "预览 figures/alpha.png" })).toBeVisible();
 });
 
+it("keeps application update actions behind an open reference review", async () => {
+  const user = await openProject();
+  const review = await convertAndReview(user);
+  await act(async () => { await emit("menu-action", "check-updates"); });
+  expect(review).toBeVisible();
+  expect(calls.some(call => call.command === "check_application_update")).toBe(false);
+});
+
 it("preserves the checked review snapshot across native workspace and completion events", async () => {
   const user = await openProject();
   const dialog = await convertAndReview(user);

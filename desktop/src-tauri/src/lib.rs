@@ -25,6 +25,8 @@ pub use workspace::Workspace;
 #[cfg(feature = "desktop")]
 mod commands;
 #[cfg(feature = "desktop")]
+mod app_update;
+#[cfg(feature = "desktop")]
 mod desktop_menu;
 
 #[cfg(feature = "desktop")]

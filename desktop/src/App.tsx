@@ -140,8 +140,8 @@ export default function App() {
       if (value.startup === "lastWorkspace") { const last = readRecents()[0]; if (last) openRecent(last); }
       const current = import.meta.env.VITE_RELEASE_TAG;
       if (value.autoUpdate && current && current !== "development") {
-        void fetch("https://api.github.com/repos/yaho7/texgo/releases/latest", { headers: { Accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(12000) })
-          .then(async (r) => { if (!r.ok) return; const release = await r.json() as { tag_name?: string }; if (!disposed && release.tag_name && release.tag_name !== current) setNotice(`有新版本可用：${release.tag_name}，可从菜单检查应用更新`); }).catch(() => {});
+        void invoke<import("./ApplicationUpdate").ApplicationUpdateInfo>("check_application_update")
+          .then(info => { if (!disposed && info.stage === "available") setNotice(`有新版本可用：${info.version}，可从菜单检查应用更新`); }).catch(() => {});
       }
     }).catch((reason) => { if (!disposed) setError(errorMessage(reason)); });
     return () => { disposed = true; };
@@ -240,7 +240,7 @@ export default function App() {
   desktopAction.current = (action) => {
     if (decisionOpen || updateOpen) return;
     if (action === "settings") { setSettingsPage(true); setDrawerOpen(false); return; }
-    if (action === "check-updates") { setUpdateOpen(true); return; }
+    if (action === "check-updates") { if (!currentOperationKind()) setUpdateOpen(true); return; }
     if (currentOperationKind() || decisionOpen || updateOpen) return;
     if (["convert", "review", "undo-task"].includes(action)) setHomePage(false);
     if (action === "open-project") openProject();
@@ -289,7 +289,7 @@ export default function App() {
         {!homeLanding && <IconButton id="sidebar-toggle" label={narrow ? "打开项目导航" : sidebarExpanded ? "收起侧栏" : "展开侧栏"} aria-expanded={narrow ? drawerOpen : sidebarExpanded} onClick={() => narrow ? setDrawerOpen(true) : setSidebarOpen((value) => !value)}><PanelLeft aria-hidden="true" /></IconButton>}
         {(narrow || !sidebarExpanded) && (!homeVisible || settingsPage) && <Button variant="ghost" className="px-2!" aria-label="Texgo 首页" disabled={busy} onClick={showHome}>Texgo</Button>}<div className="project-title">{project && !homeVisible && !settingsPage ? <><h1 title={project.mainFile}>{fileName(project.mainFile)}</h1><p title={project.root}>{project.root}</p></> : null}</div>
         {project && !homeVisible && !settingsPage && view === "assets" && <WorkspaceSearch value={search} onChange={setSearch} />}
-        <div className="toolbar-actions"><WorkbenchMenu busy={busy} hasProject={Boolean(project)} canUndo={history.some((entry) => entry.canUndo) || Boolean(project?.undoAvailable)} onOpen={openProject} onClose={closeProject} onRefresh={() => { void execute("opening", () => refresh()); }} onUpdate={() => setUpdateOpen(true)} onUndo={() => {
+        <div className="toolbar-actions"><WorkbenchMenu busy={busy} hasProject={Boolean(project)} canUndo={history.some((entry) => entry.canUndo) || Boolean(project?.undoAvailable)} onOpen={openProject} onClose={closeProject} onRefresh={() => { void execute("opening", () => refresh()); }} onUpdate={() => { if (!currentOperationKind() && reviewFlow.decisionRef.current.kind === "none") setUpdateOpen(true); }} onUndo={() => {
           const entry = history.find((item) => item.canUndo); if (entry) { rememberFocus(); reviewFlow.requestUndo(entry); } else if (project?.undoAvailable) replace(true);
         }} /></div>
       </header>}

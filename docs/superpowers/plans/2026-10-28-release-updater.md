@@ -35,4 +35,19 @@ and commit each unit before proceeding. Retain the two pre-existing user changes
   moved-tag refusal. Eight policy/installer tests, 296 frontend tests, TypeScript, production
   build, locked/offline Cargo metadata and actionlint/shellcheck passed. No CI release,
   package installation, push or remote tag creation was performed.
-- [ ] Signed updater integration verified and committed.
+- [x] Signed updater integration verified locally: optional official plugin 2.14.1,
+  fixed public key, version-bound HTTPS packages, native-only byte cache and opaque tokens,
+  explicit check/download/install/restart actions, and workspace/conversion guards.
+- [x] 301 frontend tests, 284 native desktop tests (including the official plugin's real
+  signature verification), 289 headless tests, 12 release/signature/feed tests, PDF renderer,
+  TypeScript, production build and actionlint pass.
+- [x] The owner explicitly authorized transmitting this generated signing private key to
+  the `yaho7/texgo` repository. `TAURI_SIGNING_PRIVATE_KEY` now exists as an encrypted Actions
+  secret; temporary private key and CLI logs were removed. Only the public key and a signed,
+  non-executable test payload are tracked.
+- [x] Browser fixtures verify separate Download and Install actions. No actual package
+  installation/restart, push, tag, release or CI packaging run was performed.
+
+Installed-upgrade acceptance and actual platform signing/notarization remain device/CI checks;
+this does not block committing the reviewed implementation. Branch packaging does not receive
+this updater private key. Phase 9 documentation and final delivery audit follow this unit.
