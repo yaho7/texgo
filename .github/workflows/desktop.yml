@@ -14,6 +14,13 @@ concurrency:
 jobs:
   verify:
     name: Verify frontend and engine
+    if: github.event_name != 'push' || !github.event.deleted
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      publish: ${{ steps.version.outputs.publish }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      latest: ${{ steps.version.outputs.latest }}
     runs-on: ubuntu-22.04
     timeout-minutes: 25
     defaults:
@@ -26,6 +33,10 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: desktop/package-lock.json
+      - name: Check manifest, lockfile and release-tag versions
+        id: version
+        run: npm run version:check -- --github-output
+      - run: npm run test:release
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -142,8 +153,8 @@ jobs:
 
   release:
     name: Publish Release
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
-    needs: package
+    if: needs.verify.outputs.publish == 'true'
+    needs: [verify, package]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -160,28 +171,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          TAG: ${{ needs.verify.outputs.tag }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+          LATEST: ${{ needs.verify.outputs.latest }}
           SHA: ${{ github.sha }}
-          BUILD_NUMBER: ${{ github.run_number }}
-          BUILD_ATTEMPT: ${{ github.run_attempt }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          (cd release && sha256sum * > SHA256SUMS)
-          VERSION=$(node -p "require('./desktop/package.json').version")
-          TAG="desktop-v${VERSION}-build.${BUILD_NUMBER}.${BUILD_ATTEMPT}"
-          TITLE="Texgo ${VERSION} (build ${BUILD_NUMBER}.${BUILD_ATTEMPT})"
-          LATEST=false
-          if [[ "$REF_TYPE" == branch && "$REF_NAME" == main ]]; then LATEST=true; fi
-          if [[ "$REF_TYPE" == tag && "$REF_NAME" == "desktop-v${VERSION}" ]]; then
-            TAG="$REF_NAME"
-            TITLE="Texgo ${VERSION}"
-            LATEST=true
+          (cd release && sha256sum ./* > SHA256SUMS)
+          CURRENT_SHA=$(gh api "repos/$GH_REPO/commits/$TAG" --jq '.sha')
+          if [[ "$CURRENT_SHA" != "$SHA" ]]; then
+            echo 'Release tag moved after this build; refusing to publish.' >&2
+            exit 1
           fi
-          if [[ "$VERSION" == *-* ]]; then LATEST=false; fi
-          flags=(--prerelease)
-          if [[ "$LATEST" == true ]]; then flags=(); fi
-          printf -v NOTES 'Commit: `%s`\n\nBuild: %s\n\nInstallers include both Texgo and the independent texgo-engine CLI/JSON-RPC API. macOS requires 13.3+. macOS builds are signed with Developer ID and notarized by Apple. Windows builds are currently unsigned. SHA256SUMS covers every installer.' "$SHA" "$RUN_URL"
-          gh release create "$TAG" release/* --target "$SHA" --draft --latest=false \
-            --title "$TITLE" --notes "$NOTES" "${flags[@]}"
+          flags=()
+          if [[ "$PRERELEASE" == true ]]; then flags+=(--prerelease); fi
+          printf 'Commit: %s\n\nBuild: %s\n\nInstallers include Texgo and the independent texgo-engine CLI/JSON-RPC API. macOS requires 13.3+. See the workflow for platform signing results; Windows installers are currently unsigned. SHA256SUMS covers every installer.' "$SHA" "$RUN_URL" > release-notes.md
+          gh release create "$TAG" release/* --verify-tag --draft --latest=false \
+            --title "Texgo $VERSION" --notes-file release-notes.md "${flags[@]}"
           gh release edit "$TAG" --draft=false --latest="$LATEST"

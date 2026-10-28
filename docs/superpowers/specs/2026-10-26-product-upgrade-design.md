@@ -127,7 +127,7 @@ Pending Review、完整文件 fingerprint、外部编辑器保存提醒与事务
 
 使用 Tauri signed updater：公钥固定到应用配置，私钥仅放 CI Secret，不存仓库或日志。签名或 feed 不可用时安全失败，不能退化成下载后直接执行。下载/安装/重启为明确用户动作；有文件操作或审核时不重启。
 
-main：测试、构建、打包、上传 artifacts，不创建 Latest。`desktop-v<version>-beta.N`：pre-release；`desktop-v<version>`：稳定 Latest。发布前 tag 与 package/Cargo/Tauri 版本必须一致。
+main：测试、构建、打包、上传 artifacts，不创建 Latest。`v<version>-beta.N`：pre-release；`v<version>`：稳定 Latest。发布前 tag 与 package/Cargo/Tauri 版本必须一致。
 
 增加 `version:check` 同时核对 manifest 与 lockfile。保留 Apple Developer ID、公证、Windows NSIS、Linux deb/AppImage 和两种 macOS 架构。签名密钥配置和跨平台安装升级测试完成前，不宣称更新端到端验收完成。
 

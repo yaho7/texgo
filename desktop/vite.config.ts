@@ -1,11 +1,15 @@
+import { readFileSync } from "node:fs";
+import { desktopBuildIdentity } from "./scripts/release-policy.mjs";
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath, URL } from "node:url";
 
+const { version } = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as { version: string };
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  define: { "import.meta.env.VITE_RELEASE_TAG": JSON.stringify(process.env.GITHUB_RUN_NUMBER ? `desktop-v${process.env.npm_package_version}-build.${process.env.GITHUB_RUN_NUMBER}.${process.env.GITHUB_RUN_ATTEMPT ?? "1"}` : "development") },
+  define: { "import.meta.env.VITE_RELEASE_TAG": JSON.stringify(desktopBuildIdentity(version, process.env.GITHUB_REF)), "import.meta.env.VITE_APP_VERSION": JSON.stringify(version) },
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   clearScreen: false,
   server: {

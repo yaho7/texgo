@@ -7,18 +7,18 @@ Manual dispatch is also available. A newer push cancels the older run on the
 same branch; tag runs are not cancelled automatically. Pull requests do not
 start a second duplicate run.
 
-There are only two jobs:
+There are three stages:
 
-1. **Package**: four independent targets build immediately in parallel.
-2. **Publish Release**: every successful push or manual run publishes after all
-   four package targets succeed. Failed/cancelled builds and branch/tag deletion
-   events do not publish incomplete releases.
+1. **Verify** checks all desktop manifest/lock versions and the exact release tag before
+   packaging; runs release-policy, frontend and PDF renderer tests plus headless Rust tests.
+2. **Package** builds four targets, tests native desktop integration, stages `texgo-engine`
+   as a Tauri sidecar and prepares installers. It preserves the verified Cargo lock.
+3. **Publish Release** runs only for an exact `v<manifest version>` tag after every
+   package target succeeds. Branches, manual branch runs and unrelated tags produce artifacts
+   only. Deletion events do not build or publish.
 
-Actions installs locked dependencies, builds `texgo-engine`, stages it as a
-Tauri sidecar, generates icons, and invokes the official Tauri build action.
-It does not run frontend checks, unit tests, browser screenshots, TeX fixtures,
-installer smoke tests or dependency-lock transfer jobs. Lockfiles are committed.
-No separate engine archives are produced: every desktop installer includes it.
+No LaTeX compilation verification is added to this workflow. Lockfiles are committed, and
+installers include the standalone engine; no separate engine archives are produced.
 
 | Platform | Target | Installer |
 | --- | --- | --- |
@@ -28,7 +28,7 @@ No separate engine archives are produced: every desktop installer includes it.
 | macOS Intel | `x86_64-apple-darwin` | `.dmg` |
 
 Linux bundles use Ubuntu 22.04 as the build baseline. macOS requires 13.3+ for
-the modern WebKit used by the shadcn/Tailwind UI. PDF previews additionally
+the WebKit used by the Tailwind interface. PDF previews additionally
 require Safari 18+ WebKit on macOS and a current WebView runtime elsewhere,
 following [PDF.js browser support](https://github.com/mozilla/pdf.js/wiki/Frequently-Asked-Questions#which-browsersenvironments-are-supported).
 The legacy PDF.js bundle supplies polyfills but does not support every older
@@ -37,51 +37,50 @@ Windows requires WebView2;
 Linux requires an up-to-date WebKitGTK 4.1. Bundling is not a claim that every
 native GUI workflow has been tested on every operating system.
 
-## Local Static Checks
+## Local checks
 
-Run static checks locally; do not compile or package the application locally.
-With development dependencies already installed:
+With development dependencies installed:
 
 ```sh
 cd desktop
+npm run version:check
+npm run test:release
 npm run check
-node --check scripts/collect-installers.mjs
-git diff --check
+npm test
+npm run test:pdf
+npm run build
+cargo test --manifest-path src-tauri/Cargo.toml --locked
+cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features --features automation
 ```
 
-Also validate edited JSON/TOML/YAML with available parsers. `npm run check` is
-TypeScript's `tsc --noEmit`; `npm run build` only invokes Vite and is used by
-Tauri packaging on Actions. Tests remain in source for explicit focused use,
-but are not automatic packaging gates. Dependency installation is a separate
-local setup step and must respect the user's environment permissions.
+Also inspect `git diff --check` and validate edited JSON/TOML/YAML. Local GUI/native tests
+may require operating-system file watcher access. These checks do not install an update or
+publish a release. Packaging/installation and native behavior need platform-specific checks.
 
-## Release
+## Release policy
 
-Keep the versions in `desktop/package.json`, its lockfile, Cargo manifest and
-lockfile, and `tauri.conf.json` aligned. After local static checks, push commits
-normally: all four installers are packaged and a Release is published automatically.
+The current upgrade version is `0.3.0`. `version:check` compares `package.json`, both npm lock
+version fields, the Cargo manifest and desktop package in its lockfile, and `tauri.conf.json`.
+Supported release versions are `X.Y.Z` and `X.Y.Z-beta.N`, without numeric leading zeroes.
 
-Branch/manual runs use `desktop-v<version>-build.<run-number>.<attempt>` tags,
-so each build has an immutable identity even when the application version has
-not changed. The tag targets the exact packaged commit, not the newest main
-commit at the time publication happens. Main builds become public Releases
-marked Latest; other branches and prerelease application versions publish as
-prereleases without replacing Latest. Reruns receive a new attempt suffix.
+| Git ref | Result |
+| --- | --- |
+| `main` or another branch, including manual branch runs | Tests and installer artifacts only |
+| Unrelated tag | Artifacts only |
+| Exact `v0.3.0` with all versions `0.3.0` | Stable release marked Latest |
+| Exact `v0.3.0-beta.1` with all versions `0.3.0-beta.1` | Prerelease; never Latest |
+| Desktop tag that differs from the manifests | Fails verification before packaging |
 
-An explicit matching version tag still publishes a named version:
+Creating/pushing a release tag is an explicit maintainer action; ordinary main pushes no
+longer create public releases. Do not move or reuse a published version tag. Before publication,
+the job checks that the remote tag still resolves to the packaged commit, generates SHA-256
+checksums, uploads a draft using the existing tag, and publishes it with the verified channel.
+Existing releases/assets are not overwritten by this workflow.
 
-```sh
-git tag desktop-v0.2.1
-git push origin desktop-v0.2.1
-```
-
-Do not move existing tags or reuse an already published version tag.
-
-The release job merges the four installer artifacts, generates `SHA256SUMS`,
-uploads everything into a draft and then makes it public. It does not replace
-existing releases or assets. The obsolete Go CLI release workflow has been
-removed; `.github/workflows/desktop.yml` is the only packaging workflow. No
-separate manual tag push is required for normal main releases.
+Release job outputs follow [GitHub Actions job outputs](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/pass-job-outputs).
+Publication uses the CLI's [existing-tag and prerelease options](https://cli.github.com/manual/gh_release_create).
+Build identity uses the actual release tag; branch builds are identified as development builds,
+not invented automatic release tags.
 
 ## One Install, GUI and CLI
 
@@ -110,6 +109,15 @@ no webview shell permission or HTTP API listener is introduced.
 
 ## Integrity and Signing
 
-Release filenames include version, OS and architecture. Compare the SHA-256
+Release filenames are intentionally short:
+
+- `texgo_0.3.0_windows.exe`
+- `texgo_0.3.0_linux.deb` / `texgo_0.3.0_linux.AppImage`
+- `texgo_0.3.0_macos_arm64.dmg` / `texgo_0.3.0_macos_x64.dmg`
+
+Only macOS needs an architecture suffix to distinguish its two targets. Original Tauri
+bundle names and the `desktop` prefix are omitted. Collection rejects multiple candidates,
+empty/nonregular installers and existing destination names instead of silently overwriting.
+ Compare the SHA-256
 of the download against its matching line in `SHA256SUMS`. Windows packages
-are unsigned. macOS packages use a Developer ID Application certificate and Apple notarization through Tauri’s supported environment variables. The workflow references the five Apple repository Secrets without printing their values. Both macOS architectures share the same signing step. There is no automatic updater or updater signing feed.
+are unsigned. The workflow supports a Developer ID Application certificate and Apple notarization through Tauri’s supported environment variables; successful signing/notarization must be verified in the actual release job. The workflow references the five Apple repository Secrets without printing their values. Both macOS architectures share the same signing step. Signed updater integration is the next release unit; a configured secret or a local build is not an installed-upgrade acceptance result.
