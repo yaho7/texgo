@@ -1,3 +1,4 @@
+import { useWorkspaceGeometry } from "./hooks/useWorkspaceGeometry";
 import { nativeText } from "./nativeText";
 import { t } from "./i18n";
 import { setLocale, useLocale } from "./i18n";
@@ -92,6 +93,7 @@ export default function App() {
     openProject, openRecent, closeProject, updateSettings } = workspace;
   const homeVisible = !project || homePage;
   const homeLanding = homeVisible && !settingsPage;
+  const { shellRef, commandRef } = useWorkspaceGeometry(Boolean(project) && !homeVisible && !settingsPage, notice);
   const sidebarExpanded = sidebarOpen;
   const showWorkspace: typeof setView = (next) => { setHomePage(false); setView(next); };
   const captureWorkspace = useWorkspaceGuard(() => workspace.generation.current);
@@ -286,7 +288,7 @@ export default function App() {
     onRemove={workspace.forgetRecent} />;
 
   return <TooltipProvider delayDuration={350}><div className="app-shell mac-workspace">
-    <div className={homeLanding || settingsPage ? "workbench pl-0!" : "workbench"} inert={review !== null || undoEntry !== null || problemId !== null || updateOpen || conversionBlocked}>
+    <div ref={shellRef} className={homeLanding || settingsPage ? "workbench pl-0!" : "workbench"} inert={review !== null || undoEntry !== null || problemId !== null || updateOpen || conversionBlocked}>
       <a href="#main-content" className="skip-link">{t("app.skipToWorkspace")}</a>
       {!homeLanding && !settingsPage && !narrow && <aside className="workspace-sidebar" data-collapsed={!sidebarExpanded} aria-hidden={!sidebarExpanded} inert={!sidebarExpanded}>{sidebar}</aside>}
       <div className={homeLanding || settingsPage ? "workspace-main border-l-0!" : "workspace-main"}>
@@ -321,7 +323,7 @@ export default function App() {
           </div>
           <HistoryView active={view === "history"} onReturn={() => setView("assets")} highlightId={highlightBatch} entries={history} busy={busy} onUndo={(entry) => { rememberFocus(); setError(null); reviewFlow.requestUndo(entry); }} />
         </main>
-        <div hidden={settingsPage || homeVisible}><CommandBar status={project.status} settings={settings} selectionMode={selectionMode} selectedCount={selected.size} busy={busy} converting={operation === "converting"} progress={progress} completion={completion} cancelRequested={cancelRequested}
+        <div ref={commandRef} hidden={settingsPage || homeVisible}><CommandBar status={project.status} settings={settings} selectionMode={selectionMode} selectedCount={selected.size} busy={busy} converting={operation === "converting"} progress={progress} completion={completion} cancelRequested={cancelRequested}
           onAction={nextAction} onConvert={convert} onManualOpen={allowManualConversionPanel} currentImageId={activeId} convertibleIds={[...convertibleIds]} onSettings={updateSettings} onSelectionMode={(enabled) => { setView("assets"); selection.changeSelectionMode(enabled); }} onCancel={() => { void cancelConversion(); }} /></div>
       </>}
       {notice && notice !== t("app.ready") && !notice.startsWith(t("app.found")) && !homeVisible && <footer className="status-bar"><div className="status-text" role="status" aria-live="polite">{operation === "opening" ? <LoaderCircle className="spin" aria-hidden="true" /> : project ? <Check aria-hidden="true" /> : <span className="status-dot" />}<span>{operation && operation !== "converting" ? operationLabels[operation] : nativeText(notice)}</span></div></footer>}

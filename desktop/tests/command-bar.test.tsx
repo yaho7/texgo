@@ -16,7 +16,7 @@ it("keeps a single primary action while status and button labels transition", ()
   expect(document.querySelectorAll(".command-action")).toHaveLength(0);
   expect(screen.getByRole("status")).toHaveTextContent("正在处理 0 / 2");
   expect(screen.getByRole("status")).toHaveTextContent("first.png");
-  expect(document.querySelector(".command-message-exit")).toHaveTextContent("准备处理图片");
+  expect(document.querySelector(".command-message-exit")).toBeNull();
   view.rerender(<CommandBar {...defaults} busy converting progress={{ current: 1, total: 2, name: "second.png", status: "converting" }} />);
   act(() => vi.advanceTimersByTime(300));
   expect(document.querySelector(".command-message-exit")).not.toBeInTheDocument();

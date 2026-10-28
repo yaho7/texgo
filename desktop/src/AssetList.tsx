@@ -250,10 +250,10 @@ export default function AssetList(props: Props) {
               {props.selectionMode && <TableHead className="asset-selection-cell w-12">
                 <label className="asset-selection-target"><Checkbox aria-label={t("assetList.selectVisibleImages")} checked={allChecked ? true : checkedCount > 0 ? "indeterminate" : false} disabled={props.busy || readyIds.length === 0} onCheckedChange={() => props.onSelectAll(readyIds, !allChecked)} /></label>
               </TableHead>}
-              <TableHead>{t("assetList.name")}</TableHead>
+              <TableHead className="asset-name-heading">{t("assetList.name")}</TableHead>
               <TableHead className="w-14 text-center">{t("assetList.format")}</TableHead>
-              <TableHead className="w-20 text-right">{t("assetList.size")}</TableHead>
-              <TableHead className={getLocale() === "en-US" ? "w-28 text-center" : "w-24 text-center"}>{t("assetList.status")}</TableHead>
+              <TableHead className="w-20 text-center">{t("assetList.size")}</TableHead>
+              <TableHead className={getLocale() === "en-US" ? "w-28 text-right" : "w-24 text-right"}>{t("assetList.status")}</TableHead>
               <TableHead className="w-9 text-center"><span className="sr-only">{t("assetList.imageActions")}</span></TableHead>
             </TableRow>
           </TableHeader>
@@ -299,8 +299,8 @@ export default function AssetList(props: Props) {
                     </div></div>
                   </TableCell>
                   <TableCell className="text-center"><span className="text-xs text-muted-foreground">{asset.format.toUpperCase()}</span></TableCell>
-                  <TableCell className="text-right"><span className="text-xs tabular-nums text-muted-foreground">{formatBytes(asset.bytes)}</span></TableCell>
-                  <TableCell className="text-center">
+                  <TableCell className="text-center"><span className="text-xs tabular-nums text-muted-foreground">{formatBytes(asset.bytes)}</span></TableCell>
+                  <TableCell className="text-right">
                     <Badge key={label} className={updatable && !problem ? "status-badge update-badge" : "status-badge"} variant={ignored ? "secondary" : problem ? referenceProblem ? "warning" : "destructive" : converted ? "success" : "secondary"} title={nativeText(asset.message ?? result?.error ?? "") || (ignored ? ignoreMode === "permanent" ? t("assetList.alwaysIgnore") : t("assetList.ignoreForThisSession") : updatable ? t("assetList.theSourceImageOrSVGDependencyChangedAndCanBe") : result?.pdfPath ?? undefined)}>
                       {converted && !problem && !ignored && <CircleCheck data-icon="inline-start" aria-hidden="true" />}{updatable && !problem && !ignored && <RefreshCw data-icon="inline-start" aria-hidden="true" />}{label}
                     </Badge>

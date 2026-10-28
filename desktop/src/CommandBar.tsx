@@ -72,7 +72,7 @@ export default function CommandBar(props: Props) {
     : blocked ? t("commandBar.operationPaused")
     : props.selectionMode ? t("commandBar.selectImagesToProcess")
     : status.nextAction === "reviewReferences" ? t("commandBar.processedImagesAreReady")
-    : status.nextAction === "convertImages" ? t("commandBar.readyToProcessImages")
+    : status.nextAction === "convertImages" ? ""
     : status.nextAction === "resolveProblems" ? t("commandBar.locateOrRepairTheAffectedImages") : t("commandBar.projectIsUpToDate");
   const transitionKey = props.converting ? "converting" : props.completion !== null ? "complete" : blocked ? "blocked" : props.selectionMode ? "selection" : status.nextAction;
   // Retain the departing message for one token duration; it never creates a second action.
@@ -104,10 +104,10 @@ export default function CommandBar(props: Props) {
     <div className="command-status">
       <div className="command-message-stage" aria-live="polite" role="status">
         {departing && <span aria-hidden="true" className="command-message command-message-exit">{departing}</span>}
-        <span key={transitionKey} title={blocked ? nativeText(status.blockingReason ?? "") : undefined} className="command-message command-message-enter">
+        {message && <span key={transitionKey} title={blocked ? nativeText(status.blockingReason ?? "") : undefined} className="command-message command-message-enter">
           {(idle || props.completion !== null) && <Check className="command-success" aria-hidden="true" />}
           {blocked && <TriangleAlert aria-hidden="true" />}{message}
-        </span>
+        </span>}
       </div>
       {props.converting && <Progress value={progress} aria-label={t("commandBar.imageUpdateProgress")} className="command-progress" />}
     </div>
