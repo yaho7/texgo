@@ -12,9 +12,9 @@ export const DialogTrigger = Modal.Trigger;
 export function DialogContent({ className, children, showCloseButton = true, ...props }: ComponentProps<typeof Modal.Content> & { showCloseButton?: boolean }) {
   return <Modal.Portal>
     <Modal.Overlay data-slot="dialog-overlay" className="fixed inset-0 z-50 bg-[#20252c]/30" />
-    <Modal.Content data-slot="dialog-content" className={cn("fixed left-1/2 top-1/2 z-50 grid max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-lg border border-border bg-background p-5 text-foreground shadow-xl outline-none", className)} {...props}>
+    <Modal.Content data-slot="dialog-content" className={cn("fixed left-1/2 top-1/2 z-50 grid max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-xl border border-border bg-background p-5 text-foreground shadow-xl outline-none", className)} {...props}>
       {children}
-      {showCloseButton && <Modal.Close data-slot="dialog-close" aria-label={t("dialog.close")} className="absolute right-3 top-3 grid size-7 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-45"><X aria-hidden="true" className="size-4" /></Modal.Close>}
+      {showCloseButton && <Modal.Close data-slot="dialog-close" aria-label={t("dialog.close")} className="absolute right-3 top-3 grid size-7 place-items-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-45"><X aria-hidden="true" className="size-4" /></Modal.Close>}
     </Modal.Content>
   </Modal.Portal>;
 }

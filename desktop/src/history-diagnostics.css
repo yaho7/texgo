@@ -20,7 +20,7 @@
 .history-panel .history-undo-reason { margin-top: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .history-panel .history-entry details { margin-top: 12px; }
 .history-panel .history-entry summary { width: fit-content; min-height: 32px; padding: 6px 8px; margin-left: -8px; cursor: pointer; line-height: 20px; }
-.history-details-content { margin-top: 8px; padding: 16px; border-radius: 8px; background: var(--muted); }
+.history-details-content { margin-top: 8px; padding: 8px 0; background: var(--content-bg); }
 .history-panel .history-kind { margin: 0; font-size: 12px; color: var(--foreground); }
 .history-panel .history-directory { margin-top: 8px; line-height: 1.6; }
 .history-panel .history-entry ul { margin-top: 16px; }

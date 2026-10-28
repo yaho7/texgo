@@ -17,12 +17,9 @@
 .preview-details ul { list-style: none; margin: 0; padding: 0; max-height: 144px; overflow: auto; }
 .preview-details li { padding-block: 3px; overflow-wrap: anywhere; line-height: 1.6; }
 .preview-output { line-height: 1.6; overflow-wrap: anywhere; }
-.mac-workspace .native-preferences > header { border-bottom: 0; }
-.mac-workspace .native-preferences [data-slot="field-group"] { border: 0; border-radius: 0; padding: 8px 0 20px; }
 .mac-workspace .native-preferences [data-slot="field-legend"] { color: var(--muted-foreground); }
 .history-record-copy { display: flex; align-items: baseline; flex-direction: row-reverse; justify-content: flex-end; gap: 16px; }
 .history-meta { flex: none; margin-top: 0; }
-.mac-workspace .history-details-content { background: var(--content-bg); padding: 8px 0; border-radius: 0; }
 .mac-workspace .history-panel .history-entry ul > li { border: 0; }
 .transient-notice, .activity-notice { position: absolute; bottom: 76px; right: 20px; z-index: 10; max-width: min(480px, calc(100% - 40px)); display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--content-bg); color: var(--muted-foreground); font-size: 12px; pointer-events: none; }
 .activity-notice svg { width: 14px; height: 14px; }
@@ -67,13 +64,13 @@
 .mac-workspace .splitter { width: 8px; margin-inline: -4px; z-index: 4; background: transparent; }
 
 /* Source transparency is visible against one shared viewer background. */
-.preview-stage { display: flex; flex: 1; flex-direction: column; min-height: 220px; margin-inline: var(--workspace-inset); background: #DBD9DB; border-radius: 6px; overflow: hidden; }
+.preview-stage { display: flex; flex: 1; flex-direction: column; min-height: 220px; margin-inline: var(--workspace-inset); background: var(--preview-bg); border-radius: var(--radius-surface); overflow: hidden; }
 .preview-controls { display: flex; flex: none; justify-content: center; align-items: center; gap: 8px; padding: 8px; }
 .preview-controls [data-slot="toggle-group"] { background: transparent; }
 .preview-controls [data-slot="toggle-group-item"] { min-width: 32px; padding-inline: 6px; font-size: 11px; }
 .preview-control-divider { color: var(--muted-foreground); font-size: 13px; }
-.mac-workspace .preview-stage .preview-surface { margin: 0; background: #DBD9DB; }
+.mac-workspace .preview-stage .preview-surface { margin: 0; background: var(--preview-bg); }
 .preview-stage .comparison-frame,
 .preview-stage .image-stage img,
-.preview-stage .pdf-canvas-host canvas { border-radius: 4px; }
+.preview-stage .pdf-canvas-host canvas { border-radius: 0; }
 .preview-stage .comparison-frame { overflow: hidden; }

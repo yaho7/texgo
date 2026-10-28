@@ -4,11 +4,11 @@
 html, body { height: 100%; overflow: clip; }
 #root { position: fixed; inset: 0; overflow: clip; }
 .mac-workspace { --workspace-inset: 16px; --toolbar-gap: 12px; --asset-thumbnail-inset: 14px; }
-.mac-workspace .workbench { padding: 0; background: #eceef1; }
+.mac-workspace .workbench { padding: 0; background: var(--sidebar-bg); }
 .mac-workspace .workspace-main { border: 0; border-left: 1px solid var(--border); border-radius: 0; box-shadow: none; }
-.mac-workspace .workspace-sidebar { width: 218px; background: #eceef1; }
+.mac-workspace .workspace-sidebar { width: 218px; background: var(--sidebar-bg); }
 .mac-workspace .workspace-sidebar[data-collapsed="true"] { width: 0; }
-.mac-workspace .app-toolbar { min-height: 68px; padding: 10px var(--workspace-inset); gap: var(--toolbar-gap); background: #f5f6f8; border-bottom: 1px solid var(--border); }
+.mac-workspace .app-toolbar { min-height: 68px; padding: 10px var(--workspace-inset); gap: var(--toolbar-gap); background: var(--content-bg); border-bottom: 1px solid var(--border); }
 .mac-workspace .project-title { padding-left: 0; }
 .mac-workspace .project-title h1 { font-size: 14px; }
 .mac-workspace .project-title p { margin-top: 2px; }
@@ -20,19 +20,19 @@ html, body { height: 100%; overflow: clip; }
 .mac-workspace .asset-panel th { height: 34px; border-bottom: 1px solid var(--border); }
 .mac-workspace .asset-preview-trigger { min-height: 24px; }
 .mac-workspace .asset-rename-field input { height: 24px; padding-block: 1px; color: var(--foreground); }
-.mac-workspace .asset-inspector { background: #fafafb; }
+.mac-workspace .asset-inspector { background: var(--content-bg); }
 .mac-workspace .preview-panel { border-bottom: 0; }
 .mac-workspace .preview-heading { align-items: flex-start; flex-wrap: wrap; padding: 18px var(--workspace-inset) 10px; gap: 12px; }
 .mac-workspace .preview-heading-copy { flex: 1; }
 .mac-workspace .preview-heading h2 { font-size: 17px; line-height: 1.4; overflow-wrap: anywhere; }
 .mac-workspace .preview-filename { font-size: 11px; }
 .mac-workspace .preview-heading > [data-slot="toggle-group"] { flex: 0 0 100%; justify-content: center; }
-.mac-workspace .preview-surface { margin-inline: var(--workspace-inset); border-color: var(--border); border-radius: 6px; background: #eceef1; min-height: 180px; }
+.mac-workspace .preview-surface { margin-inline: var(--workspace-inset); border: 0; border-radius: 0; background: var(--preview-bg); min-height: 180px; }
 .mac-workspace .preview-scale-controls { padding-inline: var(--workspace-inset); }
 .mac-workspace .preview-metadata { padding-inline: var(--workspace-inset); gap: 8px; }
-.mac-workspace .status-bar { min-height: 32px; flex-wrap: wrap; background: #f5f6f8; padding: 6px 16px; }
+.mac-workspace .status-bar { min-height: 32px; flex-wrap: wrap; background: var(--content-bg); padding: 6px 16px; }
 .mac-workspace .status-text { margin-left: auto; }
-.mac-workspace .command-bar { min-height: 64px; background: #f5f6f8; padding: 10px var(--workspace-inset); }
+.mac-workspace .command-bar { min-height: 64px; background: var(--content-bg); padding: 10px var(--workspace-inset); }
 @media (max-width: 760px) {
   .mac-workspace { --workspace-inset: 8px; --toolbar-gap: 6px; }
   .mac-workspace .app-toolbar { padding-block: 8px; }

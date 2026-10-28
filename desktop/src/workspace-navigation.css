@@ -17,3 +17,5 @@
 .workspace-navigation button:not([aria-current="page"]):not([data-state="on"]):hover { background: var(--hover-bg); }
 .workspace-navigation .recent-item[data-active="true"] > button:hover { background: transparent; }
 .navigation-settings { display: flex; align-items: flex-start; min-height: var(--workspace-footer-height, 64px); margin: auto -12px 0; padding: 13px 12px 14px; border-top: 1px solid var(--border); flex-shrink: 0; }
+
+.workspace-navigation button { border-radius: var(--radius-selection); }
