@@ -36,5 +36,6 @@
   "valueResults": "{arg0} 项结果",
   "valueImages": "{arg0} 张图片",
   "previousImagePage": "上一页图片",
-  "nextImagePage": "下一页图片"
+  "nextImagePage": "下一页图片",
+  "missingPDF": "PDF 缺失"
 }

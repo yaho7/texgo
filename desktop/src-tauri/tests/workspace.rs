@@ -539,3 +539,45 @@ fn managed_pdf_source_symlink_cannot_be_restored_as_a_ready_source() {
     reopened.set_ignore_mode(&unsupported_id, texgo_desktop::IgnoreMode::None).unwrap();
     assert_eq!(reopened.project().status.problem_count, 1);
 }
+
+#[test]
+fn deleted_referenced_pdf_is_detected_on_rescan_and_observation() {
+    let dir = tempfile::tempdir().unwrap();
+    png(dir.path(), "plot.png", 1);
+    let mut ws = referenced_workspace(dir.path());
+    let result = ws.convert(&options(&ws), &AtomicBool::new(false), |_| {}).unwrap();
+    ws.apply().unwrap();
+    let pdf = std::path::PathBuf::from(result.images[0].pdf_path.as_ref().unwrap());
+    let tex = fs::read(dir.path().join("main.tex")).unwrap();
+    fs::remove_file(&pdf).unwrap();
+    ws.refresh().unwrap();
+    assert_eq!(ws.project().status.pending_images, 1);
+    assert_eq!(ws.project().status.completed_images, 0);
+    assert!(ws.project().converted_images.is_empty());
+    assert_eq!(fs::read(dir.path().join("main.tex")).unwrap(), tex);
+    ws.convert(&options(&ws), &AtomicBool::new(false), |_| {}).unwrap();
+    assert!(pdf.is_file());
+    fs::remove_file(&pdf).unwrap();
+    ws.poll_changes().unwrap().expect("deleted managed PDF must invalidate the workspace");
+    assert_eq!(ws.project().status.pending_images, 1);
+    assert_eq!(fs::read(dir.path().join("main.tex")).unwrap(), tex);
+}
+
+#[test]
+fn an_older_pdf_must_not_hide_deletion_of_the_current_reference_target() {
+    let dir = tempfile::tempdir().unwrap();
+    png(dir.path(), "plot.png", 1);
+    let mut ws = referenced_workspace(dir.path());
+    ws.convert(&options(&ws), &AtomicBool::new(false), |_| {}).unwrap();
+    let mut next = options(&ws); next.output_dir = "alternate".into();
+    let result = ws.convert(&next, &AtomicBool::new(false), |_| {}).unwrap(); ws.apply().unwrap();
+    let target = result.images[0].pdf_path.clone().unwrap();
+    let tex = fs::read(dir.path().join("main.tex")).unwrap();
+    fs::remove_file(&target).unwrap();
+    ws.refresh().unwrap();
+    assert_eq!(ws.project().status.pending_images, 1, "a historical output cannot make a deleted reference target current");
+    assert_eq!(ws.project().status.completed_images, 0);
+    let rebuilt = ws.update_pending_with_results(&options(&ws), &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+    assert_eq!(rebuilt.images[0].pdf_path.as_deref(), Some(target.as_str()));
+    assert_eq!(fs::read(dir.path().join("main.tex")).unwrap(), tex);
+}

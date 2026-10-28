@@ -1,5 +1,5 @@
 import { nativeText } from "./nativeText";
-import { t, getLocale } from "./i18n";
+import { t, getLocale, getLoadedCatalog } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import AssetThumbnail from "./AssetThumbnail";
 import { useAssetThumbnails } from "./hooks/useAssetThumbnails";
@@ -269,7 +269,8 @@ export default function AssetList(props: Props) {
               const problem = props.problemIds.has(asset.id);
               const ignoreMode = asset.ignoreMode ?? (props.ignored?.has(asset.id) ? "session" : "none");
               const ignored = ignoreMode !== "none";
-              const label = ignored ? t("assetList.ignored") : problem ? referenceProblem ? statusLabels[asset.status] : t("assetList.needsAttention") : result?.cancelled ? t("assetList.cancelled") : converted ? t("assetList.completed") : updatable ? t("assetList.updatedSource") : statusLabels[asset.status];
+              const missingPdf = asset.message === getLoadedCatalog("zh-CN")?.native.managedPdfMissing;
+              const label = ignored ? t("assetList.ignored") : problem ? referenceProblem ? statusLabels[asset.status] : t("assetList.needsAttention") : result?.cancelled ? t("assetList.cancelled") : missingPdf ? t("assetList.missingPDF") : converted ? t("assetList.completed") : updatable ? t("assetList.updatedSource") : statusLabels[asset.status];
               const normalizedPath = asset.relativePath.replaceAll("\\", "/");
               const slash = normalizedPath.lastIndexOf("/");
               const filename = normalizedPath.slice(slash + 1);
@@ -303,7 +304,7 @@ export default function AssetList(props: Props) {
                   <TableCell className="text-center"><span className="text-xs text-muted-foreground">{asset.format.toUpperCase()}</span></TableCell>
                   <TableCell className="text-center"><span className="text-xs tabular-nums text-muted-foreground">{formatBytes(asset.bytes)}</span></TableCell>
                   <TableCell className="text-center">
-                    <Badge key={label} className={updatable && !problem ? "status-badge update-badge" : "status-badge"} variant={ignored ? "secondary" : problem ? referenceProblem ? "warning" : "destructive" : converted ? "success" : "secondary"} title={nativeText(asset.message ?? result?.error ?? "") || (ignored ? ignoreMode === "permanent" ? t("assetList.alwaysIgnore") : t("assetList.ignoreForThisSession") : updatable ? t("assetList.theSourceImageOrSVGDependencyChangedAndCanBe") : result?.pdfPath ?? undefined)}>
+                    <Badge key={label} className={updatable && !problem ? "status-badge update-badge" : "status-badge"} variant={ignored ? "secondary" : missingPdf ? "warning" : problem ? referenceProblem ? "warning" : "destructive" : converted ? "success" : "secondary"} title={nativeText(asset.message ?? result?.error ?? "") || (ignored ? ignoreMode === "permanent" ? t("assetList.alwaysIgnore") : t("assetList.ignoreForThisSession") : updatable ? t("assetList.theSourceImageOrSVGDependencyChangedAndCanBe") : result?.pdfPath ?? undefined)}>
                       {label}
                     </Badge>
                   </TableCell>

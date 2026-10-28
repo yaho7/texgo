@@ -36,5 +36,6 @@
   "valueResults": "{arg0, plural, one {# result} other {# results}}",
   "valueImages": "{arg0, plural, one {# image} other {# images}}",
   "previousImagePage": "Previous image page",
-  "nextImagePage": "Next image page"
+  "nextImagePage": "Next image page",
+  "missingPDF": "PDF missing"
 }

@@ -83,6 +83,7 @@ impl Workspace {
         self.scan.project.undo_available = transaction::standalone_undo_available(root).unwrap_or_else(|_| transaction::legacy_undo_available(root));
         for asset in &mut self.scan.project.images {
             asset.update_available = false;
+            if asset.message.as_deref() == Some(crate::manifest::MISSING_OUTPUT_NOTICE) { continue; }
             for output in journal.preferred_outputs(&asset.relative_path) {
                 let Some(managed) = journal.outputs.get(&output) else { continue; };
                 if managed.source != asset.relative_path || !journal.valid_output(root, &output, managed) { continue; }
@@ -101,6 +102,9 @@ impl Workspace {
                 self.converted.insert(asset.id.clone(), StoredConversion { path, source_hash: managed.source_hash.clone(),
                     pdf_hash: managed.pdf_hash.clone(), dependencies: managed.dependencies.iter().map(|(p, h)| (root.join(p), h.clone())).collect() });
                 break;
+            }
+            if !self.converted.contains_key(&asset.id) && journal.preferred_outputs(&asset.relative_path).iter().any(|output| fs::symlink_metadata(root.join(output)).is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)) {
+                asset.message = Some(crate::manifest::MISSING_OUTPUT_NOTICE.into());
             }
         }
     }
@@ -396,7 +400,7 @@ impl Workspace {
         for asset in &mut self.scan.project.images {
             if let Some((error, _)) = self.failures.get(&asset.id) { asset.message = Some(error.clone()); }
             else if unsafe_output_ids.contains(&asset.id) { asset.message = Some("输出 PDF 已被外部修改，Texgo 无法安全覆盖。请检查文件，或忽略本次处理。".into()); }
-            else if asset.status == "ready" && asset.message.as_deref() != Some("已关联原图片，重新转换可更新 PDF") { asset.message = None; }
+            else if asset.status == "ready" && !matches!(asset.message.as_deref(), Some("已关联原图片，重新转换可更新 PDF") | Some(crate::manifest::MISSING_OUTPUT_NOTICE)) { asset.message = None; }
         }
         self.scan.project.converted_images.retain(|image| image.error.is_none());
         self.scan.project.converted_images.extend(self.failures.iter().map(|(id, (error, _))| ConvertedImage {

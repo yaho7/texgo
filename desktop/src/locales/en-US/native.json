@@ -282,5 +282,6 @@
   "editSelectAll": "Select All",
   "aboutTexgo": "About Texgo",
   "hideTexgo": "Hide Texgo",
-  "hideOthers": "Hide Others"
+  "hideOthers": "Hide Others",
+  "managedPdfMissing": "The managed PDF is missing. Regenerate it."
 }

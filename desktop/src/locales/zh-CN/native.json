@@ -282,5 +282,6 @@
   "editSelectAll": "全选",
   "aboutTexgo": "关于 Texgo",
   "hideTexgo": "隐藏 Texgo",
-  "hideOthers": "隐藏其他应用"
+  "hideOthers": "隐藏其他应用",
+  "managedPdfMissing": "托管 PDF 已丢失，请重新生成"
 }

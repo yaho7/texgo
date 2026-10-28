@@ -1,5 +1,7 @@
 use crate::models::{ImageAsset, Project};
 use crate::workspace::digest;
+
+pub(crate) const MISSING_OUTPUT_NOTICE: &str = "托管 PDF 已丢失，请重新生成";
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
@@ -36,6 +38,7 @@ pub(crate) fn restore_sources(project: &mut Project) {
     for mut asset in std::mem::take(&mut project.images) {
         if asset.status == "pdf" || (asset.status == "missing" && asset.format == "pdf") {
             if let Some(entry) = manifest.images.get(&asset.relative_path) {
+                let missing_output = asset.status == "missing";
                 let candidate = root.join(&entry.source);
                 // Check the stored source spelling before canonicalize can hide
                 // a symlink. Keep its source identity visible as a problem.
@@ -62,7 +65,7 @@ pub(crate) fn restore_sources(project: &mut Project) {
                         asset.height = dimensions.map(|size| size.1);
                         asset.bytes = fs::metadata(&source).ok().map(|metadata| metadata.len());
                         asset.status = "ready".into();
-                        asset.message = Some("已关联原图片，重新转换可更新 PDF".into());
+                        asset.message = Some(if missing_output { MISSING_OUTPUT_NOTICE } else { "已关联原图片，重新转换可更新 PDF" }.into());
                     }
                 } else {
                     project.warnings.push(format!("转换 PDF 的原图片已丢失：{}", entry.source));
@@ -71,6 +74,7 @@ pub(crate) fn restore_sources(project: &mut Project) {
             }
         }
         if let Some(existing) = assets.iter_mut().find(|existing| existing.id == asset.id) {
+            if asset.message.as_deref() == Some(MISSING_OUTPUT_NOTICE) { existing.message = asset.message.clone(); }
             existing.references.extend(asset.references);
         } else { assets.push(asset); }
     }
