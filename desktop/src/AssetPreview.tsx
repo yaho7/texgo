@@ -189,13 +189,16 @@ export default function AssetPreview({ root = "", asset, result, revision, busy 
         {onIgnore && ignoreMode !== "permanent" && <DropdownMenuItem onSelect={() => onIgnore(asset.id, "permanent")}>{t("assetPreview.alwaysIgnore")}</DropdownMenuItem>}
       </DropdownMenuGroup></DropdownMenuContent></DropdownMenu>}
 
+    </div>
+    <div className="preview-stage">
+    <div className="preview-controls">
       <ToggleGroup type="single" value={visibleMode} onValueChange={(value) => { if (value) setMode(value); }} variant="outline" size="sm" aria-label={t("assetPreview.previewVersion")}>
         <ToggleGroupItem value="original" disabled={!asset}>{t("assetPreview.original2")}</ToggleGroupItem><ToggleGroupItem value="pdf" disabled={!hasConverted}>PDF</ToggleGroupItem><ToggleGroupItem value="compare" disabled={!hasConverted}>{t("assetPreview.compare")}</ToggleGroupItem>
       </ToggleGroup>
-    </div>
-    {!sourcePdf && <div className="preview-scale-controls"><ToggleGroup type="single" value={scale} onValueChange={(value) => { if (value) setScale(value); }} variant="outline" size="sm" aria-label={t("assetPreview.previewZoom")}>
+      {!sourcePdf && <><span className="preview-control-divider" aria-hidden="true">|</span><ToggleGroup type="single" value={scale} onValueChange={(value) => { if (value) setScale(value); }} variant="outline" size="sm" aria-label={t("assetPreview.previewZoom")}>
       <ToggleGroupItem value="fit" disabled={unavailable}>{t("assetPreview.fitToWindow")}</ToggleGroupItem><ToggleGroupItem value="actual" disabled={unavailable}>100%</ToggleGroupItem>
-    </ToggleGroup></div>}
+    </ToggleGroup></>}
+    </div>
     <div ref={surface} className="preview-surface" data-scale={scale} data-dragging={dragging} data-resetting={resetting} onPointerDown={(event) => { if (!(event.target as HTMLElement).closest('button, input, [role="slider"]')) event.currentTarget.closest<HTMLElement>(".preview-panel")?.focus(); }}>
       {unavailable ? <Empty><EmptyHeader><EmptyMedia variant="icon"><FileImage aria-hidden="true" /></EmptyMedia><EmptyTitle>{asset ? asset.status === "missing" ? t("assetPreview.missingFile") : asset.status === "ambiguous" ? t("assetPreview.multipleCandidateFilesFound") : t("assetPreview.previewUnavailableForThisImage") : t("assetPreview.selectAnImageToPreview")}</EmptyTitle></EmptyHeader></Empty> : <>
         <div ref={artboard} className="preview-artboard" style={{ width: sourcePdf ? size.width : Math.max(size.width, width + 28), height: sourcePdf ? size.height : Math.max(size.height, height + 28) }}>
@@ -214,6 +217,7 @@ export default function AssetPreview({ root = "", asset, result, revision, busy 
         </>}
         </div>
       </>}
+    </div>
     </div>
     {asset && (referencesByFile.size > 0 || hasConverted) && <section aria-label={t("assetPreview.referencesAndOutput")} className="preview-details">
       {referencesByFile.size > 0 && <div><h3>{t("assetPreview.references")}</h3><ul>{[...referencesByFile].map(([file, references]) => <li key={file} title={file}><span>{root ? relativeFile(file, root) : file}</span><span className="text-muted-foreground">:{[...new Set(references.map(reference => reference.line))].join(", ")}</span></li>)}</ul></div>}

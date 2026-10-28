@@ -71,3 +71,15 @@
 
 /* Keep a generous resize target without reserving an empty column. */
 .mac-workspace .splitter { width: 8px; margin-inline: -4px; z-index: 4; background: transparent; }
+
+/* Source transparency is visible against one shared viewer background. */
+.preview-stage { display: flex; flex: 1; flex-direction: column; min-height: 220px; margin-inline: var(--workspace-inset); background: #EEECEE; border-radius: 6px; overflow: hidden; }
+.preview-controls { display: flex; flex: none; justify-content: center; align-items: center; gap: 8px; padding: 8px; }
+.preview-controls [data-slot="toggle-group"] { background: transparent; }
+.preview-controls [data-slot="toggle-group-item"] { min-width: 32px; padding-inline: 6px; font-size: 11px; }
+.preview-control-divider { color: var(--muted-foreground); font-size: 13px; }
+.mac-workspace .preview-stage .preview-surface { margin: 0; background: #EEECEE; }
+.preview-stage .comparison-frame,
+.preview-stage .image-stage img,
+.preview-stage .pdf-canvas-host canvas { border-radius: 4px; }
+.preview-stage .comparison-frame { overflow: hidden; }

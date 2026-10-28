@@ -396,3 +396,14 @@ it("keeps fractional fit viewports inside their content box without introducing 
     expect(container.querySelector(".preview-artboard")).toHaveStyle({ width: "417px", height: "389px" });
   } finally { vi.unstubAllGlobals(); }
 });
+
+
+it("keeps preview versions and zoom in the same viewer toolbar", () => {
+  const {container} = render(<AssetPreview asset={asset} revision={1} result={result} />);
+  const toolbar = container.querySelector(".preview-controls")!;
+  expect(within(toolbar as HTMLElement).getByRole("radio", {name:"原图", exact:true})).toBeInTheDocument();
+  expect(within(toolbar as HTMLElement).getByRole("radio", {name:"适应窗口", exact:true})).toBeInTheDocument();
+  expect(within(toolbar as HTMLElement).getByRole("radio", {name:"100%", exact:true})).toBeInTheDocument();
+  expect(toolbar.parentElement).toBe(container.querySelector(".preview-surface")?.parentElement);
+  expect(toolbar.querySelector('[aria-hidden="true"]')).toHaveTextContent("|");
+});
