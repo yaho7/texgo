@@ -386,8 +386,10 @@ describe("LaTeX 项目唯一工作流", () => {
     await user.click(screen.getByRole("button", { name: "Texgo 首页" }));
     expect(screen.getByRole("heading", { name: "加快 LaTeX 编译" })).toBeVisible();
     expect(screen.getAllByRole("button", { name: "打开项目" })).toHaveLength(1);
-    expect(screen.getAllByRole("button", { name: "Texgo 首页" })).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "展开侧栏" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "Texgo 首页" })).not.toBeInTheDocument();
+    expect(screen.getByText("Texgo", { exact: true })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /展开侧栏|打开项目导航/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "项目导航" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("region", { name: "最近项目" })).toHaveLength(1);
     expect(document.querySelectorAll("#main-content")).toHaveLength(1);
     await user.click(within(screen.getByRole("region", { name: "最近项目" })).getByRole("button", { name: /^main\.tex/ }));
@@ -406,8 +408,7 @@ describe("LaTeX 项目唯一工作流", () => {
     await user.clear(output); await user.type(output, "draft-pdf");
     await user.click(screen.getByRole("button", { name: "Texgo 首页" }));
     expect(screen.getByRole("heading", { name: "加快 LaTeX 编译" })).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "展开侧栏" }));
-    await user.click(screen.getByRole("button", { name: "设置" }));
+    await user.keyboard("{Control>},{/Control}");
     expect(await screen.findByLabelText("默认输出目录")).toHaveValue("draft-pdf");
     expect(calls.some(call => call.command === "save_preferences")).toBe(false);
     expect(document.querySelectorAll("#main-content")).toHaveLength(1);

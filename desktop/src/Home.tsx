@@ -14,9 +14,9 @@ interface Props {
   failedRecent?: string | null;
 }
 export default function Home(props: Props) {
-  return <main id="main-content" tabIndex={-1} className="home-workspace page-transition">
+  return <main id="main-content" tabIndex={-1} className="home-workspace page-transition py-8!">
     <section className="home-opening gap-4!" aria-labelledby="home-title">
-      <h1 id="home-title">加快 LaTeX 编译</h1>
+      <div className="flex flex-col items-center gap-2"><p className="text-[18px] font-semibold leading-6 text-foreground/65" translate="no">Texgo</p><h1 id="home-title">加快 LaTeX 编译</h1></div>
       <Button aria-busy={props.busy} disabled={props.busy} onClick={props.onOpenTex}>{props.busy ? <LoaderCircle className="animate-spin" data-icon="inline-start" aria-hidden="true" /> : <FolderOpen data-icon="inline-start" aria-hidden="true" />}{props.busy ? "正在扫描…" : "打开项目"}</Button>
       <p className="home-drop-hint">或拖入 .tex 主文件</p>
       <details className="w-full max-w-[440px] text-left text-xs leading-relaxed">

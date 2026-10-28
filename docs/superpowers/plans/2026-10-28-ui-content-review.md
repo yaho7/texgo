@@ -51,3 +51,15 @@ achieved and belongs in the optional explanation. No new LaTeX compilation valid
 Browser verification uses deterministic native IPC fixtures; it does not claim an installed
 native application or a LaTeX compile benchmark. ReviewDialog source safety remains unchanged.
 Screenshots: `/private/tmp/texgo-home-review.png`, `/private/tmp/texgo-workspace-review.png`.
+
+## Home and navigation refinement
+
+The Home wordmark is centered above the compilation benefit (18 px versus 30 px). Home has
+no sidebar, sidebar toggle or redundant Home button; project navigation returns when the project
+resumes. The project sidebar uses a static wordmark and an independently clickable Home icon
+on its right edge, with hover and pressed feedback. Its visible right edge aligns with library
+counts. Column headers match contents: name left, format/status centered, size right.
+
+All 299 frontend tests, TypeScript and production build pass. Browser fixtures verified the
+Home and project navigation; screenshots are in `/private/tmp/texgo-home-wordmark.png` and
+`/private/tmp/texgo-sidebar-home-icon.png`.

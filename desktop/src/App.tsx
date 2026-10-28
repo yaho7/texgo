@@ -64,7 +64,6 @@ export default function App() {
   const [revision, setRevision] = useState(0);
   const [assetsWidth, setAssetsWidth] = useState(600);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [homeSidebarOpen, setHomeSidebarOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -88,7 +87,8 @@ export default function App() {
   const { project, current: projectRef, contextKey, recents, failedRecent, settings, acceptProject, refresh,
     openProject, openRecent, closeProject, updateSettings } = workspace;
   const homeVisible = !project || homePage;
-  const sidebarExpanded = homeVisible && !settingsPage ? homeSidebarOpen : sidebarOpen;
+  const homeLanding = homeVisible && !settingsPage;
+  const sidebarExpanded = sidebarOpen;
   const showWorkspace: typeof setView = (next) => { setHomePage(false); setView(next); };
   const captureWorkspace = useWorkspaceGuard(() => workspace.generation.current);
   const selection = useAssetSelection(project);
@@ -149,7 +149,7 @@ export default function App() {
 
   function showHome() {
     if (currentOperationKind() || reviewFlow.decisionRef.current.kind !== "none" || updateOpen) return;
-    setHomePage(true); setHomeSidebarOpen(false); setSettingsPage(false); setDrawerOpen(false); setNotice("");
+    setHomePage(true); setSettingsPage(false); setDrawerOpen(false); setNotice("");
   }
   function openRecentEntry(entry: Parameters<typeof openRecent>[0]) {
     if (currentOperationKind() || reviewFlow.decisionRef.current.kind !== "none" || updateOpen) return;
@@ -283,11 +283,11 @@ export default function App() {
   return <TooltipProvider delayDuration={350}><div className="app-shell mac-workspace">
     <div className="workbench" inert={review !== null || undoEntry !== null || problemId !== null || updateOpen || conversionBlocked}>
       <a href="#main-content" className="skip-link">跳转到工作区</a>
-      {!narrow && <aside className="workspace-sidebar" data-collapsed={!sidebarExpanded} aria-hidden={!sidebarExpanded} inert={!sidebarExpanded}>{sidebar}</aside>}
+      {!homeLanding && !narrow && <aside className="workspace-sidebar" data-collapsed={!sidebarExpanded} aria-hidden={!sidebarExpanded} inert={!sidebarExpanded}>{sidebar}</aside>}
       <div className="workspace-main">
       <header className="app-toolbar">
-        <IconButton id="sidebar-toggle" label={narrow ? "打开项目导航" : sidebarExpanded ? "收起侧栏" : "展开侧栏"} aria-expanded={narrow ? drawerOpen : sidebarExpanded} onClick={() => narrow ? setDrawerOpen(true) : homeVisible && !settingsPage ? setHomeSidebarOpen((value) => !value) : setSidebarOpen((value) => !value)}><PanelLeft aria-hidden="true" /></IconButton>
-        {(narrow || !sidebarExpanded) && <Button variant="ghost" className="px-2!" aria-label="Texgo 首页" disabled={busy} onClick={showHome}>Texgo</Button>}<div className="project-title">{project && !homeVisible && !settingsPage ? <><h1 title={project.mainFile}>{fileName(project.mainFile)}</h1><p title={project.root}>{project.root}</p></> : null}</div>
+        {!homeLanding && <IconButton id="sidebar-toggle" label={narrow ? "打开项目导航" : sidebarExpanded ? "收起侧栏" : "展开侧栏"} aria-expanded={narrow ? drawerOpen : sidebarExpanded} onClick={() => narrow ? setDrawerOpen(true) : setSidebarOpen((value) => !value)}><PanelLeft aria-hidden="true" /></IconButton>}
+        {(narrow || !sidebarExpanded) && (!homeVisible || settingsPage) && <Button variant="ghost" className="px-2!" aria-label="Texgo 首页" disabled={busy} onClick={showHome}>Texgo</Button>}<div className="project-title">{project && !homeVisible && !settingsPage ? <><h1 title={project.mainFile}>{fileName(project.mainFile)}</h1><p title={project.root}>{project.root}</p></> : null}</div>
         {project && !homeVisible && !settingsPage && view === "assets" && <WorkspaceSearch value={search} onChange={setSearch} />}
         <div className="toolbar-actions"><WorkbenchMenu busy={busy} hasProject={Boolean(project)} canUndo={history.some((entry) => entry.canUndo) || Boolean(project?.undoAvailable)} onOpen={openProject} onClose={closeProject} onRefresh={() => { void execute("opening", () => refresh()); }} onUpdate={() => setUpdateOpen(true)} onUndo={() => {
           const entry = history.find((item) => item.canUndo); if (entry) { rememberFocus(); reviewFlow.requestUndo(entry); } else if (project?.undoAvailable) replace(true);
@@ -322,7 +322,7 @@ export default function App() {
       {notice && notice !== "就绪" && !notice.startsWith("已识别") && !homeVisible && <footer className="status-bar"><div className="status-text" role="status" aria-live="polite">{operation === "opening" ? <LoaderCircle className="spin" aria-hidden="true" /> : project ? <Check aria-hidden="true" /> : <span className="status-dot" />}<span>{operation && operation !== "converting" ? operationLabels[operation] : notice}</span></div></footer>}
       </div>
     </div>
-    <Dialog open={narrow && drawerOpen} onOpenChange={setDrawerOpen}>
+    <Dialog open={!homeLanding && narrow && drawerOpen} onOpenChange={setDrawerOpen}>
       <DialogContent className="navigation-drawer translate-x-0! translate-y-0!" showCloseButton={false} onCloseAutoFocus={(event) => { event.preventDefault(); document.getElementById("sidebar-toggle")?.focus(); }}>
         <DialogTitle className="sr-only">项目导航</DialogTitle><DialogDescription className="sr-only">打开项目与最近工作区</DialogDescription>
         <Button variant="ghost" size="icon" className="drawer-close" aria-label="关闭项目导航" title="关闭项目导航" onClick={() => setDrawerOpen(false)}><X aria-hidden="true" /></Button>
