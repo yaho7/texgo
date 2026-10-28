@@ -250,7 +250,7 @@ export default function AssetList(props: Props) {
               </TableHead>}
               <TableHead>名称</TableHead>
               <TableHead className="w-14 text-center">格式</TableHead>
-              <TableHead className="w-20 text-center">大小</TableHead>
+              <TableHead className="w-20 text-right">大小</TableHead>
               <TableHead className="w-24 text-center">状态</TableHead>
               <TableHead className="w-9 text-center"><span className="sr-only">图片操作</span></TableHead>
             </TableRow>
@@ -296,7 +296,7 @@ export default function AssetList(props: Props) {
                       </Button>}
                     </div></div>
                   </TableCell>
-                  <TableCell><span className="text-xs text-muted-foreground">{asset.format.toUpperCase()}</span></TableCell>
+                  <TableCell className="text-center"><span className="text-xs text-muted-foreground">{asset.format.toUpperCase()}</span></TableCell>
                   <TableCell className="text-right"><span className="text-xs tabular-nums text-muted-foreground">{formatBytes(asset.bytes)}</span></TableCell>
                   <TableCell className="text-center">
                     <Badge key={label} className={updatable && !problem ? "status-badge update-badge" : "status-badge"} variant={ignored ? "secondary" : problem ? referenceProblem ? "warning" : "destructive" : converted ? "success" : "secondary"} title={asset.message ?? result?.error ?? (ignored ? ignoreMode === "permanent" ? "始终忽略" : "仅本次忽略" : updatable ? "源图片或 SVG 依赖已变化，可重新处理" : result?.pdfPath ?? undefined)}>
