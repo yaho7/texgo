@@ -42,6 +42,7 @@
 
 ## 贡献者
 
-[yaho7](https://github.com/yaho7)；Codex 提供 AI 开发、验证与文档协助。
+- [yaho7](https://github.com/yaho7)
+- Codex
 
 [MIT 许可证](LICENSE)。

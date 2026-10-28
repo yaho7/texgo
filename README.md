@@ -60,7 +60,7 @@ must be checked in the release workflow.
 
 ## Contributors
 
-[yaho7](https://github.com/yaho7), with AI-assisted contributions from Codex in
-implementation, verification and documentation.
+- [yaho7](https://github.com/yaho7)
+- Codex
 
 [MIT license](LICENSE).
