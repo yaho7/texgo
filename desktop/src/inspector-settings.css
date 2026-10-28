@@ -31,6 +31,8 @@
 .settings-save-feedback { display: flex; min-height: 40px; }
 .settings-save-feedback > button { min-width: 132px; }
 .pdf-canvas-enter { animation: preview-canvas-in var(--motion-normal) var(--ease-out) both; }
+/* A loading overlay must not change the fitted page's scroll geometry. */
+.pdf-overlay .pdf-render-status { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); }
 @keyframes shortcut-token-in { from { opacity: 0; transform: scale(.98); } to { opacity: 1; transform: scale(1); } }
 @keyframes preview-canvas-in { from { opacity: .7; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {

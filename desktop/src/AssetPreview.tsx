@@ -137,10 +137,19 @@ export default function AssetPreview({ asset, result, revision, busy = false, ig
   useEffect(() => {
     const element = surface.current;
     if (!element) return;
-    const update = () => { if (element.clientWidth && element.clientHeight) setSize({ width: element.clientWidth, height: element.clientHeight }); };
-    update();
-    if (typeof ResizeObserver === "undefined") { window.addEventListener("resize", update); return () => window.removeEventListener("resize", update); }
-    const observer = new ResizeObserver(update); observer.observe(element);
+    const update = (width: number, height: number) => {
+      // Integer client sizes round fractional pixels up, creating scrollbars that
+      // change the fit size again. Round the content box down instead.
+      const next = { width: Math.floor(width), height: Math.floor(height) };
+      if (next.width > 0 && next.height > 0) setSize(previous => previous.width === next.width && previous.height === next.height ? previous : next);
+    };
+    const measure = () => {
+      const bounds = element.getBoundingClientRect(), style = getComputedStyle(element);
+      update(bounds.width - parseFloat(style.borderLeftWidth || "0") - parseFloat(style.borderRightWidth || "0"), bounds.height - parseFloat(style.borderTopWidth || "0") - parseFloat(style.borderBottomWidth || "0"));
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") { window.addEventListener("resize", measure); return () => window.removeEventListener("resize", measure); }
+    const observer = new ResizeObserver(([entry]) => { if (entry) update(entry.contentRect.width, entry.contentRect.height); }); observer.observe(element);
     return () => observer.disconnect();
   }, []);
   function resetDivider() { setResetting(true); setDivider(50); if (resetTimer.current) clearTimeout(resetTimer.current); resetTimer.current = setTimeout(() => setResetting(false), motionDuration("slow")); }

@@ -379,3 +379,21 @@ it("shows resolution only in inspector details without repeating the list filena
   expect(screen.queryByRole("heading", { name: "a.png" })).not.toBeInTheDocument();
   expect(screen.queryByText("PNG")).not.toBeInTheDocument();
 });
+
+it("keeps fractional fit viewports inside their content box without introducing scrollbars", async () => {
+  let resized: ResizeObserverCallback = () => {};
+  const observer: ResizeObserver = { observe() {}, unobserve() {}, disconnect() {} };
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(callback: ResizeObserverCallback) { resized = callback; }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  });
+  try {
+    const { container } = render(<AssetPreview asset={asset} result={result} revision={1} />);
+    await loadOriginal("a.png");
+    const surface = container.querySelector(".preview-surface")!;
+    act(() => resized([{ target: surface, contentRect: new DOMRect(0, 0, 417.5, 389.5), borderBoxSize: [], contentBoxSize: [], devicePixelContentBoxSize: [] }], observer));
+    expect(container.querySelector(".preview-artboard")).toHaveStyle({ width: "417px", height: "389px" });
+  } finally { vi.unstubAllGlobals(); }
+});
