@@ -308,8 +308,12 @@ export default function App() {
       requestAnimationFrame(() => document.querySelector<HTMLElement>(".preview-panel")?.focus());
     }
   }
+  function toggleSidebar() {
+    setSidebarOpen(value => !value);
+    requestAnimationFrame(() => document.getElementById("sidebar-toggle")?.focus());
+  }
   const layoutStyle = { "--assets-width": `${assetsWidth}px` } as CSSProperties;
-  const sidebar = <WorkspaceSidebar busy={busy} activeKey={contextKey} projectPath={project?.mainFile ?? null} status={project?.status} filter={filter} onFilter={setFilter} onHome={showHome} view={settingsPage ? "settings" : homeVisible ? "home" : view}
+  const sidebar = <WorkspaceSidebar compact={!narrow && !sidebarExpanded} busy={busy} activeKey={contextKey} projectPath={project?.mainFile ?? null} status={project?.status} filter={filter} onFilter={setFilter} onHome={showHome} onToggleSidebar={narrow ? undefined : toggleSidebar} view={settingsPage ? "settings" : homeVisible ? "home" : view}
     recents={recents} failedRecent={failedRecent} onView={(next) => { showWorkspace(next); setSettingsPage(false); setDrawerOpen(false); }}
     onSettings={() => { setDrawerOpen(false); setSettingsPage(true); }} onOpenTex={() => { setDrawerOpen(false); openProject(); }}
     onRecent={(entry) => { setDrawerOpen(false); setSettingsPage(false); openRecentEntry(entry); }}
@@ -318,10 +322,10 @@ export default function App() {
   return <TooltipProvider delayDuration={350}><div className={`app-shell mac-workspace${isTauri() && /Mac/.test(navigator.platform) ? " native-macos" : ""}`}><div className="window-drag-region" data-tauri-drag-region aria-hidden="true" />
     <div ref={shellRef} className={homeLanding || settingsPage ? "workbench pl-0!" : "workbench"} inert={review !== null || undoEntry !== null || problemId !== null || updateOpen || conversionBlocked || renameReviewOpen}>
       <a href="#main-content" className="skip-link">{t("app.skipToWorkspace")}</a>
-      {!homeLanding && !settingsPage && !narrow && <aside className="workspace-sidebar" data-collapsed={!sidebarExpanded} aria-hidden={!sidebarExpanded} inert={!sidebarExpanded}>{sidebar}</aside>}
+      {!homeLanding && !settingsPage && !narrow && <aside className="workspace-sidebar" data-compact={!sidebarExpanded}>{sidebar}</aside>}
+      {!homeLanding && !settingsPage && narrow && <aside className="workspace-navigation-rail"><IconButton id="sidebar-toggle" label={narrow ? t("app.openProjectNavigation") : t("app.showSidebar")} aria-expanded={narrow ? drawerOpen : false} onClick={() => narrow ? setDrawerOpen(true) : toggleSidebar()}><PanelLeft aria-hidden="true" /></IconButton></aside>}
       <div className={homeLanding || settingsPage ? "workspace-main border-l-0!" : "workspace-main"}>
       {!homeLanding && !settingsPage && <header className="app-toolbar">
-        {!homeLanding && <IconButton id="sidebar-toggle" label={narrow ? t("app.openProjectNavigation") : sidebarExpanded ? t("app.hideSidebar") : t("app.showSidebar")} aria-expanded={narrow ? drawerOpen : sidebarExpanded} onClick={() => narrow ? setDrawerOpen(true) : setSidebarOpen((value) => !value)}><PanelLeft aria-hidden="true" /></IconButton>}
         <div className="project-title">{project && !homeVisible && !settingsPage ? <><h1 title={project.mainFile}>{fileName(project.mainFile)}</h1><p title={project.root}>{project.root}</p></> : null}</div>
         {project && !homeVisible && !settingsPage && view === "assets" && <WorkspaceSearch value={search} onChange={setSearch} />}
         <div className="toolbar-actions"><WorkbenchMenu busy={busy} hasProject={Boolean(project)} canUndo={history.some((entry) => entry.canUndo) || Boolean(project?.undoAvailable)} onOpen={openProject} onClose={closeProject} onRefresh={() => { void execute("opening", () => refresh()); }} onUpdate={() => { if (!currentOperationKind() && reviewFlow.decisionRef.current.kind === "none") setUpdateOpen(true); }} onUndo={() => {

@@ -29,6 +29,6 @@ export default function Home(props: Props) {
       </details>
       {props.recents.length > 0 && <section className="home-recents" aria-label={t("home.recentProjects")}><h2>{t("home.recentProjects")}</h2><ul className="recent-list">{props.recents.slice(0, 5).map((entry) => <li key={entry.path} className="flex items-center gap-1"><Button variant="ghost" className="recent-open" disabled={props.busy} onClick={() => props.onRecent(entry)}><RecentProjectDetails entry={entry} failed={props.failedRecent === workspaceKey(entry)} /></Button>{props.onRemove && <IconButton label={t("home.removeRecentProjectValue", { arg0: entry.path })} size="icon-sm" disabled={props.busy} onClick={() => props.onRemove?.(entry)}><X aria-hidden="true" /></IconButton>}</li>)}</ul></section>}
     </section>
-    {props.onSettings && <Button variant="ghost" className="fixed bottom-[14px] left-3 text-[13px]" onClick={props.onSettings}><Settings aria-hidden="true" />{t("common.settings")}</Button>}
+    {props.onSettings && <Button variant="ghost" className="home-settings" onClick={props.onSettings}><Settings aria-hidden="true" />{t("common.settings")}</Button>}
   </main>;
 }

@@ -825,3 +825,24 @@ it("opens standalone Settings from Home and persists English across the whole wo
   expect(calls.some(call => call.command === "apply_replacements")).toBe(false);
   expect(calls.find(call => call.command === "save_preferences")?.args.preferences).toMatchObject({language:"en-US"});
 });
+
+
+it("keeps the sidebar switch with navigation and preserves focus while collapsing", async () => {
+  const user = await openProject();
+  const collapse = screen.getByRole("button", {name:"收起侧栏"});
+  expect(collapse.closest(".navigation-brand")).not.toBeNull();
+  expect(document.querySelector(".app-toolbar #sidebar-toggle")).toBeNull();
+  await user.click(collapse);
+  const expand = screen.getByRole("button", {name:"展开侧栏"});
+  expect(expand.closest(".workspace-navigation[data-compact=true]")).not.toBeNull();
+  expect(screen.getByRole("button", {name:"操作记录"})).toBeVisible();
+  expect(screen.getByRole("radio", {name:"待处理 2"})).toBeVisible();
+  expect(screen.getByRole("button", {name:"设置"})).toBeVisible();
+  expect(document.querySelectorAll("#sidebar-toggle")).toHaveLength(1);
+  const home = screen.getByRole("button", {name:"Texgo 首页"});
+  expect(home.closest(".sidebar-actions")).not.toBeNull();
+  expect(home.nextElementSibling).toBe(screen.getByRole("button", {name:"打开项目"}));
+  await waitFor(() => expect(expand).toHaveFocus());
+  await user.click(expand);
+  expect(screen.getByRole("button", {name:"收起侧栏"}).closest(".navigation-brand")).not.toBeNull();
+});

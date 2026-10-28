@@ -8,7 +8,7 @@
 .mac-workspace .asset-panel tbody td { border: 0; border-radius: 0; }
 .mac-workspace .asset-panel tbody tr:not([data-disabled="true"]):not([data-state="selected"]):hover td { background: rgba(0,0,0,.035); }
 .mac-workspace .preview-surface { border: 0; border-radius: 0; }
-.mac-workspace .workspace-grid { grid-template-columns: minmax(300px, min(var(--assets-width, 42%), 60%)) 8px minmax(0, 1fr); }
+.mac-workspace .workspace-grid { grid-template-columns: minmax(300px, min(var(--assets-width, 42%), 60%)) 0 minmax(0, 1fr); }
 .splitter::before { background: rgba(0,0,0,.04); }
 .splitter:hover::before { background: rgba(0,0,0,.12); }
 .splitter:focus-visible::before, .splitter:active::before { background: var(--primary); }
@@ -43,3 +43,31 @@
 .mac-workspace .preview-panel [data-slot="toggle-group-item"] { color: var(--foreground); }
 .workspace-navigation [data-state="on"] > svg { color: var(--primary); }
 .update-badge { background: #fff7ed; color: #c2410c; border-color: #ffedd5; }
+
+.navigation-window-actions { display: flex; align-items: center; gap: 4px; }
+.workspace-navigation-rail { display: flex; flex: 0 0 44px; justify-content: center; padding-top: 16px; background: #EEECEE; }
+.native-macos .workspace-navigation-rail { padding-top: 44px; }
+
+/* Collapsing retains the navigation destinations as a compact icon rail. */
+.mac-workspace .workspace-sidebar[data-compact="true"] { width: 56px; }
+.workspace-navigation[data-compact="true"] { position: relative; padding-inline: 8px; }
+.workspace-navigation[data-compact="true"] .navigation-wordmark,
+.workspace-navigation[data-compact="true"] button > span { display: none; }
+.workspace-navigation[data-compact="true"] .navigation-brand { padding: 0; justify-content: center; }
+.workspace-navigation[data-compact="true"] .navigation-window-actions { gap: 0; }
+.workspace-navigation[data-compact="true"] .navigation-window-actions > button { transform: none; translate: none; }
+
+.workspace-navigation[data-compact="true"] .sidebar-actions > button,
+.workspace-navigation[data-compact="true"] .navigation-section > button,
+.workspace-navigation[data-compact="true"] .navigation-settings > button { justify-content: center; padding-inline: 0; }
+.workspace-navigation[data-compact="true"] .navigation-settings { margin-inline: -8px; padding-inline: 8px; }
+
+/* Keep the library heading space when labels are hidden. */
+.workspace-navigation[data-compact="true"] .navigation-section-title { visibility: hidden; height: 16px; white-space: nowrap; overflow: hidden; }
+.workspace-navigation[data-compact="true"] .navigation-home { transform: none; translate: none; }
+
+/* Match the project sidebar settings target, including its icon inset. */
+.home-settings { position: fixed; left: 12px; bottom: 15px; height: 36px; min-height: 36px; padding-inline: 8px; gap: 8px; font-size: 13px; }
+
+/* Keep a generous resize target without reserving an empty column. */
+.mac-workspace .splitter { width: 8px; margin-inline: -4px; z-index: 4; background: transparent; }

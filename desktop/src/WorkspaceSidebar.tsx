@@ -1,5 +1,5 @@
 import { t } from "./i18n";
-import { House, Plus, Images, History, X, Settings, Circle, CircleCheck, TriangleAlert, CircleSlash } from "lucide-react";
+import { PanelLeft, House, Plus, Images, History, X, Settings, Circle, CircleCheck, TriangleAlert, CircleSlash } from "lucide-react";
 import { Button } from "@/controls/button";
 import "./workspace-navigation.css";
 import IconButton from "./IconButton";
@@ -11,7 +11,9 @@ import RecentProjectDetails from "./RecentProjectDetails";
 
 interface Props {
   busy: boolean;
+  compact?: boolean;
   onHome?: () => void;
+  onToggleSidebar?: () => void;
   status?: WorkspaceStatus;
   filter?: string;
   onFilter?: (filter: string) => void;
@@ -29,10 +31,10 @@ interface Props {
 
 export default function WorkspaceSidebar(props: Props) {
   const recentEntries = props.recents.filter((entry) => !props.projectPath || workspaceKey(entry) !== props.activeKey);
-  return <nav className="workspace-navigation" aria-label={t("workspaceSidebar.projectNavigation")}>
-    {props.view !== "home" && <div className="navigation-brand"><span className="text-[15px] font-semibold" translate="no">Texgo</span><Button variant="ghost" size="icon-sm" className="translate-x-0.5 transition-[background-color,transform] hover:bg-black/8 active:scale-90 active:bg-black/15 motion-reduce:transition-none" aria-label={t("workspaceSidebar.texgoHome")} title={t("workspaceSidebar.home")} disabled={props.busy} onClick={props.onHome}><House aria-hidden="true" /></Button></div>}
-    {props.view !== "home" && <div className="sidebar-actions"><Button variant="ghost" disabled={props.busy} onClick={props.onOpenTex}><Plus aria-hidden="true" />{t("workspaceSidebar.openProject")}</Button>
-      {props.projectPath && <Button variant="ghost" aria-current={props.view === "history" ? "page" : undefined} onClick={() => props.onView("history")}><History aria-hidden="true" />{t("workspaceSidebar.history")}</Button>}
+  return <nav className="workspace-navigation" data-compact={props.compact || undefined} aria-label={t("workspaceSidebar.projectNavigation")}>
+    {props.view !== "home" && <div className="navigation-brand"><span className="navigation-wordmark text-[15px] font-semibold" translate="no">Texgo</span><div className="navigation-window-actions">{!props.compact && <Button variant="ghost" size="icon-sm" className="navigation-home translate-x-0.5 transition-[background-color,transform] hover:bg-black/8 active:scale-90 active:bg-black/15 motion-reduce:transition-none" aria-label={t("workspaceSidebar.texgoHome")} title={t("workspaceSidebar.home")} disabled={props.busy} onClick={props.onHome}><House aria-hidden="true" /></Button>}{props.onToggleSidebar && <Button id="sidebar-toggle" variant="ghost" size="icon-sm" aria-label={t(props.compact ? "app.showSidebar" : "app.hideSidebar")} title={t(props.compact ? "app.showSidebar" : "app.hideSidebar")} aria-expanded={!props.compact} onClick={props.onToggleSidebar}><PanelLeft aria-hidden="true" /></Button>}</div></div>}
+    {props.view !== "home" && <div className="sidebar-actions">{props.compact && <Button variant="ghost" size="icon-sm" className="navigation-home translate-x-0.5 transition-[background-color,transform] hover:bg-black/8 active:scale-90 active:bg-black/15 motion-reduce:transition-none" aria-label={t("workspaceSidebar.texgoHome")} title={t("workspaceSidebar.home")} disabled={props.busy} onClick={props.onHome}><House aria-hidden="true" /></Button>}<Button variant="ghost" disabled={props.busy} aria-label={t("workspaceSidebar.openProject")} title={t("workspaceSidebar.openProject")} onClick={props.onOpenTex}><Plus aria-hidden="true" /><span>{t("workspaceSidebar.openProject")}</span></Button>
+      {props.projectPath && <Button variant="ghost" aria-current={props.view === "history" ? "page" : undefined} aria-label={t("workspaceSidebar.history")} title={t("workspaceSidebar.history")} onClick={() => props.onView("history")}><History aria-hidden="true" /><span>{t("workspaceSidebar.history")}</span></Button>}
     </div>}
     {props.projectPath && props.view !== "home" && (!props.status || !props.onFilter) && <section className="navigation-section" aria-label={t("workspaceSidebar.currentProject")}>
       <Button variant="ghost" aria-current={props.view === "assets" ? "page" : undefined} onClick={() => props.onView("assets")}><Images aria-hidden="true" />{t("workspaceSidebar.images")}</Button>
@@ -46,10 +48,10 @@ export default function WorkspaceSidebar(props: Props) {
           { value: "problems", label: t("workspaceSidebar.problems"), count: props.status.problemCount, icon: TriangleAlert },
           { value: "completed", label: t("workspaceSidebar.completed"), count: props.status.completedImages, icon: CircleCheck },
           { value: "ignored", label: t("workspaceSidebar.ignored"), count: props.status.ignoredCount, icon: CircleSlash },
-        ].map(({ value, label, count, icon: Icon }) => <ToggleGroupItem key={value} value={value} aria-label={`${label} ${count}`} className="h-8! min-h-8! w-full! justify-start! gap-2! rounded-md! border-0! px-2! text-xs! data-[state=on]:bg-black/8! data-[state=on]:text-foreground! [&_svg]:size-4"><Icon aria-hidden="true" className={(value === "problems" || value === "pending") && count ? "text-warning" : "text-muted-foreground"} /><span>{label}</span><span className="ml-auto text-muted-foreground tabular-nums">{count}</span></ToggleGroupItem>)}
+        ].map(({ value, label, count, icon: Icon }) => <ToggleGroupItem key={value} value={value} title={`${label} ${count}`} aria-label={`${label} ${count}`} className={`h-8! min-h-8! w-full! rounded-md! border-0! text-xs! data-[state=on]:bg-black/8! data-[state=on]:text-foreground! [&_svg]:size-4 ${props.compact ? "justify-center! gap-0! px-0!" : "justify-start! gap-2! px-2!"}`}><Icon aria-hidden="true" className={(value === "problems" || value === "pending") && count ? "text-warning" : "text-muted-foreground"} /><span>{label}</span><span className="ml-auto text-muted-foreground tabular-nums">{count}</span></ToggleGroupItem>)}
       </ToggleGroup>
     </section>}
-    {props.view !== "home" && recentEntries.length > 0 && <section className="navigation-section navigation-recents" aria-label={t("workspaceSidebar.recentProjects")}>
+    {!props.compact && props.view !== "home" && recentEntries.length > 0 && <section className="navigation-section navigation-recents" aria-label={t("workspaceSidebar.recentProjects")}>
       <h2 className="navigation-section-title">{t("workspaceSidebar.recentProjects")}</h2>
       <ul className="recent-list">{recentEntries.map((entry) => {
         const key = workspaceKey(entry);
@@ -59,6 +61,6 @@ export default function WorkspaceSidebar(props: Props) {
         </li>;
       })}</ul>
     </section>}
-    <div className="navigation-settings"><Button variant="ghost" aria-current={props.view === "settings" ? "page" : undefined} onClick={props.onSettings}><Settings aria-hidden="true" />{t("common.settings")}</Button></div>
+    <div className="navigation-settings"><Button variant="ghost" aria-current={props.view === "settings" ? "page" : undefined} aria-label={t("common.settings")} title={t("common.settings")} onClick={props.onSettings}><Settings aria-hidden="true" /><span>{t("common.settings")}</span></Button></div>
   </nav>;
 }
