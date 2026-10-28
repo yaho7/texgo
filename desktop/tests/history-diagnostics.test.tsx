@@ -56,6 +56,9 @@ it("keeps actionable Chinese errors and paths intact", () => {
 
 it("labels failed conversion attempts as conversions rather than checks", () => {
   render(<ConversionHistory entries={[{ ...entry, rename: null, files: [{ source: "bad.png", output: "", cached: false, error: "Cannot decode image" }] }]} busy={false} onUndo={vi.fn()} />);
+  expect(screen.getByRole("heading", { name: "1 张图片更新失败" })).toBeInTheDocument();
+  const details = screen.getByText("详细信息").closest("details")!;
+  details.open = true; fireEvent(details, new Event("toggle"));
   expect(screen.getByText("图片转换")).toBeInTheDocument();
   expect(screen.getByText("1 张图片更新失败")).toBeInTheDocument();
   expect(screen.queryByText("图片检查")).not.toBeInTheDocument();

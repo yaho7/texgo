@@ -1,11 +1,34 @@
-.history-list { padding-left: 14px; }
-.history-entry { position: relative; border-left: 1px solid var(--border); padding-left: 20px; }
-.history-entry::before { content: ""; position: absolute; left: -4px; top: 26px; width: 7px; height: 7px; border-radius: 50%; background: var(--muted-foreground); }
-.history-day { margin-bottom: 14px; font-size: 13px; font-weight: 600; color: var(--foreground); }
-.history-entry:has(.history-day)::before { top: 59px; }
-.history-entry time { color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
-.history-kind { margin-top: 5px; font-size: 11px; color: var(--muted-foreground); }
-.history-undo-reason { overflow-wrap: anywhere; }
+/* Dates separate groups; each operation leads with its result. */
+.history-view .history-panel { width: 100%; max-width: 880px; margin-inline: auto; padding: 28px 32px 40px; overflow-y: auto; scrollbar-gutter: stable; }
+.history-panel .history-title { padding: 0 0 28px; font-size: 20px; line-height: 28px; font-weight: 600; }
+.history-panel .history-list { margin: 0; padding: 0; list-style: none; }
+.history-panel .history-entry { padding: 0; border: 0; position: relative; }
+.history-panel .history-day { margin: 28px 0 12px; font-size: 12px; line-height: 18px; font-weight: 500; color: var(--muted-foreground); }
+.history-panel .history-entry:first-child .history-day { margin-top: 0; }
+.history-record { padding: 20px 0; border-bottom: 1px solid var(--border); }
+.history-record-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
+.history-record-copy { flex: 1; min-width: 0; }
+.history-result { margin: 0; font-size: 14px; font-weight: 550; line-height: 22px; overflow-wrap: anywhere; }
+.history-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+.history-panel .history-meta time { color: var(--muted-foreground); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.history-panel .history-meta [data-slot="badge"] { font-size: 11px; }
+.history-panel .history-rename { padding-top: 16px; gap: 8px; line-height: 1.6; }
+.history-panel .history-reference-summary { margin-top: 12px; line-height: 1.6; }
+.history-panel .history-undo-reason { margin-top: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.history-panel .history-entry details { margin-top: 12px; }
+.history-panel .history-entry summary { width: fit-content; min-height: 32px; padding: 6px 8px; margin-left: -8px; cursor: pointer; line-height: 20px; }
+.history-details-content { margin-top: 8px; padding: 16px; border-radius: 8px; background: var(--muted); }
+.history-panel .history-kind { margin: 0; font-size: 12px; color: var(--foreground); }
+.history-panel .history-directory { margin-top: 8px; line-height: 1.6; }
+.history-panel .history-entry ul { margin-top: 16px; }
+.history-panel .history-entry ul > li { padding: 12px 0; gap: 6px; line-height: 1.6; border-top: 1px solid var(--border); }
+.history-panel .history-entry ul > li > span { max-width: 100%; overflow-wrap: anywhere; }
+.history-panel .history-entry[data-highlighted="true"] { padding-inline: 16px; background: var(--muted); border-radius: 8px; }
+@media (max-width: 640px) {
+  .history-view .history-panel { padding: 24px 20px 32px; }
+  .history-record-header { gap: 16px; }
+  .history-details-content { padding: 12px; }
+}
 .error-notice-description { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .error-notice-content { min-width: 0; overflow-wrap: anywhere; }
 .error-notice-content details { margin-top: 8px; }
