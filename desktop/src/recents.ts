@@ -2,6 +2,7 @@ import type { ConversionSettings } from "./settings";
 
 export interface RecentWorkspace {
   path: string;
+  /** Legacy storage name: the last successful user operation, not background observation. */
   openedAt: number;
 }
 

@@ -26,7 +26,7 @@ pub struct Preferences {
 impl Default for Preferences {
     fn default() -> Self {
         Self { language: "zh-CN".into(), startup: "home".into(), auto_watch: true, auto_update: true,
-            dpi: 300, jpeg_quality: 90, output_dir: "texgo-pdf".into(),
+            dpi: 300, jpeg_quality: 100, output_dir: "texgo-pdf".into(),
             allow_unreviewed: false, notify_success: true, notify_failure: true, notify_unchanged: false,
             shortcut_enabled: true, shortcut: "CommandOrControl+Alt+Enter".into(), close_action: "background".into(), debug_logging: false }
     }
@@ -73,7 +73,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("preferences.json");
         let mut prefs = Preferences::load(&path).unwrap();
-        assert_eq!(prefs.jpeg_quality, 90);
+        assert_eq!(prefs.jpeg_quality, 100);
         assert_eq!(prefs.language, "zh-CN");
         assert!(!prefs.debug_logging);
         assert!(!prefs.allow_unreviewed && prefs.notify_success && prefs.notify_failure && !prefs.notify_unchanged);
@@ -81,7 +81,7 @@ mod tests {
         prefs.save(&path).unwrap();
         assert_eq!(Preferences::load(&path).unwrap(), prefs);
         fs::write(&path, r#"{"autoWatch":false,"recursive":false,"afterConversion":"history"}"#).unwrap();
-        assert_eq!(Preferences::load(&path).unwrap().jpeg_quality, 90);
+        assert_eq!(Preferences::load(&path).unwrap().jpeg_quality, 100);
         assert!(!Preferences::load(&path).unwrap().auto_watch);
         assert!(!Preferences::load(&path).unwrap().debug_logging);
     }

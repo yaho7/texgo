@@ -185,7 +185,7 @@ export default function App() {
     if (!mayStartOperation(reviewFlow.decisionRef.current, kind, decisionAction)) return;
     const isMounted = captureAppLifetime();
     const generation = workspace.generation.current;
-    try { await runOperation(kind, "foreground", async () => { setError(null); await action(); }); }
+    try { await runOperation(kind, "foreground", async () => { setError(null); await action(); if (isMounted()) workspace.recordActivity(); }); }
     catch (reason) { if (isMounted() && (workspace.generation.current === generation || !projectRef.current)) setError(errorMessage(reason)); }
   }
 
@@ -216,6 +216,7 @@ export default function App() {
       const result = await invoke<RenameResult>("rename_asset", { imageId, newBaseName, expectedFingerprint: current.stateFingerprint ?? "" });
       selection.migrateIdentity(result.oldImageId, result.newImageId);
       await acceptProject(result.project, true);
+      workspace.recordActivity();
       const entry = result.project.images.find((image) => image.id === result.newImageId);
       setNotice(t("app.renamedValue", { arg0: entry?.references.length ? t("app.updatedValueLaTeXReferences", { arg0: entry.references.length }) : "" }));
     });

@@ -18,14 +18,14 @@ export interface Preferences {
 }
 export const defaultPreferences: Preferences = {
   language: "zh-CN", startup: "home", autoWatch: true, autoUpdate: true,
-  dpi: 300, jpegQuality: 90, outputDir: "texgo-pdf", allowUnreviewed: false,
+  dpi: 300, jpegQuality: 100, outputDir: "texgo-pdf", allowUnreviewed: false,
   notifySuccess: true, notifyFailure: true, notifyUnchanged: false,
   shortcutEnabled: true, shortcut: "CommandOrControl+Alt+Enter", closeAction: "background", debugLogging: false,
 };
 
 export const conversionPresets = [
-  { id: "balanced", get label() { return t("presets.balanced"); }, dpi: 300, jpegQuality: 90 },
   { id: "high", get label() { return t("presets.highQuality"); }, dpi: 300, jpegQuality: 100 },
+  { id: "balanced", get label() { return t("presets.balanced"); }, dpi: 300, jpegQuality: 90 },
   { id: "small", get label() { return t("presets.smallFileSize"); }, dpi: 150, jpegQuality: 75 },
 ] as const;
 

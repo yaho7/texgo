@@ -195,3 +195,19 @@ describe("workspace and history lifecycle", () => {
   });
 
 });
+
+it("records user activity without advancing recent times during background snapshots", async () => {
+  const now = vi.spyOn(Date, "now").mockReturnValue(1000);
+  try {
+    const { result } = renderHook(() => useWorkspace({ preferences: () => defaultPreferences,
+      execute: async (_kind, action) => { await action(); }, isBusy: () => false,
+      onAccept: vi.fn(), onReset: vi.fn(), loadHistory: async () => {}, onNotice: vi.fn() }));
+    await act(async () => result.current.acceptProject(project, false));
+    expect(result.current.recents[0].openedAt).toBe(1000);
+    now.mockReturnValue(2000);
+    await act(async () => result.current.acceptProject(project, true));
+    expect(result.current.recents[0].openedAt).toBe(1000);
+    act(() => result.current.recordActivity());
+    expect(result.current.recents[0].openedAt).toBe(2000);
+  } finally { now.mockRestore(); }
+});
