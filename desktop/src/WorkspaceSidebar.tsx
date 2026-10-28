@@ -1,4 +1,4 @@
-import { FileCode2, Plus, Images, History, X, Settings, Circle, CircleCheck, TriangleAlert, CircleSlash } from "lucide-react";
+import { House, FileCode2, Plus, Images, History, X, Settings, Circle, CircleCheck, TriangleAlert, CircleSlash } from "lucide-react";
 import { Button } from "@/controls/button";
 import { Separator } from "@/controls/separator";
 import IconButton from "./IconButton";
@@ -29,7 +29,7 @@ interface Props {
 export default function WorkspaceSidebar(props: Props) {
   const recentEntries = props.recents.filter((entry) => !props.projectPath || workspaceKey(entry) !== props.activeKey);
   return <nav className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto px-3 pb-3 pt-4 text-[13px]" aria-label="项目导航">
-    <Button variant="ghost" className="h-10! justify-start! gap-2.5! px-2! text-[15px]! font-semibold! [&_svg]:size-5!" translate="no" aria-label="Texgo 首页" aria-current={props.view === "home" ? "page" : undefined} disabled={props.busy} onClick={props.onHome}><FileCode2 aria-hidden="true" /><span>Texgo</span></Button>
+    <Button variant="ghost" className="h-10! justify-start! gap-2.5! px-2! text-[15px]! font-semibold! [&_svg]:size-5!" translate="no" aria-label="Texgo 首页" aria-current={props.view === "home" ? "page" : undefined} disabled={props.busy} onClick={props.onHome}><House aria-hidden="true" /><span>Texgo</span></Button>
     {props.view !== "home" && <div className="sidebar-actions"><Button variant="ghost" disabled={props.busy} onClick={props.onOpenTex}><Plus aria-hidden="true" />打开项目</Button></div>}
     {props.projectPath && props.view !== "home" && <section className="sidebar-project-pages flex shrink-0 flex-col [&>button]:h-8! [&>button]:min-h-8! [&>button]:justify-start" aria-label="当前项目">
       {(!props.status || !props.onFilter) && <Button variant="ghost" aria-current={props.view === "assets" ? "page" : undefined} onClick={() => props.onView("assets")}><Images aria-hidden="true" />图片</Button>}
