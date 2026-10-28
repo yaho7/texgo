@@ -1,0 +1,14 @@
+.native-preferences { background: #f5f6f8; padding-top: 0; }
+.native-preferences > header { position: sticky; top: 0; z-index: 4; min-height: 72px; margin-bottom: 16px; background: #f5f6f8; border-bottom: 1px solid var(--border); }
+.native-preferences [data-slot="field-set"] { gap: 0; }
+.native-preferences [data-slot="field-legend"] { margin-bottom: 10px; font-size: 12px; }
+.native-preferences [data-slot="field-group"] { gap: 16px; padding: 16px; border: 1px solid var(--border); border-radius: 8px; background: white; }
+.native-preferences [data-orientation="horizontal"] { min-height: 26px; }
+.native-preferences [data-slot="input"][type="number"] { width: 120px; }
+.native-preferences .settings-save-feedback { align-items: center; }
+.native-preferences .settings-save-feedback > button { min-width: 92px; }
+.native-preferences .shortcut-capture { min-width: 0; }
+@media (max-width: 640px) {
+  .native-preferences > header { gap: 8px; }
+  .native-preferences [data-slot="field-group"] { padding: 12px; }
+}

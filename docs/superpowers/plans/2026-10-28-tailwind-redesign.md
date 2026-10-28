@@ -79,7 +79,14 @@ nonfunctional view toggles, duplicate primary actions, or real-time `.tex` write
   filesystem commands or automatic source writes. 288 frontend tests, TypeScript, PDF renderer
   test and production build passed. Browser fixture checked at 1280×850 and 960×640; fixed
   the navigation drawer’s inherited centering offset. Protected user files remain untouched.
-- [ ] Remaining screens and visual acceptance; verified, reviewed and committed.
+- [x] Secondary screens and visual acceptance: native grouped preference rows, persistent
+  explicit save action and bounded history reading width. Home, loading/failure fallbacks,
+  menus and reference-review dialogs retain the application-owned controls. TypeScript,
+  all 288 frontend tests, PDF rendering and production build passed. Read-only browser
+  fixture review covered wide/minimum widths, filtering, drawer, settings, history, review
+  footer and inline rename. No real source writes or installer operations were exercised.
+  Reduced-motion rules were inspected and covered by existing motion tests; browser OS
+  preference emulation was not available. See `2026-10-28-macos-ui-acceptance.md`.
 
 
 ## Design critique and guidance

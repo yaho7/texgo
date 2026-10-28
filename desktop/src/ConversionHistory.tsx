@@ -21,8 +21,8 @@ export default function ConversionHistory({ entries, busy, onUndo, highlightId }
     setExpanded((previous) => new Set([...previous, highlightId]));
     requestAnimationFrame(() => document.getElementById(`operation-${highlightId}`)?.scrollIntoView?.({ block: "center" }));
   }, [highlightId, entries]);
-  return <section className="history-panel page-transition" aria-label="操作记录">
-    <h2 className="history-title">操作记录</h2>
+  return <section className="history-panel page-transition mx-auto w-full max-w-[820px] px-6!" aria-label="操作记录">
+    <h2 className="history-title pb-3! text-base!">操作记录</h2>
     {entries.length === 0 ? <Empty><EmptyHeader><EmptyMedia variant="icon"><History aria-hidden="true" /></EmptyMedia><EmptyTitle>暂无操作记录</EmptyTitle></EmptyHeader></Empty> : <ol className="history-list">{entries.slice(0, limit).map((entry, index) => {
       const failed = entry.files.filter((file) => file.error).length;
       const updated = entry.files.filter((file) => !file.error && !file.cached && file.output).length;

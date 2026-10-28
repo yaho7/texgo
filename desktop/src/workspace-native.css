@@ -1,5 +1,8 @@
 /* Workspace geometry is kept here; controls and content use Tailwind utilities.
    The legacy stylesheet remains intact for secondary screens during migration. */
+/* Clip outer frames: overflow:hidden still allows focus-driven programmatic scrolling. */
+html, body { height: 100%; overflow: clip; }
+#root { position: fixed; inset: 0; overflow: clip; }
 .mac-workspace .workbench { padding: 0; background: #eceef1; }
 .mac-workspace .workspace-main { border: 0; border-left: 1px solid var(--border); border-radius: 0; box-shadow: none; }
 .mac-workspace .workspace-sidebar { width: 218px; background: #eceef1; }
