@@ -198,14 +198,15 @@ it("only enters repair after an explicit inspector action", async () => {
   expect(locate).not.toHaveBeenCalled();
   await userEvent.click(screen.getByRole("button", { name: "定位文件" }));
   expect(locate).toHaveBeenCalledWith("a");
-  await userEvent.click(screen.getByRole("button", { name: "忽略本次" }));
+  await userEvent.click(screen.getByRole("button", { name: "当前图片操作" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "忽略本次" }));
   expect(ignore).toHaveBeenCalledWith("a", "session");
 });
 
 it("disables inspector mutations while the project is busy", () => {
   render(<AssetPreview asset={{ ...asset, status: "missing", path: null }} revision={1} busy onLocate={vi.fn()} onIgnore={vi.fn()} />);
   expect(screen.getByRole("button", { name: "定位文件" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "忽略本次" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "当前图片操作" })).toBeDisabled();
 });
 
 
@@ -213,10 +214,11 @@ it("retains permanent ignore while explicitly requesting one manual conversion",
   const convert = vi.fn(); const ignore = vi.fn();
   render(<AssetPreview asset={{ ...asset, ignoreMode: "permanent" }} revision={1} onIgnore={ignore} onManualConvert={convert} canConvert />);
   await userEvent.click(screen.getByRole("button", { name: "当前图片操作" }));
-  await userEvent.click(screen.getByRole("menuitem", { name: "手动转换一次" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "手动处理一次" }));
   expect(convert).toHaveBeenCalledWith("a"); expect(ignore).not.toHaveBeenCalled();
-  expect(screen.getByRole("button", { name: "恢复处理" })).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "始终忽略" })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "当前图片操作" }));
+  expect(screen.getByRole("menuitem", { name: "恢复处理" })).toBeInTheDocument();
+  expect(screen.queryByRole("menuitem", { name: "始终忽略" })).not.toBeInTheDocument();
 });
 
 
@@ -366,7 +368,7 @@ it("groups references by full file path without losing line locations or inventi
   expect(within(references).getAllByText("chapter.tex")).toHaveLength(2);
   expect(within(references).getByText("第 2 行、第 20 行")).toBeInTheDocument();
   expect(within(references).getByText("第 9 行")).toBeInTheDocument();
-  expect(screen.queryByText("PDF 输出")).not.toBeInTheDocument();
+  expect(screen.queryByText("输出文件")).not.toBeInTheDocument();
 });
 
 

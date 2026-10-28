@@ -58,20 +58,20 @@ export default function CommandBar(props: Props) {
   const count = props.selectionMode ? props.selectedCount : status.pendingImages;
   const issues = settingsIssues(settings);
   const blocked = Boolean(status.blockingReason);
-  const label = props.converting ? `正在更新 ${props.progress?.current ?? 0} / ${props.progress?.total ?? count}`
-    : props.completion !== null ? `已更新 ${props.completion} 张`
+  const label = props.converting ? `正在处理 ${props.progress?.current ?? 0} / ${props.progress?.total ?? count}`
+    : props.completion !== null ? `已处理 ${props.completion} 张`
     : blocked ? "请先解决安全问题"
-    : props.selectionMode ? `转换 ${count} 张图片`
+    : props.selectionMode ? `处理 ${count} 张图片`
     : status.nextAction === "reviewReferences" ? `检查 ${status.pendingReferences} 处引用`
-    : recommendedConvert ? `转换 ${count} 张图片`
+    : recommendedConvert ? `处理 ${count} 张图片`
     : status.nextAction === "resolveProblems" ? "处理问题" : "项目已是最新状态";
   const message = props.converting ? `${label} · ${props.progress?.name || "正在准备更新图片…"}`
-    : props.completion !== null ? `已更新 ${props.completion} 张图片`
-    : blocked ? status.blockingReason!
-    : props.selectionMode ? `已选择 ${props.selectedCount} 张`
-    : status.nextAction === "reviewReferences" ? `${status.pendingReferences} 处引用等待确认`
-    : status.nextAction === "convertImages" ? `${status.pendingImages} 张图片需要更新`
-    : status.nextAction === "resolveProblems" ? `${status.problemCount} 个问题需要处理` : "项目已是最新状态";
+    : props.completion !== null ? `已处理 ${props.completion} 张图片`
+    : blocked ? "操作已暂停"
+    : props.selectionMode ? "选择要处理的图片"
+    : status.nextAction === "reviewReferences" ? "处理结果已就绪"
+    : status.nextAction === "convertImages" ? "准备处理图片"
+    : status.nextAction === "resolveProblems" ? "请定位或修复问题图片" : "项目已是最新状态";
   const transitionKey = props.converting ? "converting" : props.completion !== null ? "complete" : blocked ? "blocked" : props.selectionMode ? "selection" : status.nextAction;
   // Retain the departing message for one token duration; it never creates a second action.
   const [departing, setDeparting] = useState<string | null>(null);
@@ -102,7 +102,7 @@ export default function CommandBar(props: Props) {
     <div className="command-status">
       <div className="command-message-stage" aria-live="polite" role="status">
         {departing && <span aria-hidden="true" className="command-message command-message-exit">{departing}</span>}
-        <span key={transitionKey} className="command-message command-message-enter">
+        <span key={transitionKey} title={blocked ? status.blockingReason ?? undefined : undefined} className="command-message command-message-enter">
           {(idle || props.completion !== null) && <Check className="command-success" aria-hidden="true" />}
           {blocked && <TriangleAlert aria-hidden="true" />}{message}
         </span>
@@ -135,18 +135,18 @@ export default function CommandBar(props: Props) {
         <div className={recommendedConvert && !blocked ? "command-split" : undefined}>
           {recommendedConvert && !blocked && <Button className="command-action" disabled={working || count === 0} onClick={submit}><span className="command-action-label-stage">{departingLabel && <span className="command-action-label-exit" aria-hidden="true">{departingLabel}</span>}<span key={transitionKey} className="command-action-label-enter">{label}</span></span></Button>}
           <DropdownMenuTrigger asChild>{recommendedConvert && !blocked
-            ? <Button aria-label="更多转换操作" className="command-split-menu" size="icon" disabled={working}><ChevronDown aria-hidden="true" /></Button>
-            : <Button variant="outline" disabled={working}>转换…</Button>}
+            ? <Button aria-label="更多处理操作" className="command-split-menu" size="icon" disabled={working}><ChevronDown aria-hidden="true" /></Button>
+            : <Button variant="outline" disabled={working}>处理图片…</Button>}
           </DropdownMenuTrigger>
         </div>
         <DropdownMenuContent align="end" side="top"><DropdownMenuGroup>
-          <DropdownMenuItem disabled={blocked || !status.pendingImages} onSelect={() => convert("pending")}>转换需要更新的图片</DropdownMenuItem>
-          <DropdownMenuItem disabled={blocked || !convertibleIds.length} onSelect={() => props.onSelectionMode(true)}>选择图片转换…</DropdownMenuItem>
-          <DropdownMenuItem disabled={blocked || !currentConvertible} onSelect={() => convert("reconvert", [props.currentImageId!])}>重新转换当前图片</DropdownMenuItem>
-          <DropdownMenuItem disabled={blocked || !convertibleIds.length} onSelect={() => convert("reconvert", convertibleIds)}>重新转换全部图片</DropdownMenuItem>
+          <DropdownMenuItem disabled={blocked || !status.pendingImages} onSelect={() => convert("pending")}>处理待更新图片</DropdownMenuItem>
+          <DropdownMenuItem disabled={blocked || !convertibleIds.length} onSelect={() => props.onSelectionMode(true)}>选择图片…</DropdownMenuItem>
+          <DropdownMenuItem disabled={blocked || !currentConvertible} onSelect={() => convert("reconvert", [props.currentImageId!])}>重新处理当前图片</DropdownMenuItem>
+          <DropdownMenuItem disabled={blocked || !convertibleIds.length} onSelect={() => convert("reconvert", convertibleIds)}>重新处理全部图片</DropdownMenuItem>
         </DropdownMenuGroup></DropdownMenuContent>
       </DropdownMenu>}
-      {props.converting && <Button variant="outline" size="sm" disabled={props.cancelRequested} onClick={props.onCancel}><Square data-icon="inline-start" aria-hidden="true" />{props.cancelRequested ? "等待取消…" : "取消更新"}</Button>}
+      {props.converting && <Button variant="outline" size="sm" disabled={props.cancelRequested} onClick={props.onCancel}><Square data-icon="inline-start" aria-hidden="true" />{props.cancelRequested ? "等待取消…" : "取消处理"}</Button>}
       {(!props.converting && props.completion === null && !idle && (!recommendedConvert || blocked || props.selectionMode)) && <Button className="command-action" disabled={props.busy || props.completion !== null || blocked || (recommendedConvert && count === 0)} onClick={submit}>
         {status.nextAction === "reviewReferences" ? <FileCheck2 data-icon="inline-start" aria-hidden="true" /> : null}<span className="command-action-label-stage">{departingLabel && <span className="command-action-label-exit" aria-hidden="true">{departingLabel}</span>}<span key={transitionKey} className="command-action-label-enter">{label}</span></span>
       </Button>}

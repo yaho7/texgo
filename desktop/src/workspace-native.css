@@ -37,10 +37,6 @@ html, body { height: 100%; overflow: clip; }
 .mac-workspace .preview-scale-controls { padding-inline: 18px; }
 .mac-workspace .preview-metadata { padding-inline: 18px; gap: 8px; }
 .mac-workspace .status-bar { min-height: 32px; flex-wrap: wrap; background: #f5f6f8; padding: 6px 16px; }
-.mac-workspace .project-health { border: 0; padding: 0; }
-.mac-workspace .project-health dl { gap: 12px; }
-.mac-workspace .project-health dl > div { gap: 4px; }
-.mac-workspace .project-health :is(dt,dd) { font-size: 11px; }
 .mac-workspace .status-text { margin-left: auto; }
 .mac-workspace .command-bar { min-height: 64px; background: #f5f6f8; padding: 10px 16px; }
 @media (max-width: 760px) {

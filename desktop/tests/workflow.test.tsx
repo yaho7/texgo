@@ -86,7 +86,7 @@ beforeEach(() => {
 });
 async function openProject() {
   const user = userEvent.setup(); render(<App />);
-  await user.click(screen.getByRole("button", { name: "打开 LaTeX 项目" }));
+  await user.click(screen.getByRole("button", { name: "打开项目" }));
   await screen.findByRole("button", { name: "预览 figures/alpha.png" }); return user;
 }
 async function menu(user: ReturnType<typeof userEvent.setup>, name: string) {
@@ -94,11 +94,11 @@ async function menu(user: ReturnType<typeof userEvent.setup>, name: string) {
   await user.click(await screen.findByRole("menuitem", { name: new RegExp(`^${name}`) }));
 }
 async function selectPartial(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: "更多转换操作" }));
-  await user.click(await screen.findByRole("menuitem", { name: "选择图片转换…" }));
+  await user.click(screen.getByRole("button", { name: "更多处理操作" }));
+  await user.click(await screen.findByRole("menuitem", { name: "选择图片…" }));
 }
 async function convertAndReview(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
+  await user.click(screen.getByRole("button", { name: "处理 2 张图片" }));
   return screen.findByRole("dialog", { name: "检查引用变更" }, { timeout: 3000 });
 }
 
@@ -106,22 +106,25 @@ describe("LaTeX 项目唯一工作流", () => {
   it("keeps project health tied to the backend snapshot across image filters and refreshes", async () => {
     backend.status = { ...backend.status, totalImages: 17, pendingImages: 7, problemCount: 4, pendingReferences: 3 };
     const user = await openProject();
-    const summary = screen.getByRole("region", { name: "项目状态" });
-    const counts = () => within(summary).getAllByRole("definition").map((item) => item.textContent);
-    expect(counts()).toEqual(["17", "7", "4", "3"]);
+    const counts = () => {
+      const filters = within(screen.getByRole("radiogroup", { name: "图片状态摘要" }));
+      return ["全部", "待处理", "问题"].map(label => filters.getAllByRole("radio").find(radio => radio.getAttribute("aria-label")?.startsWith(label + " "))?.getAttribute("aria-label"));
+    };
+    expect(counts()).toEqual(["全部 17", "待处理 7", "问题 4"]);
     await user.type(screen.getByRole("searchbox", { name: "搜索图片" }), "alpha");
-    expect(counts()).toEqual(["17", "7", "4", "3"]);
+    expect(counts()).toEqual(["全部 17", "待处理 7", "问题 4"]);
     backend.status = { ...backend.status, totalImages: 20, pendingImages: 0, problemCount: 0, pendingReferences: 0 };
     await menu(user, "重新扫描");
-    await waitFor(() => expect(counts()).toEqual(["20", "0", "0", "0"]));
+    await waitFor(() => expect(counts()).toEqual(["全部 20", "待处理 0", "问题 0"]));
+
   });
-  it("has no standalone image-directory entry, Home navigation or default checkboxes", async () => {
+  it("has no standalone image-directory entry or default checkboxes", async () => {
     const user = await openProject();
     expect(screen.queryByRole("button", { name: /批量转换|图片目录|返回首页|主页/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     expect(screen.queryByRole("tab")).not.toBeInTheDocument();
     await menu(user, "关闭当前项目");
-    expect(await screen.findByText("拖入 main.tex 开始")).toBeInTheDocument();
+    expect(await screen.findByText("或拖入 .tex 主文件")).toBeInTheDocument();
     expect(calls.filter((call) => call.command === "close_workspace")).toHaveLength(1);
     expect(calls.some((call) => call.command === "open_directory")).toBe(false);
   });
@@ -135,7 +138,7 @@ describe("LaTeX 项目唯一工作流", () => {
   it("uses the Rust pending snapshot instead of inferring candidates from image format", async () => {
     setStatus({ pendingImageIds: ["b"] });
     const user = await openProject();
-    await user.click(screen.getByRole("button", { name: "转换 1 张图片" }));
+    await user.click(screen.getByRole("button", { name: "处理 1 张图片" }));
     await screen.findByRole("dialog", { name: "检查引用变更" });
     expect(calls.find((call) => call.command === "convert_images")?.args.options).toMatchObject({ imageIds: ["b"] });
   });
@@ -143,9 +146,9 @@ describe("LaTeX 项目唯一工作流", () => {
     const user = await openProject();
     await selectPartial(user);
     expect(screen.getByRole("checkbox", { name: "选择当前列表" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "转换 0 张图片" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "处理 0 张图片" })).toBeDisabled();
     await user.click(screen.getByRole("checkbox", { name: "选择 figures/beta.jpg" }));
-    await user.click(screen.getByRole("button", { name: "转换 1 张图片" }));
+    await user.click(screen.getByRole("button", { name: "处理 1 张图片" }));
     await screen.findByRole("dialog", { name: "检查引用变更" });
     expect(calls.find((call) => call.command === "convert_images")?.args.options).toMatchObject({ imageIds: ["b"] });
     await user.click(screen.getByRole("button", { name: "返回" }));
@@ -159,7 +162,7 @@ describe("LaTeX 项目唯一工作流", () => {
     await user.click(screen.getByRole("radio", { name: "待处理 2" }));
     await selectPartial(user);
     await user.click(screen.getByRole("checkbox", { name: "选择当前列表" }));
-    expect(screen.getByRole("button", { name: "转换 1 张图片" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "处理 1 张图片" })).toBeEnabled();
     screen.getByRole("main").focus(); await user.keyboard("{Escape}");
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     expect(search).toHaveValue("alpha");
@@ -178,17 +181,17 @@ describe("LaTeX 项目唯一工作流", () => {
   it("does not open ReviewDialog when an update keeps the same PDF references", async () => {
     handlers.convert_images = ({ options }) => convertResponse((options as ConversionOptions).imageIds, false);
     const user = await openProject();
-    await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
+    await user.click(screen.getByRole("button", { name: "处理 2 张图片" }));
     await screen.findByRole("button", { name: "处理问题" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(calls.some((call) => call.command === "preview_changes")).toBe(false);
-    expect(screen.getByRole("button", { name: "图片" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("radio", { name: "全部 5" })).toHaveAttribute("aria-checked", "true");
   });
   it("prioritizes pending references for both the Command Bar and convert accelerator", async () => {
     convertResponse(["a"]);
     const user = await openProject();
     expect(screen.getByRole("button", { name: "检查 1 处引用" })).toBeEnabled();
-    expect(screen.queryByRole("button", { name: "转换 1 张图片" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "处理 1 张图片" })).not.toBeInTheDocument();
     await user.keyboard("{Control>}{Enter}{/Control}");
     await screen.findByRole("dialog", { name: "检查引用变更" });
     expect(calls.some((call) => call.command === "convert_images")).toBe(false);
@@ -262,7 +265,7 @@ describe("LaTeX 项目唯一工作流", () => {
     expect(within(screen.getByRole("region", { name: "操作记录" })).queryByText(/0 张|300 DPI/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "设置" }));
     await screen.findByRole("main", { name: "设置" });
-    await user.click(screen.getByRole("button", { name: "图片" }));
+    await user.click(screen.getByRole("radio", { name: "全部 5" }));
     expect(screen.getByRole("button", { name: "预览 figures/alpha.png" })).toHaveAttribute("aria-pressed", "true");
     expect(calls.some((call) => call.command === "close_workspace")).toBe(false);
   });
@@ -280,18 +283,18 @@ describe("LaTeX 项目唯一工作流", () => {
   });
   it("keeps browsing enabled during updates, streams progress, and can cancel", async () => {
     const pending = deferred<ConversionResult>(); handlers.convert_images = () => pending.promise;
-    const user = await openProject(); await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
+    const user = await openProject(); await user.click(screen.getByRole("button", { name: "处理 2 张图片" }));
     await waitFor(() => expect(calls.some((call) => call.command === "convert_images")).toBe(true));
     await act(async () => { await emit("conversion-progress", { current: 1, total: 2, name: "alpha.png", status: "done" }); });
-    expect(screen.getAllByRole("status").some((element) => element.textContent?.includes("正在更新 1 / 2"))).toBe(true);
+    expect(screen.getAllByRole("status").some((element) => element.textContent?.includes("正在处理 1 / 2"))).toBe(true);
     expect(screen.queryByRole("button", { name: /正在更新/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "预览 figures/beta.jpg" }));
     await act(async () => { fireEvent.focus(window); });
     expect(calls.some((call) => call.command === "poll_workspace")).toBe(false);
-    await user.click(screen.getByRole("button", { name: "取消更新" }));
+    await user.click(screen.getByRole("button", { name: "取消处理" }));
     expect(calls.some((call) => call.command === "cancel_conversion")).toBe(true);
     await act(async () => pending.resolve({ images: [], cancelled: true }));
-    await screen.findByRole("button", { name: "转换 2 张图片" });
+    await screen.findByRole("button", { name: "处理 2 张图片" });
   });
   it("the Command Bar follows background Smart Convert status and does not steal active selection", async () => {
     const user = await openProject();
@@ -331,7 +334,7 @@ describe("LaTeX 项目唯一工作流", () => {
     await user.click(within(dialog).getByRole("button", { name: "应用 2 处引用修改" }));
     await screen.findByText(/部分写入失败；重新扫描失败/);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByText("拖入 main.tex 开始")).toBeInTheDocument();
+    expect(screen.getByText("或拖入 .tex 主文件")).toBeInTheDocument();
   });
   it("continues to show the reviewable result when history loading fails", async () => {
     const user = await openProject(); handlers.conversion_history = () => { throw new Error("记录不可读"); };
@@ -350,7 +353,7 @@ describe("LaTeX 项目唯一工作流", () => {
     const user = await openProject();
     await user.click(screen.getByRole("button", { name: "预览 figures/alpha.png" }));
     await user.click(screen.getByRole("button", { name: "重试此图片" }));
-    await screen.findByRole("button", { name: "转换 2 张图片" });
+    await screen.findByRole("button", { name: "处理 2 张图片" });
     expect(calls.some((call) => call.command === "convert_images")).toBe(false);
   });
   it("reconciles partial background writes from a recovery snapshot when watcher is disabled", async () => {
@@ -360,18 +363,67 @@ describe("LaTeX 项目唯一工作流", () => {
     backend.convertedImages = [{ id: "a", pdfPath: "/paper/pdf/a.pdf", bytes: 123, cached: false, error: null }];
     setStatus({ pendingImageIds: ["b"], completedImageIds: ["pdf", "a"], nextAction: "convertImages" });
     await act(async () => { await emit("workspace-updated", structuredClone(backend)); await emit("background-idle", null); });
-    expect(await screen.findByRole("button", { name: "转换 1 张图片" })).toBeEnabled();
+    expect(await screen.findByRole("button", { name: "处理 1 张图片" })).toBeEnabled();
     expect(screen.getByRole("radio", { name: "已完成 2" })).toBeInTheDocument();
   });
   it("retains queued automatic review while settings is open", async () => {
     const user = await openProject();
-    await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
+    await user.click(screen.getByRole("button", { name: "处理 2 张图片" }));
     await user.click(screen.getByRole("button", { name: "设置" }));
     await screen.findByRole("main", { name: "设置" });
     await act(async () => { await act(async () => { await new Promise((resolve) => setTimeout(resolve, 750)); }); });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "图片" }));
+    await user.click(screen.getByRole("radio", { name: "全部 5" }));
     expect(await screen.findByRole("dialog", { name: "检查引用变更" })).toBeInTheDocument();
+  });
+  it("shows one Home entry and resumes the live project without resetting its selection", async () => {
+    const user = await openProject();
+    await user.type(screen.getByRole("searchbox", { name: "搜索图片" }), "alpha");
+    await user.click(screen.getByRole("radio", { name: "待处理 2" }));
+    await selectPartial(user);
+    await user.click(screen.getByRole("checkbox", { name: "选择 figures/alpha.png" }));
+    const opens = calls.filter(call => call.command === "open_project").length;
+    await user.click(screen.getByRole("button", { name: "Texgo 首页" }));
+    expect(screen.getByRole("heading", { name: "加快 LaTeX 编译" })).toBeVisible();
+    expect(screen.getAllByRole("button", { name: "打开项目" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Texgo 首页" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "展开侧栏" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getAllByRole("region", { name: "最近项目" })).toHaveLength(1);
+    expect(document.querySelectorAll("#main-content")).toHaveLength(1);
+    await user.click(within(screen.getByRole("region", { name: "最近项目" })).getByRole("button", { name: /^main\.tex/ }));
+    expect(screen.getByRole("searchbox", { name: "搜索图片" })).toHaveValue("alpha");
+    expect(screen.getByRole("radio", { name: "待处理 2" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("checkbox", { name: "选择 figures/alpha.png" })).toBeChecked();
+    expect(screen.getByRole("button", { name: "收起侧栏" })).toHaveAttribute("aria-expanded", "true");
+    expect(calls.filter(call => call.command === "open_project")).toHaveLength(opens);
+    expect(calls.some(call => call.command === "close_workspace")).toBe(false);
+    expect(document.querySelectorAll("#main-content")).toHaveLength(1);
+  });
+  it("preserves an unsaved settings draft when the brand returns Home", async () => {
+    const user = await openProject();
+    await user.click(screen.getByRole("button", { name: "设置" }));
+    const output = await screen.findByLabelText("默认输出目录");
+    await user.clear(output); await user.type(output, "draft-pdf");
+    await user.click(screen.getByRole("button", { name: "Texgo 首页" }));
+    expect(screen.getByRole("heading", { name: "加快 LaTeX 编译" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "展开侧栏" }));
+    await user.click(screen.getByRole("button", { name: "设置" }));
+    expect(await screen.findByLabelText("默认输出目录")).toHaveValue("draft-pdf");
+    expect(calls.some(call => call.command === "save_preferences")).toBe(false);
+    expect(document.querySelectorAll("#main-content")).toHaveLength(1);
+  });
+  it("holds automatic reference review on Home until the live project resumes", async () => {
+    const user = await openProject();
+    await user.click(screen.getByRole("button", { name: "处理 2 张图片" }));
+    await user.click(screen.getByRole("button", { name: "Texgo 首页" }));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 750)); });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await user.click(within(screen.getByRole("region", { name: "最近项目" })).getByRole("button", { name: /^main\.tex/ }));
+    const dialog = await screen.findByRole("dialog", { name: "检查引用变更" });
+    fireEvent.click(document.querySelector('button[aria-label="Texgo 首页"]')!);
+    expect(dialog).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "加快 LaTeX 编译" })).not.toBeInTheDocument();
+    expect(calls.some(call => call.command === "apply_replacements")).toBe(false);
   });
   it("restores a project using persisted global conversion defaults", async () => {
     localStorage.setItem("texgo.recents.v1", JSON.stringify([{ path: backend.mainFile, openedAt: Date.now() }]));
@@ -403,8 +455,8 @@ describe("explicit asset control", () => {
     setStatus({ pendingImageIds: [], problemIds: [], ignoredImageIds: ["missing", "unsupported"], completedImageIds: ["a", "b", "pdf"], nextAction: "upToDate" });
     handlers.convert_images = ({ options }) => convertResponse((options as ConversionOptions).imageIds, false);
     const user = await openProject();
-    await user.click(screen.getByRole("button", { name: "转换…" }));
-    await user.click(screen.getByRole("menuitem", { name: "重新转换当前图片" }));
+    await user.click(screen.getByRole("button", { name: "处理图片…" }));
+    await user.click(screen.getByRole("menuitem", { name: "重新处理当前图片" }));
     await waitFor(() => expect(calls.find((call) => call.command === "convert_images")?.args).toMatchObject({ intent: "reconvert", options: { imageIds: ["a"] } }));
     await waitFor(() => expect(calls.some((call) => call.command === "refresh_workspace")).toBe(true));
     expect(screen.queryByRole("dialog", { name: "检查引用变更" })).not.toBeInTheDocument();
@@ -412,7 +464,7 @@ describe("explicit asset control", () => {
   it("explains pending-reference safety when a user explicitly asks to convert", async () => {
     convertResponse(["a", "b"]);
     const user = await openProject();
-    await user.click(screen.getByRole("button", { name: "转换…" }));
+    await user.click(screen.getByRole("button", { name: "处理图片…" }));
     const dialog = await screen.findByRole("dialog", { name: "请先审核引用" });
     expect(within(dialog).getByText(/当前有 2 处引用尚未审核/)).toBeInTheDocument();
     expect(calls.some((call) => call.command === "convert_images")).toBe(false);
@@ -423,8 +475,8 @@ describe("explicit asset control", () => {
     convertResponse(["a", "b"]);
     handlers.get_preferences = () => ({ ...defaultPreferences, autoUpdate: false, allowUnreviewed: true });
     const user = await openProject();
-    await user.click(screen.getByRole("button", { name: "转换…" }));
-    await user.click(screen.getByRole("menuitem", { name: "重新转换当前图片" }));
+    await user.click(screen.getByRole("button", { name: "处理图片…" }));
+    await user.click(screen.getByRole("menuitem", { name: "重新处理当前图片" }));
     await waitFor(() => expect(calls.some((call) => call.command === "convert_images" && call.args.intent === "reconvert")).toBe(true));
     expect(screen.queryByRole("dialog", { name: "请先审核引用" })).not.toBeInTheDocument();
   });
@@ -434,7 +486,7 @@ describe("explicit asset control", () => {
     await user.click(await screen.findByRole("menuitem", { name: "始终忽略" }));
     await waitFor(() => expect(calls.find((call) => call.command === "ignore_asset")?.args).toMatchObject({ imageId: "a", mode: "permanent" }));
     await user.click(screen.getByRole("button", { name: "更多操作 figures/alpha.png" }));
-    await user.click(await screen.findByRole("menuitem", { name: "手动转换一次" }));
+    await user.click(await screen.findByRole("menuitem", { name: "手动处理一次" }));
     await waitFor(() => expect(calls.some((call) => call.command === "convert_images" && call.args.intent === "reconvert")).toBe(true));
     expect(calls.filter((call) => call.command === "ignore_asset")).toHaveLength(1);
   });
@@ -489,24 +541,24 @@ it("never shows a fallback image while rename history is still loading", async (
   await waitFor(() => expect(screen.getByRole("button", { name: "预览 figures/renamed-beta.jpg" })).toHaveAttribute("aria-pressed", "true"));
   expect(screen.getByRole("button", { name: "预览 figures/alpha.png" })).toHaveAttribute("aria-pressed", "false");
   await act(async () => { historyLoad.resolve([]); });
-  await waitFor(() => expect(screen.getByRole("button", { name: "转换 2 张图片" })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole("button", { name: "处理 2 张图片" })).toBeEnabled());
 });
 
 it("keeps foreground conversion ownership when background start and idle arrive", async () => {
   const pending = deferred<ConversionResult>();
   handlers.convert_images = () => pending.promise;
   const user = await openProject();
-  await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
+  await user.click(screen.getByRole("button", { name: "处理 2 张图片" }));
   await waitFor(() => expect(calls.some((call) => call.command === "convert_images")).toBe(true));
   await act(async () => {
     await emit("background-start", structuredClone(backend));
     await emit("background-idle", null);
   });
-  expect(screen.getByRole("button", { name: "取消更新" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "取消处理" })).toBeEnabled();
   await act(async () => { await emit("menu-action", "refresh"); });
   expect(calls.some((call) => call.command === "refresh_workspace")).toBe(false);
   await act(async () => pending.resolve({ images: [], cancelled: true }));
-  expect(await screen.findByRole("button", { name: "转换 2 张图片" })).toBeEnabled();
+  expect(await screen.findByRole("button", { name: "处理 2 张图片" })).toBeEnabled();
 });
 
 it("clears the previous project's history before the next project's history arrives", async () => {
@@ -551,12 +603,12 @@ it("ignores stale native completion while foreground conversion owns progress", 
   const pending = deferred<ConversionResult>();
   handlers.convert_images = () => pending.promise;
   const user = await openProject();
-  await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
+  await user.click(screen.getByRole("button", { name: "处理 2 张图片" }));
   await waitFor(() => expect(calls.some((call) => call.command === "convert_images")).toBe(true));
   const stale = structuredClone(backend);
   stale.status = { ...stale.status, pendingImages: 0, pendingImageIds: [], pendingReferences: 1, nextAction: "reviewReferences" };
   await act(async () => { await emit("background-finished", { project: stale, result: { images: [{ id: "a", pdfPath: "/stale.pdf", bytes: 1, cached: false, error: null }], cancelled: false } }); });
-  expect(screen.getByRole("button", { name: "取消更新" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "取消处理" })).toBeEnabled();
   expect(calls.some((call) => call.command === "preview_changes")).toBe(false);
   expect(screen.queryByText("已更新 1 张图片")).not.toBeInTheDocument();
   await act(async () => pending.resolve({ images: [], cancelled: true }));
@@ -565,7 +617,7 @@ it("ignores stale native completion while foreground conversion owns progress", 
 it("does not refresh a disposed workspace when foreground conversion resolves late", async () => {
   const pending = deferred<ConversionResult>(); handlers.convert_images = () => pending.promise;
   const user = await openProject();
-  await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
+  await user.click(screen.getByRole("button", { name: "处理 2 张图片" }));
   await waitFor(() => expect(calls.some((call) => call.command === "convert_images")).toBe(true));
   cleanup();
   await act(async () => pending.resolve({ images: [], cancelled: true }));
@@ -575,12 +627,12 @@ it("does not refresh a disposed workspace when foreground conversion resolves la
 it("defers a cross-project notification until foreground completion and preserves its target", async () => {
   const pending = deferred<ConversionResult>(); handlers.convert_images = () => pending.promise;
   const user = await openProject();
-  await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
+  await user.click(screen.getByRole("button", { name: "处理 2 张图片" }));
   await waitFor(() => expect(calls.some((call) => call.command === "convert_images")).toBe(true));
   backend = { ...structuredClone(initial), root: "/other", mainFile: "/other/main.tex" };
   entries = [record];
   await act(async () => { await emit("notification-navigate", { project: structuredClone(backend), target: { path: backend.mainFile, view: "history", batchId: record.id, imageId: null } }); });
-  expect(screen.getByRole("button", { name: "取消更新" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "取消处理" })).toBeEnabled();
   expect(screen.getByRole("heading", { name: "main.tex" })).toHaveAttribute("title", "/paper/main.tex");
   await act(async () => pending.resolve({ images: [], cancelled: true }));
   await waitFor(() => expect(screen.getByRole("heading", { name: "main.tex" })).toHaveAttribute("title", "/other/main.tex"));
@@ -602,7 +654,7 @@ it("keeps automatic review queued behind the navigation drawer and resumes when 
   window.matchMedia = vi.fn(() => ({ matches: true, media: "(max-width: 980px)", onchange: null, addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(() => true) }));
   try {
     const user = await openProject();
-    await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
+    await user.click(screen.getByRole("button", { name: "处理 2 张图片" }));
     await user.click(screen.getByRole("button", { name: "打开项目导航" }));
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 750)); });
     expect(screen.queryByRole("dialog", { name: "检查引用变更" })).not.toBeInTheDocument();
@@ -613,7 +665,7 @@ it("keeps automatic review queued behind the navigation drawer and resumes when 
 
 it.each(["more", "context"] as const)("keeps automatic review queued behind an open %s menu and resumes on portal removal", async (kind) => {
   const user = await openProject();
-  await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
+  await user.click(screen.getByRole("button", { name: "处理 2 张图片" }));
   if (kind === "more") await user.click(screen.getByRole("button", { name: "更多操作" }));
   else fireEvent.contextMenu(screen.getByRole("button", { name: "预览 figures/alpha.png" }).closest("tr")!);
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 750)); });

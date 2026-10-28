@@ -22,7 +22,7 @@ import { formatBytes } from "./utils";
 import { motionDuration } from "./motion";
 
 export const statusLabels: Record<AssetStatus, string> = {
-  ready: "待转换",
+  ready: "待处理",
   missing: "文件缺失",
   unsupported: "不支持",
   ambiguous: "路径不明确",
@@ -32,6 +32,7 @@ export const statusLabels: Record<AssetStatus, string> = {
 interface Props {
   images: ImageAsset[];
   showSearchAndFilters?: boolean;
+  showSummary?: boolean;
   thumbnailContext?: ThumbnailContext;
   selectionMode: boolean;
   pendingIds: Set<string>;
@@ -139,6 +140,7 @@ export default function AssetList(props: Props) {
   const sourceImages = props.allImages ?? props.images;
   const migrated = renameIdentity.current ? sourceImages.find((image) => image.relativePath.replaceAll("\\", "/") === renameIdentity.current!.newPath) : undefined;
   if (migrated && renameIdentity.current && migrated.id !== renameIdentity.current.oldId) rowKeys.current.set(migrated.id, rowKeys.current.get(renameIdentity.current.oldId) ?? renameIdentity.current.oldId);
+  const showResultCount = props.showSummary !== false || Boolean(props.search.trim()) || props.filter !== "all";
   const pageImageKey = pageImages.map((image) => image.id).join("\0");
   const presenceKey = `${pageKey}\0${page}`;
   const [presence, setPresence] = useState({ key: presenceKey, ids: pageImageKey, previous: pageImages, exiting: [] as { asset: ImageAsset; index: number }[] });
@@ -240,7 +242,7 @@ export default function AssetList(props: Props) {
       {props.showSearchAndFilters !== false && <Separator />}
       <div ref={scrollArea} className="asset-scroll min-h-0 flex-1 overflow-auto">
         <Table className="table-fixed asset-filter-content min-w-[560px]" data-filter={props.filter}>
-          <TableCaption className="sr-only">项目图片及转换状态</TableCaption>
+          <TableCaption className="sr-only">项目图片及处理状态</TableCaption>
           <TableHeader>
             <TableRow>
               {props.selectionMode && <TableHead className="asset-selection-cell w-12">
@@ -297,7 +299,7 @@ export default function AssetList(props: Props) {
                   <TableCell><span className="text-xs text-muted-foreground">{asset.format.toUpperCase()}</span></TableCell>
                   <TableCell className="text-right"><span className="text-xs tabular-nums text-muted-foreground">{formatBytes(asset.bytes)}</span></TableCell>
                   <TableCell className="text-center">
-                    <Badge key={label} className={updatable && !problem ? "status-badge update-badge" : "status-badge"} variant={ignored ? "secondary" : problem ? referenceProblem ? "warning" : "destructive" : converted ? "success" : "secondary"} title={asset.message ?? result?.error ?? (ignored ? ignoreMode === "permanent" ? "始终忽略" : "仅本次忽略" : updatable ? "源图片或 SVG 依赖已变化，可重新转换" : result?.pdfPath ?? undefined)}>
+                    <Badge key={label} className={updatable && !problem ? "status-badge update-badge" : "status-badge"} variant={ignored ? "secondary" : problem ? referenceProblem ? "warning" : "destructive" : converted ? "success" : "secondary"} title={asset.message ?? result?.error ?? (ignored ? ignoreMode === "permanent" ? "始终忽略" : "仅本次忽略" : updatable ? "源图片或 SVG 依赖已变化，可重新处理" : result?.pdfPath ?? undefined)}>
                       {converted && !problem && !ignored && <CircleCheck data-icon="inline-start" aria-hidden="true" />}{updatable && !problem && !ignored && <RefreshCw data-icon="inline-start" aria-hidden="true" />}{label}
                     </Badge>
                   </TableCell>
@@ -311,11 +313,11 @@ export default function AssetList(props: Props) {
         </Table>
         {props.images.length === 0 && <Empty><EmptyHeader><EmptyTitle>{props.total ? "没有匹配的图片" : "项目中还没有图片"}</EmptyTitle></EmptyHeader></Empty>}
       </div>
-      <Separator />
+      {(showResultCount || pageCount > 1) && <><Separator />
       <footer className="flex shrink-0 items-center justify-between gap-3 px-4 py-2 text-xs text-muted-foreground">
-        <span>{props.images.length} 张可见 · {ignoredCount} 张已忽略 · 共 {props.total} 张</span>
-        <div className="flex items-center gap-2"><Button variant="ghost" size="icon-sm" aria-label="上一页图片" disabled={page === 0} onClick={() => setPagination({ key: pageKey, page: page - 1 })}><ChevronLeft aria-hidden="true" /></Button><span className="tabular-nums">{page + 1} / {pageCount}</span><Button variant="ghost" size="icon-sm" aria-label="下一页图片" disabled={page + 1 >= pageCount} onClick={() => setPagination({ key: pageKey, page: page + 1 })}><ChevronRight aria-hidden="true" /></Button></div>
-      </footer>
+        <span>{showResultCount ? props.search.trim() || props.filter !== "all" ? `${props.images.length} 项结果` : `${props.total} 张图片` : ""}</span>
+        {pageCount > 1 && <div className="flex items-center gap-2"><Button variant="ghost" size="icon-sm" aria-label="上一页图片" disabled={page === 0} onClick={() => setPagination({ key: pageKey, page: page - 1 })}><ChevronLeft aria-hidden="true" /></Button><span className="tabular-nums">{page + 1} / {pageCount}</span><Button variant="ghost" size="icon-sm" aria-label="下一页图片" disabled={page + 1 >= pageCount} onClick={() => setPagination({ key: pageKey, page: page + 1 })}><ChevronRight aria-hidden="true" /></Button></div>}
+      </footer></>}
     </section>
   );
 }

@@ -27,7 +27,7 @@ it("keeps previous settings and reports native registration or persistence failu
 
 it("organizes settings around projects without removed directory and completion options", () => {
   render(<SettingsPage value={defaultPreferences} onSaved={vi.fn()} onClose={vi.fn()} />);
-  for (const section of ["常规", "转换", "自动化", "通知", "快捷键", "高级"]) expect(screen.getByText(section, { selector: "legend" })).toBeInTheDocument();
+  for (const section of ["常规", "图片处理", "自动化", "通知", "快捷键", "高级"]) expect(screen.getByText(section, { selector: "legend" })).toBeInTheDocument();
   expect(screen.queryByText("图片目录默认递归扫描")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("转换完成后的默认行为")).not.toBeInTheDocument();
   expect(screen.queryByText("外观")).not.toBeInTheDocument();
@@ -90,6 +90,6 @@ it("places closing behavior in General and explains manual reference review", ()
   render(<SettingsPage value={defaultPreferences} onSaved={vi.fn()} onClose={vi.fn()} />);
   expect(screen.getByLabelText("关闭窗口时").closest("fieldset")).toHaveTextContent("常规");
   expect(screen.getByText(/Space 切换原图/)).toHaveTextContent("PDF / 对比");
-  expect(screen.getByText(/托盘或全局快捷键/)).toHaveTextContent(".tex 引用始终等待你在窗口中审核并确认");
-  expect(screen.getByText(/仅允许在引用待审核时/)).toHaveTextContent("不会自动修改 .tex 引用");
+  expect(screen.getByText(/检测仅刷新状态/)).toHaveTextContent("引用修改仍需确认");
+  expect(screen.getByText(/允许继续处理图片/)).toHaveTextContent("不会跳过引用审核");
 });

@@ -5,13 +5,13 @@ import type { ImageAsset } from "../types";
 import type { useAssetSelection } from "./useAssetSelection";
 import type { Setter } from "./workflowPorts";
 interface Ports {
-  settingsPage: boolean; setSettingsPage: Setter<boolean>; blocked: boolean; busy: boolean;
+  homePage?: boolean; settingsPage: boolean; setSettingsPage: Setter<boolean>; blocked: boolean; busy: boolean;
   view: "assets" | "history"; setView: Setter<"assets" | "history">;
   activeAsset: ImageAsset | null; activeId: string | null; visibleImages: ImageAsset[];
   selection: ReturnType<typeof useAssetSelection>; desktopAction: RefObject<(action: string) => void>;
 }
 export function useAppShortcuts(ports: Ports) {
-  const { settingsPage, setSettingsPage, blocked, busy, view, setView, activeAsset, activeId, visibleImages, selection, desktopAction } = ports;
+  const { homePage, settingsPage, setSettingsPage, blocked, busy, view, setView, activeAsset, activeId, visibleImages, selection, desktopAction } = ports;
   const { selectionMode, activate: setActiveId } = selection;
   useEffect(() => {
     function keydown(event: KeyboardEvent) {
@@ -28,6 +28,7 @@ export function useAppShortcuts(ports: Ports) {
         return;
       }
 
+      if (homePage && !(mod && ["o", "f"].includes(event.key.toLowerCase()))) return;
       if (mod && event.key.toLowerCase() === "o") { event.preventDefault(); desktopAction.current("open-project"); }
       else if (mod && event.key.toLowerCase() === "r") { event.preventDefault(); desktopAction.current("refresh"); }
       else if (mod && event.key === "Enter") { event.preventDefault(); desktopAction.current(event.shiftKey ? "review" : "convert"); }

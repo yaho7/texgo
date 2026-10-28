@@ -1,4 +1,4 @@
-.native-preferences { background: #f5f6f8; padding-top: 0; }
+.native-preferences { scroll-padding-top: 88px; background: #f5f6f8; padding-top: 0; }
 .native-preferences > header { position: sticky; top: 0; z-index: 4; min-height: 72px; margin-bottom: 16px; background: #f5f6f8; border-bottom: 1px solid var(--border); }
 .native-preferences [data-slot="field-set"] { gap: 0; }
 .native-preferences [data-slot="field-legend"] { margin-bottom: 10px; font-size: 12px; }

@@ -13,7 +13,6 @@ import type { CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Check, LoaderCircle, PanelLeft, RotateCcw, TriangleAlert, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/controls/alert";
-import { Badge } from "@/controls/badge";
 import { Button } from "@/controls/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/controls/dialog";
 import { TooltipProvider } from "@/controls/tooltip";
@@ -23,7 +22,6 @@ import AssetPreview from "./AssetPreview";
 import CommandBar from "./CommandBar";
 import ErrorNotice from "./ErrorNotice";
 import Home from "./Home";
-import ProjectHealth from "./ProjectHealth";
 import WorkspaceSearch from "./WorkspaceSearch";
 import "./workspace-native.css";
 import "./overview.css";
@@ -54,6 +52,7 @@ export default function App() {
   const preferencesRef = useRef(preferences);
   preferencesRef.current = preferences;
   const [settingsPage, setSettingsPage] = useState(false);
+  const [homePage, setHomePage] = useState(false);
   const [highlightBatch, setHighlightBatch] = useState<string | null>(null);
   const notificationNavigate = useRef<(payload: { project: Project; target: NotificationTarget }) => Promise<void>>(async () => {});
   const [view, setView] = useState<"assets" | "history">("assets");
@@ -65,6 +64,7 @@ export default function App() {
   const [revision, setRevision] = useState(0);
   const [assetsWidth, setAssetsWidth] = useState(600);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [homeSidebarOpen, setHomeSidebarOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -77,23 +77,26 @@ export default function App() {
   const workspace = useWorkspace({
     preferences: () => preferencesRef.current, execute, isBusy: () => Boolean(currentOperationKind()),
     onAccept: (next, same) => {
-      if (!same) { clearAssetState(); setSettingsPage(false); setView("assets"); historyDomain.reset(); }
+      if (!same) { clearAssetState(); setHomePage(false); setSettingsPage(false); setView("assets"); historyDomain.reset(); }
       selection.acceptSnapshot(next, same);
       setResults(Object.fromEntries(next.convertedImages.map((image) => [image.id, image])));
       setRevision((value) => value + 1);
     },
-    onReset: () => { clearAssetState(); historyDomain.reset(); setSettingsPage(false); setDrawerOpen(false); },
+    onReset: () => { setHomePage(true); clearAssetState(); historyDomain.reset(); setSettingsPage(false); setDrawerOpen(false); },
     loadHistory: () => historyDomain.load(), onNotice: setNotice,
   });
   const { project, current: projectRef, contextKey, recents, failedRecent, settings, acceptProject, refresh,
     openProject, openRecent, closeProject, updateSettings } = workspace;
+  const homeVisible = !project || homePage;
+  const sidebarExpanded = homeVisible && !settingsPage ? homeSidebarOpen : sidebarOpen;
+  const showWorkspace: typeof setView = (next) => { setHomePage(false); setView(next); };
   const captureWorkspace = useWorkspaceGuard(() => workspace.generation.current);
   const selection = useAssetSelection(project);
   const { selected, selectionMode, renameRequest, activeId, search, filter, activeAsset, visibleImages,
     pendingIds, convertibleIds, problemIds, ignored, completedIds, activate: setActiveId,
     changeSearch: setSearch, changeFilter: setFilter } = selection;
-  const reviewFlow = useReviewFlow({ workspace, selection, execute, currentOperationKind, setError, setNotice, rememberFocus, restoreFocus, setView,
-    completionVisible: () => conversionRef.current?.completionVisible() ?? false, automaticReviewAllowed: !settingsPage && windowVisible && !updateOpen && !drawerOpen && !transientOverlayOpen });
+  const reviewFlow = useReviewFlow({ workspace, selection, execute, currentOperationKind, setError, setNotice, rememberFocus, restoreFocus, setView: showWorkspace,
+    completionVisible: () => conversionRef.current?.completionVisible() ?? false, automaticReviewAllowed: !homeVisible && !settingsPage && windowVisible && !updateOpen && !drawerOpen && !transientOverlayOpen });
   const historyDomain = useHistory({
     currentProject: () => projectRef.current, generation: () => workspace.generation.current,
     execute, acceptProject, refresh, discardProject: workspace.discardProject,
@@ -111,7 +114,7 @@ export default function App() {
   const decisionOpen = reviewFlow.decision.kind !== "none";
   const background = useBackgroundAutomation({ workspace, selection, execute, currentOperationKind, setError, setNotice,
     conversion, reviewFlow, historyDomain, operationDomain: { current: currentOperation, acquire: acquireOperation, release: releaseOperation },
-    autoWatch: preferences.autoWatch, held: decisionOpen || completion !== null || updateOpen,
+    autoWatch: preferences.autoWatch, held: decisionOpen || completion !== null || updateOpen || homeVisible,
     onNavigate: (payload) => notificationNavigate.current(payload), setRevision });
   useDesktopEvents({ background, onAction: (action) => desktopAction.current(action), onDrop: (paths) => dropFiles.current(paths), setDragging });
   useEffect(() => {
@@ -143,6 +146,16 @@ export default function App() {
     }).catch((reason) => { if (!disposed) setError(errorMessage(reason)); });
     return () => { disposed = true; };
   }, []);
+
+  function showHome() {
+    if (currentOperationKind() || reviewFlow.decisionRef.current.kind !== "none" || updateOpen) return;
+    setHomePage(true); setHomeSidebarOpen(false); setSettingsPage(false); setDrawerOpen(false); setNotice("");
+  }
+  function openRecentEntry(entry: Parameters<typeof openRecent>[0]) {
+    if (currentOperationKind() || reviewFlow.decisionRef.current.kind !== "none" || updateOpen) return;
+    if (projectRef.current?.mainFile === entry.path) { showWorkspace("assets"); setSettingsPage(false); }
+    else openRecent(entry);
+  }
 
   function restoreFocus() {
     requestAnimationFrame(() => {
@@ -208,6 +221,7 @@ export default function App() {
   }
 
   notificationNavigate.current = async ({ project: next, target }) => {
+      setHomePage(false);
       setReview(null); reviewFlow.clearQueue(); setCompletion(null); setProblemId(null); reviewFlow.dismissUndo(); setUpdateOpen(false); setSettingsPage(false);
       const same = project?.root === next.root && project?.mainFile === next.mainFile;
       await acceptProject(next, same);
@@ -228,6 +242,7 @@ export default function App() {
     if (action === "settings") { setSettingsPage(true); setDrawerOpen(false); return; }
     if (action === "check-updates") { setUpdateOpen(true); return; }
     if (currentOperationKind() || decisionOpen || updateOpen) return;
+    if (["convert", "review", "undo-task"].includes(action)) setHomePage(false);
     if (action === "open-project") openProject();
     else if (action === "close-project") closeProject();
     else if (action === "refresh" && project) void execute("opening", () => refresh());
@@ -246,8 +261,8 @@ export default function App() {
     void workspace.openPath(tex[0]);
   };
 
-  useAppShortcuts({ settingsPage, setSettingsPage, blocked: decisionOpen || updateOpen || drawerOpen,
-    busy, view, setView, activeAsset, activeId, visibleImages, selection, desktopAction });
+  useAppShortcuts({ homePage: homeVisible, settingsPage, setSettingsPage, blocked: decisionOpen || updateOpen || drawerOpen,
+    busy, view, setView: showWorkspace, activeAsset, activeId, visibleImages, selection, desktopAction });
   function nextAction() {
     if (!project || busy || project.status.blockingReason) return;
     if (project.status.nextAction === "reviewReferences") reviewChanges();
@@ -259,52 +274,52 @@ export default function App() {
     }
   }
   const layoutStyle = { "--assets-width": `${assetsWidth}px` } as CSSProperties;
-  const sidebar = <WorkspaceSidebar busy={busy} activeKey={contextKey} projectPath={project?.mainFile ?? null} status={project?.status} filter={filter} onFilter={setFilter} view={settingsPage ? "settings" : view}
-    recents={recents} failedRecent={failedRecent} onView={(next) => { setView(next); setSettingsPage(false); setDrawerOpen(false); }}
+  const sidebar = <WorkspaceSidebar busy={busy} activeKey={contextKey} projectPath={project?.mainFile ?? null} status={project?.status} filter={filter} onFilter={setFilter} onHome={showHome} view={settingsPage ? "settings" : homeVisible ? "home" : view}
+    recents={recents} failedRecent={failedRecent} onView={(next) => { showWorkspace(next); setSettingsPage(false); setDrawerOpen(false); }}
     onSettings={() => { setDrawerOpen(false); setSettingsPage(true); }} onOpenTex={() => { setDrawerOpen(false); openProject(); }}
-    onRecent={(entry) => { setDrawerOpen(false); setSettingsPage(false); openRecent(entry); }}
+    onRecent={(entry) => { setDrawerOpen(false); setSettingsPage(false); openRecentEntry(entry); }}
     onRemove={workspace.forgetRecent} />;
 
   return <TooltipProvider delayDuration={350}><div className="app-shell mac-workspace">
     <div className="workbench" inert={review !== null || undoEntry !== null || problemId !== null || updateOpen || conversionBlocked}>
       <a href="#main-content" className="skip-link">跳转到工作区</a>
-      {!narrow && <aside className="workspace-sidebar" data-collapsed={!sidebarOpen} aria-hidden={!sidebarOpen} inert={!sidebarOpen}>{sidebar}</aside>}
+      {!narrow && <aside className="workspace-sidebar" data-collapsed={!sidebarExpanded} aria-hidden={!sidebarExpanded} inert={!sidebarExpanded}>{sidebar}</aside>}
       <div className="workspace-main">
       <header className="app-toolbar">
-        <IconButton id="sidebar-toggle" label={narrow ? "打开项目导航" : sidebarOpen ? "收起侧栏" : "展开侧栏"} aria-expanded={narrow ? drawerOpen : sidebarOpen} onClick={() => narrow ? setDrawerOpen(true) : setSidebarOpen((value) => !value)}><PanelLeft aria-hidden="true" /></IconButton>
-        <div className="project-title">{project ? <><h1 title={project.mainFile}>{fileName(project.mainFile)}</h1><p title={project.root}>{project.root}</p></> : <span>Texgo</span>}</div>
-        {project && !settingsPage && view === "assets" && <WorkspaceSearch value={search} onChange={setSearch} />}
-        <div className="toolbar-actions">{project && <Badge variant="outline" className="project-file-count">{project.texFiles.length} 个 TeX 文件</Badge>}<WorkbenchMenu busy={busy} hasProject={Boolean(project)} canUndo={history.some((entry) => entry.canUndo) || Boolean(project?.undoAvailable)} onOpen={openProject} onClose={closeProject} onRefresh={() => { void execute("opening", () => refresh()); }} onUpdate={() => setUpdateOpen(true)} onUndo={() => {
+        <IconButton id="sidebar-toggle" label={narrow ? "打开项目导航" : sidebarExpanded ? "收起侧栏" : "展开侧栏"} aria-expanded={narrow ? drawerOpen : sidebarExpanded} onClick={() => narrow ? setDrawerOpen(true) : homeVisible && !settingsPage ? setHomeSidebarOpen((value) => !value) : setSidebarOpen((value) => !value)}><PanelLeft aria-hidden="true" /></IconButton>
+        {(narrow || !sidebarExpanded) && <Button variant="ghost" className="px-2!" aria-label="Texgo 首页" disabled={busy} onClick={showHome}>Texgo</Button>}<div className="project-title">{project && !homeVisible && !settingsPage ? <><h1 title={project.mainFile}>{fileName(project.mainFile)}</h1><p title={project.root}>{project.root}</p></> : null}</div>
+        {project && !homeVisible && !settingsPage && view === "assets" && <WorkspaceSearch value={search} onChange={setSearch} />}
+        <div className="toolbar-actions"><WorkbenchMenu busy={busy} hasProject={Boolean(project)} canUndo={history.some((entry) => entry.canUndo) || Boolean(project?.undoAvailable)} onOpen={openProject} onClose={closeProject} onRefresh={() => { void execute("opening", () => refresh()); }} onUpdate={() => setUpdateOpen(true)} onUndo={() => {
           const entry = history.find((item) => item.canUndo); if (entry) { rememberFocus(); reviewFlow.requestUndo(entry); } else if (project?.undoAvailable) replace(true);
         }} /></div>
       </header>
       {error && !review && !undoEntry && !problemId && <ErrorNotice message={error} className="workbench-alert" onClose={() => setError(null)} />}
-      {project?.status.blockingReason && <Alert variant="destructive" role="alert" className="workbench-alert"><TriangleAlert aria-hidden="true" /><AlertTitle>需要先解决安全问题</AlertTitle><AlertDescription>{project.status.blockingReason}</AlertDescription></Alert>}
-      {settingsPage && <div className="page-enter settings-view"><SettingsView value={preferences} onSaved={(next) => { preferencesRef.current = next; setPreferences(next); }} onClose={() => setSettingsPage(false)} /></div>}
-      {!project && !settingsPage && <Home busy={busy} onOpenTex={openProject} recents={recents} onRecent={openRecent} />}
+      {project?.status.blockingReason && !homeVisible && !settingsPage && <Alert variant="destructive" role="alert" className="workbench-alert"><TriangleAlert aria-hidden="true" /><AlertTitle>需要先解决安全问题</AlertTitle><AlertDescription>{project.status.blockingReason}</AlertDescription></Alert>}
+      <div className="page-enter settings-view" hidden={!settingsPage} inert={!settingsPage}><SettingsView active={settingsPage} value={preferences} onSaved={(next) => { preferencesRef.current = next; setPreferences(next); }} onClose={() => setSettingsPage(false)} /></div>
+      {homeVisible && !settingsPage && <Home busy={busy} onOpenTex={openProject} recents={recents} failedRecent={failedRecent} onRecent={openRecentEntry} onRemove={workspace.forgetRecent} />}
       {project && <>
-        <main id={settingsPage ? undefined : "main-content"} tabIndex={-1} className="workspace-content" hidden={settingsPage} data-view={view} onKeyDownCapture={(event) => {
+        <main id={settingsPage || homeVisible ? undefined : "main-content"} tabIndex={-1} className="workspace-content" hidden={settingsPage || homeVisible} data-view={view} onKeyDownCapture={(event) => {
           if (selectionMode && event.key === "Escape" && !busy && view === "assets" && !(event.target as HTMLElement).closest(".asset-rename")) {
             event.preventDefault(); event.stopPropagation(); selection.clearSelection();
           }
         }}>
           <div className="workspace-grid" hidden={view !== "assets"} data-view={view} style={layoutStyle}>
-            <div className="workspace-library"><AssetList thumbnailContext={{ mainFile: project.mainFile, revision, enabled: !settingsPage && view === "assets" }} showSearchAndFilters={false} images={visibleImages} allImages={project.images} ignored={ignored} pendingIds={pendingIds} problemIds={problemIds} completedIds={completedIds}
+            <div className="workspace-library"><AssetList showSummary={narrow || !sidebarExpanded} thumbnailContext={{ mainFile: project.mainFile, revision, enabled: !homeVisible && !settingsPage && view === "assets" }} showSearchAndFilters={false} images={visibleImages} allImages={project.images} ignored={ignored} pendingIds={pendingIds} problemIds={problemIds} completedIds={completedIds}
               onReveal={revealAsset} onCopyPath={copyAssetPath} selectionMode={selectionMode} renameRequest={renameRequest} onRename={renameAsset} convertibleIds={convertibleIds} onManualConvert={(id) => convert("reconvert", [id])} onIgnore={(id, value) => { void ignoreAsset(id, value); }} onInspect={inspectProblem} onLocate={locateRepair} total={project.status.totalImages} selected={selected} activeId={activeId} results={results}
               busy={busy} previewDisabled={busy && operation !== "converting"} search={search} filter={filter} onSearch={setSearch} onFilter={setFilter} onActivate={setActiveId}
               onSelect={(id) => { if (!busy) selection.toggleSelected(id); }}
               onSelectAll={(ids, select) => { if (!busy) selection.selectMany(ids, select); }} /></div>
             <Splitter label="调整图片列表宽度" value={assetsWidth} min={340} max={900} onChange={setAssetsWidth} />
             <div className="asset-inspector" key={contextKey ?? undefined}><AssetPreview busy={busy} canConvert={activeId ? convertibleIds.has(activeId) : false} onManualConvert={(id) => convert("reconvert", [id])} asset={activeAsset} result={activeAsset ? results[activeAsset.id] : undefined} revision={revision} ignored={activeAsset ? ignored.has(activeAsset.id) : false}
-              statusLabel={activeAsset ? ignored.has(activeAsset.id) ? "已忽略" : problemIds.has(activeAsset.id) ? "需要处理" : pendingIds.has(activeAsset.id) ? activeAsset.updateAvailable ? "有更新" : "待转换" : "已完成" : undefined}
+              statusLabel={activeAsset ? ignored.has(activeAsset.id) ? "已忽略" : problemIds.has(activeAsset.id) ? "需要处理" : pendingIds.has(activeAsset.id) ? activeAsset.updateAvailable ? "有更新" : "待处理" : "已完成" : undefined}
               onInspect={inspectProblem} onLocate={locateRepair} onRetry={project.status.blockingReason ? undefined : retryAsset} onIgnore={(id, value) => { void ignoreAsset(id, value); }} /></div>
           </div>
           <HistoryView active={view === "history"} onReturn={() => setView("assets")} highlightId={highlightBatch} entries={history} busy={busy} onUndo={(entry) => { rememberFocus(); setError(null); reviewFlow.requestUndo(entry); }} />
         </main>
-        <div hidden={settingsPage}><CommandBar status={project.status} settings={settings} selectionMode={selectionMode} selectedCount={selected.size} busy={busy} converting={operation === "converting"} progress={progress} completion={completion} cancelRequested={cancelRequested}
+        <div hidden={settingsPage || homeVisible}><CommandBar status={project.status} settings={settings} selectionMode={selectionMode} selectedCount={selected.size} busy={busy} converting={operation === "converting"} progress={progress} completion={completion} cancelRequested={cancelRequested}
           onAction={nextAction} onConvert={convert} onManualOpen={allowManualConversionPanel} currentImageId={activeId} convertibleIds={[...convertibleIds]} onSettings={updateSettings} onSelectionMode={(enabled) => { setView("assets"); selection.changeSelectionMode(enabled); }} onCancel={() => { void cancelConversion(); }} /></div>
       </>}
-      <footer className="status-bar">{project && !settingsPage && <ProjectHealth status={project.status} />}<div className="status-text" role="status" aria-live="polite">{operation === "opening" ? <LoaderCircle className="spin" aria-hidden="true" /> : project ? <Check aria-hidden="true" /> : <span className="status-dot" />}<span>{operation && operation !== "converting" ? operationLabels[operation] : notice}</span></div></footer>
+      {notice && notice !== "就绪" && !notice.startsWith("已识别") && !homeVisible && <footer className="status-bar"><div className="status-text" role="status" aria-live="polite">{operation === "opening" ? <LoaderCircle className="spin" aria-hidden="true" /> : project ? <Check aria-hidden="true" /> : <span className="status-dot" />}<span>{operation && operation !== "converting" ? operationLabels[operation] : notice}</span></div></footer>}
       </div>
     </div>
     <Dialog open={narrow && drawerOpen} onOpenChange={setDrawerOpen}>

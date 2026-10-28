@@ -21,7 +21,7 @@ export function assetActions(context: AssetActionContext): AssetAction[] {
   add("details", "查看详细信息", !problem);
   add("inspect", ["missing", "ambiguous"].includes(asset.status) ? "查看并修复" : "查看详情", problem);
   add("locate", "定位文件", ["missing", "ambiguous"].includes(asset.status));
-  add("convert", ignored ? "手动转换一次" : "重新转换此图片", convertible);
+  add("convert", ignored ? "手动处理一次" : "重新处理此图片", convertible);
   const unresolved = !asset.path || ["missing", "ambiguous"].includes(asset.status);
   add("reveal", revealLabel(), true, unresolved);
   add("copyPath", "复制路径", true, unresolved);

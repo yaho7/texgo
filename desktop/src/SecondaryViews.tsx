@@ -14,13 +14,15 @@ class LoadBoundary extends Component<{ children: ReactNode; fallback: ReactNode 
   static getDerivedStateFromError() { return { failed: true }; }
   render() { return this.state.failed ? this.props.fallback : this.props.children; }
 }
-function SettingsFallback({ onClose, failed = false }: { onClose: () => void; failed?: boolean }) {
-  return <main id="main-content" tabIndex={-1} className="settings-page" aria-label="设置" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
+function SettingsFallback({ onClose, failed = false, active = true }: { onClose: () => void; failed?: boolean; active?: boolean }) {
+  return <main id={active ? "main-content" : undefined} tabIndex={-1} className="settings-page" aria-label="设置" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
     <h1>设置</h1><p role={failed ? "alert" : "status"}>{failed ? "无法加载设置。返回工作区后可重新打开应用再试。" : "正在加载设置…"}</p><Button variant="outline" onClick={onClose}>返回工作区</Button>
   </main>;
 }
-export function SettingsView(props: ComponentProps<typeof SettingsPage>) {
-  return <LoadBoundary fallback={<SettingsFallback onClose={props.onClose} failed />}><Suspense fallback={<SettingsFallback onClose={props.onClose} />}><Settings {...props} /></Suspense></LoadBoundary>;
+export function SettingsView({ active = true, ...props }: ComponentProps<typeof SettingsPage>) {
+  const [visited, setVisited] = useState(active);
+  if (active && !visited) setVisited(true);
+  return visited ? <LoadBoundary fallback={<SettingsFallback onClose={props.onClose} active={active} failed />}><Suspense fallback={<SettingsFallback onClose={props.onClose} active={active} />}><Settings {...props} active={active} /></Suspense></LoadBoundary> : null;
 }
 export function HistoryView({ active, onReturn, ...props }: ComponentProps<typeof ConversionHistory> & { active: boolean; onReturn: () => void }) {
   // Load on first activation, then retain expanded rows and pagination while hidden.

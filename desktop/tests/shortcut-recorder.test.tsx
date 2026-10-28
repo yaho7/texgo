@@ -14,7 +14,7 @@ it("shows readable key tokens and records a modified key without exposing syntax
   expect(screen.queryByText("CommandOrControl+Alt+Enter")).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "重新录制" }));
   await screen.findByText("正在等待按键…");
-  const capture = screen.getByRole("group", { name: "全局快速转换快捷键" });
+  const capture = screen.getByRole("group", { name: "全局快速处理快捷键" });
   expect(capture).toHaveFocus();
   expect(screen.getByText("正在等待按键…")).toBeInTheDocument();
   fireEvent.keyDown(capture, { key: "k", code: "KeyK", metaKey: true, altKey: true });
@@ -27,7 +27,7 @@ it("rejects bare keys and modifiers while Escape cancels only recording", async 
   render(<div onKeyDown={outer}><ShortcutRecorder value="Control+Alt+Enter" onChange={changed} /></div>);
   await userEvent.click(screen.getByRole("button", { name: "重新录制" }));
   await screen.findByText("正在等待按键…");
-  const capture = screen.getByRole("group", { name: "全局快速转换快捷键" });
+  const capture = screen.getByRole("group", { name: "全局快速处理快捷键" });
   fireEvent.keyDown(capture, { key: "Control", ctrlKey: true });
   fireEvent.keyDown(capture, { key: "k", code: "KeyK" });
   expect(screen.getByText(/请同时按住/)).toBeInTheDocument();

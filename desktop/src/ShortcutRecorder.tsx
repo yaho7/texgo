@@ -58,7 +58,7 @@ export default function ShortcutRecorder({ value, onChange, disabled = false }: 
   }
   return <div className="shortcut-recorder" data-recording={recording || arming}
     onBlur={(event) => { if ((recording || arming) && !event.currentTarget.contains(event.relatedTarget as Node | null)) finish(); }}>
-    <div ref={capture} className="shortcut-capture" role="group" aria-label="全局快速转换快捷键" tabIndex={disabled ? -1 : 0} aria-disabled={disabled}
+    <div ref={capture} className="shortcut-capture" role="group" aria-label="全局快速处理快捷键" tabIndex={disabled ? -1 : 0} aria-disabled={disabled}
       onKeyDown={(event) => {
         if (!recording || disabled) return;
         event.preventDefault(); event.stopPropagation();
