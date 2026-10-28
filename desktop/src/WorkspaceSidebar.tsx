@@ -41,7 +41,7 @@ export default function WorkspaceSidebar(props: Props) {
       <h2 className="navigation-section-title">{t("workspaceSidebar.library")}</h2>
       <ToggleGroup type="single" orientation="vertical" value={props.view === "assets" ? props.filter : ""} onValueChange={(value) => { if (value) { props.onView("assets"); props.onFilter?.(value); } }} aria-label={t("workspaceSidebar.imageStatusFilters")} className="flex! w-full! flex-col! items-stretch! gap-0.5! rounded-none! bg-transparent! p-0!">
         {[
-          { value: "all", label: t("workspaceSidebar.allImages"), count: props.status.totalImages, icon: Images },
+          { value: "all", label: t("workspaceSidebar.allImages"), count: Math.max(0, props.status.totalImages - props.status.ignoredCount), icon: Images },
           { value: "pending", label: t("workspaceSidebar.pending"), count: props.status.pendingImages, icon: Circle },
           { value: "problems", label: t("workspaceSidebar.problems"), count: props.status.problemCount, icon: TriangleAlert },
           { value: "completed", label: t("workspaceSidebar.completed"), count: props.status.completedImages, icon: CircleCheck },

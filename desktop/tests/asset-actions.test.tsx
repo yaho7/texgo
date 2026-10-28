@@ -96,9 +96,11 @@ it("blocks busy and unresolved file actions and revalidates an already open menu
   expect(screen.getByRole("menuitem", { name: "复制路径" })).toHaveAttribute("data-disabled");
 });
 
-it("shows healthy asset details in the existing inspector without starting repair", async () => {
+it("omits redundant details from the context menu while row selection still opens the inspector", async () => {
   const user = userEvent.setup(); const p = props(); render(<AssetList {...p} />);
   fireEvent.contextMenu(screen.getByRole("button", { name: "预览 figures/plot.png" }).closest("tr")!);
-  await user.click(screen.getByRole("menuitem", { name: "查看详细信息" }));
+  expect(screen.queryByRole("menuitem", { name: "查看详细信息" })).not.toBeInTheDocument();
+  await user.keyboard("{Escape}");
+  await user.click(screen.getByRole("button", { name: "预览 figures/plot.png" }));
   expect(p.onActivate).toHaveBeenCalledWith("plot"); expect(p.onInspect).not.toHaveBeenCalled();
 });

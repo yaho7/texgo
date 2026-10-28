@@ -224,11 +224,13 @@ describe("LaTeX 项目唯一工作流", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("输出文件已被外部修改");
     expect(screen.getByRole("button", { name: "请先解决安全问题" })).toBeDisabled();
   });
-  it("ignores only through Rust, keeps ignored assets in All, and can restore them", async () => {
+  it("ignores only through Rust, hides ignored assets from All, and can restore them", async () => {
     const user = await openProject();
     await user.click(screen.getByRole("button", { name: "更多操作 figures/lost.png" }));
     await user.click(screen.getByRole("menuitem", { name: "忽略本次" }));
     await screen.findByRole("radio", { name: "问题 1" });
+    expect(screen.getByRole("radio", { name: "全部 4" })).toHaveAttribute("aria-checked", "true");
+    await waitFor(() => expect(screen.queryByRole("button", { name: "预览 figures/lost.png" })).not.toBeInTheDocument());
     await user.click(screen.getByRole("radio", { name: "已忽略 1" }));
     expect(screen.getByRole("button", { name: "预览 figures/lost.png" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "预览 figures/alpha.png" })).not.toBeInTheDocument();
@@ -491,6 +493,7 @@ describe("explicit asset control", () => {
     await user.click(screen.getByRole("button", { name: "更多操作 figures/alpha.png" }));
     await user.click(await screen.findByRole("menuitem", { name: "始终忽略" }));
     await waitFor(() => expect(calls.find((call) => call.command === "ignore_asset")?.args).toMatchObject({ imageId: "a", mode: "permanent" }));
+    await user.click(screen.getByRole("radio", { name: "已忽略 1" }));
     await user.click(screen.getByRole("button", { name: "更多操作 figures/alpha.png" }));
     await user.click(await screen.findByRole("menuitem", { name: "手动处理一次" }));
     await waitFor(() => expect(calls.some((call) => call.command === "convert_images" && call.args.intent === "reconvert")).toBe(true));

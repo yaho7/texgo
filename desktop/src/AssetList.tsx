@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import AssetThumbnail from "./AssetThumbnail";
 import { useAssetThumbnails } from "./hooks/useAssetThumbnails";
 import type { ThumbnailContext } from "./hooks/useAssetThumbnails";
-import { ChevronLeft, ChevronRight, CircleCheck, RefreshCw, Search, MoreHorizontal } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, MoreHorizontal } from "lucide-react";
 import { Input } from "@/controls/input";
 import { errorMessage } from "./utils";
 import { Badge } from "@/controls/badge";
@@ -166,7 +166,7 @@ export default function AssetList(props: Props) {
     { value: "pending", label: t("assetList.pending"), count: props.pendingIds.size },
     { value: "problems", label: t("assetList.problems"), count: props.problemIds.size },
     { value: "completed", label: t("assetList.completed"), count: props.completedIds.size },
-    { value: "all", label: t("assetList.allImages"), count: sourceImages.length },
+    { value: "all", label: t("assetList.allImages"), count: sourceImages.length - ignoredCount },
   ];
   const scrollArea = useRef<HTMLDivElement>(null);
   const previousStates = useRef<Record<string, string>>({});
@@ -245,7 +245,7 @@ export default function AssetList(props: Props) {
       <div ref={scrollArea} className="asset-scroll min-h-0 flex-1 overflow-auto">
         <Table className="table-fixed asset-filter-content min-w-[560px]" data-filter={props.filter}>
           <TableCaption className="sr-only">{t("assetList.projectImagesAndProcessingStatus")}</TableCaption>
-          <TableHeader>
+          <TableHeader className="sr-only">
             <TableRow>
               {props.selectionMode && <TableHead className="asset-selection-cell w-12">
                 <label className="asset-selection-target"><Checkbox aria-label={t("assetList.selectVisibleImages")} checked={allChecked ? true : checkedCount > 0 ? "indeterminate" : false} disabled={props.busy || readyIds.length === 0} onCheckedChange={() => props.onSelectAll(readyIds, !allChecked)} /></label>
@@ -253,7 +253,7 @@ export default function AssetList(props: Props) {
               <TableHead className="asset-name-heading">{t("assetList.name")}</TableHead>
               <TableHead className="w-14 text-center">{t("assetList.format")}</TableHead>
               <TableHead className="w-20 text-center">{t("assetList.size")}</TableHead>
-              <TableHead className={getLocale() === "en-US" ? "w-28 text-right" : "w-24 text-right"}>{t("assetList.status")}</TableHead>
+              <TableHead className={getLocale() === "en-US" ? "w-28 text-center" : "w-24 text-center"}>{t("assetList.status")}</TableHead>
               <TableHead className="w-9 text-center"><span className="sr-only">{t("assetList.imageActions")}</span></TableHead>
             </TableRow>
           </TableHeader>
@@ -300,9 +300,9 @@ export default function AssetList(props: Props) {
                   </TableCell>
                   <TableCell className="text-center"><span className="text-xs text-muted-foreground">{asset.format.toUpperCase()}</span></TableCell>
                   <TableCell className="text-center"><span className="text-xs tabular-nums text-muted-foreground">{formatBytes(asset.bytes)}</span></TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-center">
                     <Badge key={label} className={updatable && !problem ? "status-badge update-badge" : "status-badge"} variant={ignored ? "secondary" : problem ? referenceProblem ? "warning" : "destructive" : converted ? "success" : "secondary"} title={nativeText(asset.message ?? result?.error ?? "") || (ignored ? ignoreMode === "permanent" ? t("assetList.alwaysIgnore") : t("assetList.ignoreForThisSession") : updatable ? t("assetList.theSourceImageOrSVGDependencyChangedAndCanBe") : result?.pdfPath ?? undefined)}>
-                      {converted && !problem && !ignored && <CircleCheck data-icon="inline-start" aria-hidden="true" />}{updatable && !problem && !ignored && <RefreshCw data-icon="inline-start" aria-hidden="true" />}{label}
+                      {label}
                     </Badge>
                   </TableCell>
                   <TableCell className="pr-2 text-right">

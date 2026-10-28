@@ -16,7 +16,7 @@ export function useAssetSelection(project: Project | null) {
   const activeAsset = project?.images.find((image) => image.id === activeId) ?? null;
   const visibleImages = (project?.images ?? []).filter((image) => {
     const matches = `${image.relativePath} ${image.format}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
-    return matches && (filter === "all" || (filter === "pending" ? pendingIds.has(image.id)
+    return matches && (filter === "all" ? !ignored.has(image.id) : (filter === "pending" ? pendingIds.has(image.id)
       : filter === "problems" ? problemIds.has(image.id) : filter === "completed" ? completedIds.has(image.id) : filter === "ignored" && ignored.has(image.id)));
   });
   function clearSelection() { setSelected(new Set()); setSelectionMode(false); }

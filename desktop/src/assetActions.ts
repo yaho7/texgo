@@ -19,7 +19,6 @@ export function assetActions(context: AssetActionContext): AssetAction[] {
     if (visible && available[id]) actions.push({ id, label, disabled: blocked || disabled, group });
   }
   add("rename", t("assetActions.rename"), Boolean(asset.canRename));
-  add("details", t("assetActions.viewDetails"), !problem);
   add("inspect", ["missing", "ambiguous"].includes(asset.status) ? t("assetActions.reviewAndRepair") : t("assetActions.viewDetails2"), problem);
   add("locate", t("assetActions.locateFile"), ["missing", "ambiguous"].includes(asset.status));
   add("convert", ignored ? t("assetActions.processOnce") : t("assetActions.reprocessThisImage"), convertible);

@@ -54,3 +54,9 @@ html, body { height: 100%; overflow: clip; }
 .mac-workspace:has(.asset-selection-cell) { --asset-name-inset: 131px; }
 .mac-workspace .app-toolbar > span:first-child { flex: 0 0 calc(var(--asset-name-inset) - var(--workspace-inset) - var(--toolbar-gap)); }
 .mac-workspace .asset-name-heading { padding-left: 75px; }
+
+/* Keep wheel, touch and keyboard scrolling without visible list scrollbars. */
+.mac-workspace .asset-scroll,
+.mac-workspace .asset-scroll [data-slot="table-container"] { scrollbar-width: none; }
+.mac-workspace .asset-scroll::-webkit-scrollbar,
+.mac-workspace .asset-scroll [data-slot="table-container"]::-webkit-scrollbar { display: none; }
