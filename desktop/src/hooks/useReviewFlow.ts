@@ -52,7 +52,7 @@ export function useReviewFlow(ports: Ports) {
       const preview = await invoke<ChangePreview>("preview_changes");
       if (!isCurrent()) return;
       if (preview.referenceCount > 0) showReview(preview);
-      else await refresh(t("reviewFlow.referencesAreUpToDate"));
+      else await refresh();
     });
   }
 

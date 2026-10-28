@@ -4,7 +4,7 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "re
 import { invoke } from "@tauri-apps/api/core";
 import { FileImage, TriangleAlert, MoreHorizontal } from "lucide-react";
 import type { AssetPreviewData, ImageAsset, ImageResult } from "./types";
-import { errorMessage, formatBytes } from "./utils";
+import { errorMessage, formatBytes, fileName, relativeFile } from "./utils";
 import { motionDuration } from "./motion";
 import { Button } from "@/controls/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/controls/empty";
@@ -21,6 +21,7 @@ function PdfUnavailable({ onError }: { onError?: (message: string) => void }) {
 const PdfPreview = lazy(() => import("./PdfPreview").catch(() => ({ default: PdfUnavailable })));
 
 interface Props {
+  root?: string;
   asset: ImageAsset | null;
   result?: ImageResult;
   revision: number;
@@ -97,7 +98,7 @@ function PreviewContent({ asset, converted, revision, pdfPath, overlay = false, 
   </div>;
 }
 
-export default function AssetPreview({ asset, result, revision, busy = false, ignored, statusLabel, onLocate, onInspect, onIgnore, onRetry, onManualConvert, canConvert = false }: Props) {
+export default function AssetPreview({ root = "", asset, result, revision, busy = false, ignored, statusLabel, onLocate, onInspect, onIgnore, onRetry, onManualConvert, canConvert = false }: Props) {
   const ignoreMode = asset?.ignoreMode ?? (ignored ? "session" : "none");
   ignored = ignoreMode !== "none";
   const [mode, setMode] = useState("original");
@@ -107,9 +108,8 @@ export default function AssetPreview({ asset, result, revision, busy = false, ig
   const visibleMode = hasConverted ? mode : "original";
   const compare = visibleMode === "compare";
   const showPdf = visibleMode !== "original";
-  const sourceBytes = asset?.bytes;
   const pdfBytes = result?.bytes;
-  const saving = hasConverted && sourceBytes != null && sourceBytes > 0 && pdfBytes != null ? (1 - pdfBytes / sourceBytes) * 100 : null;
+
   const [divider, setDivider] = useState(50);
   const [dragging, setDragging] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -181,7 +181,7 @@ export default function AssetPreview({ asset, result, revision, busy = false, ig
 
   return <section className="preview-panel" aria-label={t("assetPreview.imagePreview")} tabIndex={0} onKeyDown={keydown}>
     <div className="preview-heading">
-      <div className="preview-heading-copy"><h2>{t("assetPreview.preview")}</h2>{asset?.width && asset.height ? <p className="mt-1 text-xs text-muted-foreground tabular-nums">{asset.width} × {asset.height} px</p> : null}</div>
+      <div className="preview-heading-copy"><h2 title={asset?.relativePath}>{asset ? fileName(asset.relativePath) : t("assetPreview.preview")}</h2>{asset && <p className="mt-1 text-xs text-muted-foreground tabular-nums">{dimensions ? `${dimensions.width} × ${dimensions.height} · ` : ""}{asset.format.toUpperCase()} · {formatBytes(asset.bytes)}</p>}</div>
       {asset && (onManualConvert || onIgnore) && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={t("assetPreview.currentImageActions")} disabled={busy}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuGroup>
         {onManualConvert && <DropdownMenuItem disabled={!canConvert} onSelect={() => onManualConvert(asset.id)}>{ignored ? t("assetPreview.processOnce") : t("assetPreview.reprocessThisImage")}</DropdownMenuItem>}
         {onManualConvert && onIgnore && <DropdownMenuSeparator />}
@@ -215,17 +215,9 @@ export default function AssetPreview({ asset, result, revision, busy = false, ig
         </div>
       </>}
     </div>
-    <div className="preview-metadata">
-      {hasConverted && <span>{t("assetPreview.output")}{formatBytes(pdfBytes ?? null)}</span>}
-      {saving !== null && <span className="preview-savings">{saving >= 0 ? t("assetPreview.valueSmaller", { arg0: Number(saving.toFixed(1)) }) : t("assetPreview.valueLarger", { arg0: Number((-saving).toFixed(1)) })}</span>}
-    </div>
-    {asset && <section aria-label={t("assetPreview.referencesAndOutput")} className="mx-[18px] mb-3 shrink-0 border-t border-border text-xs">
-      <details className="group border-b border-border py-2">
-        <summary className="cursor-pointer rounded px-1 py-1.5 font-medium focus-visible:outline-2 focus-visible:outline-primary">{t("assetPreview.referenceLocations", {count:asset.references.length})}</summary>
-        <ul className="max-h-36 overflow-auto px-1">{[...referencesByFile].map(([file, references]) => <li key={file} className="flex items-center justify-between gap-3 border-t border-border/50 py-2"><span className="min-w-0 truncate" title={file}>{file.split(/[\\/]/).pop()}</span><span className="max-w-[55%] text-right text-muted-foreground" title={t("assetPreview.valueReferences", { arg0: references.length })}>{references.map((reference) => t("assetPreview.lineValue", { arg0: reference.line })).join("、")}</span></li>)}</ul>
-        {!asset.references.length && <p className="px-1 py-2 text-muted-foreground">{t("assetPreview.noLaTeXReferencesFound")}</p>}
-      </details>
-      {hasConverted && <div className="px-1 py-3"><h3 className="mb-1 font-medium">{t("assetPreview.outputFile")}</h3><p className="break-all leading-relaxed text-muted-foreground">{result?.pdfPath}</p></div>}
+    {asset && (referencesByFile.size > 0 || hasConverted) && <section aria-label={t("assetPreview.referencesAndOutput")} className="preview-details">
+      {referencesByFile.size > 0 && <div><h3>{t("assetPreview.references")}</h3><ul>{[...referencesByFile].map(([file, references]) => <li key={file} title={file}><span>{root ? relativeFile(file, root) : file}</span><span className="text-muted-foreground">:{[...new Set(references.map(reference => reference.line))].join(", ")}</span></li>)}</ul></div>}
+      {hasConverted && <div><h3>{t("assetPreview.outputFile")}</h3><p className="preview-output" title={result?.pdfPath ?? undefined}>{root ? relativeFile(result?.pdfPath ?? "", root) : result?.pdfPath}<span className="text-muted-foreground"> · {formatBytes(pdfBytes ?? null)}</span></p></div>}
     </section>}
     {asset && problem && <div className="inspector-image-state">
       <p>{nativeText(result?.error ?? asset.message ?? "")}</p>

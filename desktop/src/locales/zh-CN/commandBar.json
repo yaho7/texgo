@@ -6,7 +6,6 @@
   "processValueImages": "处理 {arg0} 张图片",
   "reviewValueReferences": "检查 {arg0} 处引用",
   "resolveProblems": "处理问题",
-  "projectIsUpToDate": "项目已是最新状态",
   "preparingImageUpdates": "正在准备更新图片…",
   "processedValueImages2": "已处理 {arg0} 张图片",
   "operationPaused": "操作已暂停",

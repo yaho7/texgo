@@ -3,6 +3,11 @@ export function motionDuration(speed: "fast" | "normal" | "slow" = "normal"): nu
   if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return 20;
   const value = getComputedStyle(document.documentElement).getPropertyValue(`--motion-${speed}`).trim();
   const parsed = Number.parseFloat(value);
-  if (!Number.isFinite(parsed)) return { fast: 120, normal: 180, slow: 260 }[speed];
+  if (!Number.isFinite(parsed)) return { fast: 150, normal: 180, slow: 220 }[speed];
   return value.endsWith("ms") ? parsed : parsed * 1000;
+}
+
+/** Retained hidden views have no interactive departing copy. */
+export function viewTransition(active: boolean): string {
+  return active ? "view-enter" : "view-exit";
 }

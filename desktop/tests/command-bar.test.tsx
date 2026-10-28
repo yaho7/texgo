@@ -50,7 +50,7 @@ it("offers three presets, infers custom parameters, and keeps errors inline", as
 
 it("keeps manual conversion available without a redundant primary button when up to date", () => {
   render(<CommandBar {...defaults} status={{ ...status, pendingImages: 0, pendingImageIds: [], completedImageIds: ["a", "b"], completedImages: 2, nextAction: "upToDate" }} />);
-  expect(screen.getByRole("status")).toHaveTextContent("项目已是最新状态");
+  expect(screen.getByRole("status")).toBeEmptyDOMElement();
   expect(document.querySelector(".command-action")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "处理图片…" })).toBeEnabled();
 });

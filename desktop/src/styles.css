@@ -14,7 +14,7 @@
 }
 * { box-sizing: border-box; letter-spacing: 0; }
 html { color-scheme: light; }
-body { margin: 0; font-size: 14px; background: #f5f5f6; }
+body { margin: 0; font-size: 14px; background: #FFFFFF; }
 button, a, summary, input, select, label { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
 main:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
@@ -48,13 +48,13 @@ button { max-width: 100%; }
 .checkbox-option:has(:focus-visible) { outline: 2px solid var(--ring); outline-offset: 2px; }
 h1, h2, h3, p { margin: 0; }
 .app-shell, .workbench { display: flex; min-width: 0; height: 100dvh; overflow: hidden; }
-.workbench { flex: 1; padding: 8px 8px 8px 0; }
-.workspace-main { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; background: var(--background); border: 1px solid #e5e5e8; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px #00000004; }
+.workbench { flex: 1; padding: 0; }
+.workspace-main { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; background: var(--background); border: 0; border-radius: 0; overflow: hidden; box-shadow: none; }
 .workspace-sidebar { flex: 0 0 auto; width: 208px; min-width: 0; overflow: hidden; transition: width var(--motion-normal) var(--ease-standard); }
 .workspace-sidebar > .sidebar-content { width: 208px; opacity: 1; transition: opacity var(--motion-fast) var(--ease-out); }
 .workspace-sidebar[data-collapsed="true"] { width: 0; pointer-events: none; }
 .workspace-sidebar[data-collapsed="true"] > .sidebar-content { opacity: 0; }
-.workbench:not(:has(> .workspace-sidebar)) { padding-left: 8px; }
+.workbench:not(:has(> .workspace-sidebar)) { padding-left: 0; }
 .sidebar-content { display: flex; flex-direction: column; height: 100%; min-height: 0; padding: 0 10px; }
 .sidebar-brand { display: flex; align-items: center; gap: 10px; height: 64px; flex-shrink: 0; padding: 0 12px; font-size: 16px; font-weight: 600; }
 .sidebar-brand svg { width: 22px; height: 22px; }

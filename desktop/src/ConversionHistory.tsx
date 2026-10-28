@@ -40,7 +40,7 @@ export default function ConversionHistory({ entries, busy, onUndo, highlightId }
         <div className="history-record-header">
           <div className="history-record-copy">
             <h4 className="history-result">{summary}</h4>
-            <div className="history-meta"><time dateTime={validDate ? date.toISOString() : undefined} title={validDate ? date.toISOString() : undefined}>{historyTime(entry.createdAt)}</time><Badge variant={entry.undone ? "secondary" : failed || entry.cancelled ? "warning" : "success"}>{entry.undone ? t("conversionHistory.undone") : entry.cancelled ? t("conversionHistory.cancelled") : failed ? t("conversionHistory.needsAttention") : t("conversionHistory.completed")}</Badge></div>
+            <div className="history-meta"><time dateTime={validDate ? date.toISOString() : undefined} title={validDate ? date.toISOString() : undefined}>{historyTime(entry.createdAt)}</time>{(entry.undone || failed > 0 || entry.cancelled) && <Badge variant={entry.undone ? "secondary" : "warning"}>{entry.undone ? t("conversionHistory.undone") : entry.cancelled ? t("conversionHistory.cancelled") : failed ? t("conversionHistory.needsAttention") : t("conversionHistory.completed")}</Badge>}</div>
           </div>
           <Button variant="outline" size="sm" disabled={busy || !entry.canUndo} aria-describedby={entry.undoReason && !entry.undone ? `undo-reason-${entry.id}` : undefined} onClick={() => onUndo(entry)}><RotateCcw data-icon="inline-start" aria-hidden="true" />{t("conversionHistory.undo")}</Button>
         </div>

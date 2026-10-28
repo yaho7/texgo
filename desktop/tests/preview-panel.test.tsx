@@ -32,7 +32,7 @@ it("defaults to the original and compares it overlaid on the real PDF only on re
   await user.click(screen.getByRole("radio", { name: "对比" }));
   expect(await screen.findByLabelText("真实 PDF")).toHaveTextContent("pdf-a");
   expect(screen.getByAltText("原始：a.png")).toBeInTheDocument();
-  expect(screen.getByText(/节省 50%/)).toBeInTheDocument();
+  expect(screen.queryByText(/节省 50%/)).not.toBeInTheDocument();
 });
 
 it("does not enable comparison for failed, cancelled, or mismatched results", () => {
@@ -185,11 +185,10 @@ it("keeps a dimmed previous image until the next source has loaded", async () =>
   expect(screen.queryByAltText("上一张：a.png")).not.toBeInTheDocument();
 });
 
-it("shows reference locations in the inspector disclosure", async () => {
-  render(<AssetPreview asset={{ ...asset, references: [{ file: "/project/chapter1.tex", line: 128, original: "a.png", start: 0, end: 5 }] }} revision={1} />);
-  await userEvent.click(screen.getByText("引用位置（1）"));
+it("shows reference locations directly without a disclosure", async () => {
+  render(<AssetPreview root="/project" asset={{ ...asset, references: [{ file: "/project/chapter1.tex", line: 128, original: "a.png", start: 0, end: 5 }] }} revision={1} />);
   expect(await screen.findByText("chapter1.tex")).toBeInTheDocument();
-  expect(screen.getByText("第 128 行")).toBeInTheDocument();
+  expect(screen.getByText(":128")).toBeInTheDocument();
 });
 
 it("only enters repair after an explicit inspector action", async () => {
@@ -363,20 +362,20 @@ it("groups references by full file path without losing line locations or inventi
     { file: "/paper/a/chapter.tex", line: 20, original: "a.png", start: 10, end: 15 },
     { file: "/paper/b/chapter.tex", line: 9, original: "a.png", start: 0, end: 5 },
   ] }} revision={1} result={{ ...result, error: "conversion failed" }} />);
-  await userEvent.click(screen.getByText("引用位置（3）"));
   const references = screen.getByRole("region", { name: "引用与输出" });
-  expect(within(references).getAllByText("chapter.tex")).toHaveLength(2);
-  expect(within(references).getByText("第 2 行、第 20 行")).toBeInTheDocument();
-  expect(within(references).getByText("第 9 行")).toBeInTheDocument();
-  expect(screen.queryByText("输出文件")).not.toBeInTheDocument();
+  expect(within(references).getByText("/paper/a/chapter.tex")).toBeInTheDocument();
+  expect(within(references).getByText("/paper/b/chapter.tex")).toBeInTheDocument();
+  expect(within(references).getByText(":2, 20")).toBeInTheDocument();
+  expect(within(references).getByText(":9")).toBeInTheDocument();
+  expect(screen.queryByText("输出")).not.toBeInTheDocument();
 });
 
 
-it("shows resolution only in inspector details without repeating the list filename or format", () => {
+it("leads inspector details with the filename and compact metadata", () => {
   render(<AssetPreview asset={{ ...asset, width: 2400, height: 1600 }} revision={1} />);
-  expect(screen.getByText("2400 × 1600 px")).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "预览" })).toBeInTheDocument();
-  expect(screen.queryByRole("heading", { name: "a.png" })).not.toBeInTheDocument();
+  expect(screen.getByText(/2400 × 1600 · PNG/)).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "预览" })).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "a.png" })).toBeInTheDocument();
   expect(screen.queryByText("PNG")).not.toBeInTheDocument();
 });
 

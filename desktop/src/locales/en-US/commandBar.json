@@ -6,7 +6,6 @@
   "processValueImages": "Process {arg0, plural, one {# image} other {# images}}",
   "reviewValueReferences": "Review {arg0, plural, one {# reference} other {# references}}",
   "resolveProblems": "Resolve problems",
-  "projectIsUpToDate": "Project is up to date",
   "preparingImageUpdates": "Preparing image updates…",
   "processedValueImages2": "Processed {arg0, plural, one {# image} other {# images}}",
   "operationPaused": "Operation paused",

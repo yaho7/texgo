@@ -67,14 +67,14 @@ export default function CommandBar(props: Props) {
     : props.selectionMode ? t("commandBar.processValueImages", { arg0: count })
     : status.nextAction === "reviewReferences" ? t("commandBar.reviewValueReferences", { arg0: status.pendingReferences })
     : recommendedConvert ? t("commandBar.processValueImages", { arg0: count })
-    : status.nextAction === "resolveProblems" ? t("commandBar.resolveProblems") : t("commandBar.projectIsUpToDate");
+    : status.nextAction === "resolveProblems" ? t("commandBar.resolveProblems") : "";
   const message = props.converting ? `${label} · ${props.progress?.name || t("commandBar.preparingImageUpdates")}`
     : props.completion !== null ? t("commandBar.processedValueImages2", { arg0: props.completion })
     : blocked ? t("commandBar.operationPaused")
     : props.selectionMode ? t("commandBar.selectImagesToProcess")
     : status.nextAction === "reviewReferences" ? t("commandBar.processedImagesAreReady")
     : status.nextAction === "convertImages" ? ""
-    : status.nextAction === "resolveProblems" ? t("commandBar.locateOrRepairTheAffectedImages") : t("commandBar.projectIsUpToDate");
+    : status.nextAction === "resolveProblems" ? t("commandBar.locateOrRepairTheAffectedImages") : "";
   const transitionKey = props.converting ? "converting" : props.completion !== null ? "complete" : blocked ? "blocked" : props.selectionMode ? "selection" : status.nextAction;
   // Retain the departing message for one token duration; it never creates a second action.
   const [departing, setDeparting] = useState<string | null>(null);
@@ -110,7 +110,7 @@ export default function CommandBar(props: Props) {
       <div className="command-message-stage" aria-live="polite" role="status">
         {departing && <span aria-hidden="true" className="command-message command-message-exit">{departing}</span>}
         {message && <span key={transitionKey} title={blocked ? nativeText(status.blockingReason ?? "") : undefined} className="command-message command-message-enter">
-          {(idle || props.completion !== null) && <Check className="command-success" aria-hidden="true" />}
+          {(props.completion !== null) && <Check className="command-success" aria-hidden="true" />}
           {blocked && <TriangleAlert aria-hidden="true" />}{message}
         </span>}
       </div>

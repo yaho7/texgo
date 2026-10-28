@@ -1,3 +1,4 @@
+import { viewTransition } from "./motion";
 import { useWorkspaceGeometry } from "./hooks/useWorkspaceGeometry";
 import { nativeText } from "./nativeText";
 import { t } from "./i18n";
@@ -14,8 +15,8 @@ import { useConversion } from "./hooks/useConversion";
 import { useReviewFlow } from "./hooks/useReviewFlow";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { Check, LoaderCircle, PanelLeft, RotateCcw, TriangleAlert, X } from "lucide-react";
+import { isTauri, invoke } from "@tauri-apps/api/core";
+import { LoaderCircle, PanelLeft, RotateCcw, TriangleAlert, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/controls/alert";
 import { Button } from "@/controls/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/controls/dialog";
@@ -29,6 +30,7 @@ import Home from "./Home";
 import WorkspaceSearch from "./WorkspaceSearch";
 import "./workspace-native.css";
 import "./overview.css";
+import "./quiet-workspace.css";
 import WorkspaceSidebar from "./WorkspaceSidebar";
 import { SettingsView, HistoryView, UpdateView } from "./SecondaryViews";
 import { defaultPreferences } from "./preferences";
@@ -68,7 +70,7 @@ export default function App() {
   const { state: operationState, current: currentOperation, acquire: acquireOperation, release: releaseOperation, run: runOperation } = useOperation();
   const operation = operationState.status === "running" ? operationState.kind : null;
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState(t("app.ready"));
+  const [notice, setNotice] = useState("");
   const [revision, setRevision] = useState(0);
   const [assetsWidth, setAssetsWidth] = useState(600);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -128,8 +130,8 @@ export default function App() {
     onNavigate: (payload) => notificationNavigate.current(payload), setRevision });
   useDesktopEvents({ background, onAction: (action) => desktopAction.current(action), onDrop: (paths) => dropFiles.current(paths), setDragging });
   useEffect(() => {
-    if (!notice.startsWith(t("app.detected"))) return;
-    const timer = window.setTimeout(() => setNotice(""), 4000);
+    if (!notice || notice === t("backgroundAutomation.fileMonitoringIsTemporarilyUnavailable")) return;
+    const timer = window.setTimeout(() => setNotice(""), notice === t("assetFileActions.copiedTheFullImagePath") ? 1500 : 4000);
     return () => window.clearTimeout(timer);
   }, [notice]);
 
@@ -208,7 +210,7 @@ export default function App() {
       const next = await invoke<Project>("ignore_asset", { imageId: id, mode });
       await acceptProject(next, true);
       selection.removeSelected([id]);
-      setProblemId(null); setError(null); setNotice(mode === "permanent" ? t("app.alwaysIgnoredYouCanResumeProcessingAtAnyTime") : mode === "session" ? t("app.ignoredForThisSessionTheSourceFileIsUnchanged") : t("app.processingRestored"));
+      setProblemId(null); setError(null); setNotice("");
     }, reviewFlow.problemId === id ? "ignore-problem" : undefined);
   }
 
@@ -232,7 +234,7 @@ export default function App() {
         selection.migrateIdentity(result.oldImageId,result.newImageId);
         await acceptProject(result.project,true); workspace.recordActivity();
         setPendingRename(null); setRenameReviewOpen(false); setRenameConflict(undefined); setError(null);
-        setNotice(t("app.renamedValue", {arg0:""}));
+        setNotice("");
       } catch (reason) { setRenameConflict({path:plan.mainFile,message:errorMessage(reason)}); throw reason; }
     });
   }
@@ -313,7 +315,7 @@ export default function App() {
     onRecent={(entry) => { setDrawerOpen(false); setSettingsPage(false); openRecentEntry(entry); }}
     onRemove={workspace.forgetRecent} />;
 
-  return <TooltipProvider delayDuration={350}><div className="app-shell mac-workspace">
+  return <TooltipProvider delayDuration={350}><div className={`app-shell mac-workspace${isTauri() && /Mac/.test(navigator.platform) ? " native-macos" : ""}`}><div className="window-drag-region" data-tauri-drag-region aria-hidden="true" />
     <div ref={shellRef} className={homeLanding || settingsPage ? "workbench pl-0!" : "workbench"} inert={review !== null || undoEntry !== null || problemId !== null || updateOpen || conversionBlocked || renameReviewOpen}>
       <a href="#main-content" className="skip-link">{t("app.skipToWorkspace")}</a>
       {!homeLanding && !settingsPage && !narrow && <aside className="workspace-sidebar" data-collapsed={!sidebarExpanded} aria-hidden={!sidebarExpanded} inert={!sidebarExpanded}>{sidebar}</aside>}
@@ -328,22 +330,22 @@ export default function App() {
       </header>}
       {error && !review && !undoEntry && !problemId && <ErrorNotice message={error} className="workbench-alert" onClose={() => setError(null)} />}
       {project?.status.blockingReason && !homeVisible && !settingsPage && <Alert variant="destructive" role="alert" className="workbench-alert"><TriangleAlert aria-hidden="true" /><AlertTitle>{t("app.resolveTheSafetyIssueFirst")}</AlertTitle><AlertDescription>{nativeText(project.status.blockingReason)}</AlertDescription></Alert>}
-      <div className="page-enter settings-view" hidden={!settingsPage} inert={!settingsPage}><SettingsView active={settingsPage} value={preferences} onSaved={(next) => { preferencesRef.current = next; setPreferences(next); }} onClose={() => setSettingsPage(false)} /></div>
+      <div className={`settings-view ${viewTransition(settingsPage)}`} hidden={!settingsPage} inert={!settingsPage}><SettingsView active={settingsPage} value={preferences} onSaved={(next) => { preferencesRef.current = next; setPreferences(next); }} onClose={() => setSettingsPage(false)} /></div>
       {homeVisible && !settingsPage && <Home onSettings={() => setSettingsPage(true)} busy={busy} onOpenTex={openProject} recents={recents} failedRecent={failedRecent} onRecent={openRecentEntry} onRemove={workspace.forgetRecent} />}
       {project && <>
-        <main id={settingsPage || homeVisible ? undefined : "main-content"} tabIndex={-1} className="workspace-content" hidden={settingsPage || homeVisible} data-view={view} onKeyDownCapture={(event) => {
+        <main id={settingsPage || homeVisible ? undefined : "main-content"} tabIndex={-1} className="workspace-content" hidden={settingsPage || homeVisible} inert={settingsPage || homeVisible} data-view={view} onKeyDownCapture={(event) => {
           if (selectionMode && event.key === "Escape" && !busy && view === "assets" && !(event.target as HTMLElement).closest(".asset-rename")) {
             event.preventDefault(); event.stopPropagation(); selection.clearSelection();
           }
         }}>
-          <div className="workspace-grid" hidden={view !== "assets"} data-view={view} style={layoutStyle}>
+          <div className={`workspace-grid ${viewTransition(view === "assets")}`} hidden={view !== "assets"} inert={view !== "assets"} data-view={view} style={layoutStyle}>
             <div className="workspace-library"><AssetList showSummary={narrow || !sidebarExpanded} thumbnailContext={{ mainFile: project.mainFile, revision, enabled: !homeVisible && !settingsPage && view === "assets" }} showSearchAndFilters={false} images={visibleImages} allImages={project.images} ignored={ignored} pendingIds={pendingIds} problemIds={problemIds} completedIds={completedIds}
               onReveal={revealAsset} onRevealPdf={revealPdf} onCopyPath={copyAssetPath} selectionMode={selectionMode} renameRequest={renameRequest} onRename={renameAsset} pendingRename={pendingRename ? {id:pendingRename.id,name:pendingRename.name} : undefined} convertibleIds={convertibleIds} onManualConvert={(id) => convert("reconvert", [id])} onIgnore={(id, value) => { void ignoreAsset(id, value); }} onInspect={inspectProblem} onLocate={locateRepair} total={project.status.totalImages} selected={selected} activeId={activeId} results={results}
               busy={busy} previewDisabled={busy && operation !== "converting"} search={search} filter={filter} onSearch={setSearch} onFilter={setFilter} onActivate={setActiveId}
               onSelect={(id) => { if (!busy) selection.toggleSelected(id); }}
               onSelectAll={(ids, select) => { if (!busy) selection.selectMany(ids, select); }} /></div>
             <Splitter label={t("app.resizeImageList")} value={assetsWidth} min={340} max={900} onChange={setAssetsWidth} />
-            <div className="asset-inspector" key={contextKey ?? undefined}><AssetPreview busy={busy} canConvert={activeId ? convertibleIds.has(activeId) : false} onManualConvert={(id) => convert("reconvert", [id])} asset={activeAsset} result={activeAsset ? results[activeAsset.id] : undefined} revision={revision} ignored={activeAsset ? ignored.has(activeAsset.id) : false}
+            <div className="asset-inspector" key={contextKey ?? undefined}><AssetPreview root={project.root} busy={busy} canConvert={activeId ? convertibleIds.has(activeId) : false} onManualConvert={(id) => convert("reconvert", [id])} asset={activeAsset} result={activeAsset ? results[activeAsset.id] : undefined} revision={revision} ignored={activeAsset ? ignored.has(activeAsset.id) : false}
               statusLabel={activeAsset ? ignored.has(activeAsset.id) ? t("app.ignored") : problemIds.has(activeAsset.id) ? t("app.needsAttention") : pendingIds.has(activeAsset.id) ? activeAsset.updateAvailable ? t("app.updatedSource") : t("app.pending") : t("app.completed") : undefined}
               onInspect={inspectProblem} onLocate={locateRepair} onRetry={project.status.blockingReason ? undefined : retryAsset} onIgnore={(id, value) => { void ignoreAsset(id, value); }} /></div>
           </div>
@@ -352,7 +354,8 @@ export default function App() {
         <div ref={commandRef} hidden={settingsPage || homeVisible}><CommandBar pendingRename={pendingRename ? {referenceCount:pendingRename.preview.references.referenceCount} : undefined} status={project.status} settings={settings} selectionMode={selectionMode} selectedCount={selected.size} busy={busy} converting={operation === "converting"} progress={progress} completion={completion} cancelRequested={cancelRequested}
           onAction={nextAction} onConvert={convert} onManualOpen={allowManualConversionPanel} currentImageId={activeId} convertibleIds={[...convertibleIds]} onSettings={updateSettings} onSelectionMode={(enabled) => { setView("assets"); selection.changeSelectionMode(enabled); }} onCancel={() => { void cancelConversion(); }} /></div>
       </>}
-      {notice && notice !== t("app.ready") && !notice.startsWith(t("app.found")) && !homeVisible && <footer className="status-bar"><div className="status-text" role="status" aria-live="polite">{operation === "opening" ? <LoaderCircle className="spin" aria-hidden="true" /> : project ? <Check aria-hidden="true" /> : <span className="status-dot" />}<span>{operation && operation !== "converting" ? operationLabels[operation] : nativeText(notice)}</span></div></footer>}
+      {operation && operation !== "converting" && !homeVisible && !settingsPage && <div className="activity-notice" role="status"><LoaderCircle className="spin" aria-hidden="true" />{operationLabels[operation]}</div>}
+      {notice && !operation && !homeVisible && !settingsPage && <div className="transient-notice" role="status" aria-live="polite">{nativeText(notice)}</div>}
       </div>
     </div>
     <Dialog open={!homeLanding && !settingsPage && narrow && drawerOpen} onOpenChange={setDrawerOpen}>

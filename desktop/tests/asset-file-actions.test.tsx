@@ -17,7 +17,7 @@ it("uses foreground updating ownership and sends only an ID and expected project
   await act(async () => result.current.copyAssetPath("plot"));
   expect(p.execute).toHaveBeenCalledWith("updating", expect.any(Function));
   expect(calls).toEqual([{ command: "asset_file_action", args: { imageId: "plot", action: "copyPath", expectedMainFile: "/paper/main.tex" } }]);
-  expect(p.onNotice).toHaveBeenCalledWith("已复制图片完整路径");
+  expect(p.onNotice).toHaveBeenCalledWith("已复制路径");
 });
 it("rejects busy, missing, and unknown sources before invoking IPC", async () => {
   const invoke = vi.fn(); mockIPC(invoke); const p = ports(); p.isBusy = () => true;
@@ -59,4 +59,13 @@ it("reveals the managed PDF by identity without accepting a caller-supplied path
   const { result } = renderHook(() => useAssetFileActions(p));
   await act(async () => result.current.revealPdf("plot"));
   expect(invoke).toHaveBeenCalledWith("asset_file_action", { imageId: "plot", action: "revealPdf", expectedMainFile: "/paper/main.tex" });
+  expect(p.onNotice).not.toHaveBeenCalled();
+});
+
+it("reveals the original without a redundant success notice", async () => {
+  const invoke = vi.fn(); mockIPC(invoke); const p = ports();
+  const { result } = renderHook(() => useAssetFileActions(p));
+  await act(async () => result.current.revealAsset("plot"));
+  expect(invoke).toHaveBeenCalledWith("asset_file_action", {imageId:"plot",action:"reveal",expectedMainFile:"/paper/main.tex"});
+  expect(p.onNotice).not.toHaveBeenCalled();
 });

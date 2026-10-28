@@ -1,3 +1,4 @@
+import { viewTransition } from "./motion";
 import { t } from "./i18n";
 import { Component, lazy, Suspense, useState } from "react";
 import type { ComponentProps, ReactNode } from "react";
@@ -29,7 +30,7 @@ export function HistoryView({ active, onReturn, ...props }: ComponentProps<typeo
   // Load on first activation, then retain expanded rows and pagination while hidden.
   const [visited, setVisited] = useState(active);
   if (active && !visited) setVisited(true);
-  return <div className="history-view page-enter" hidden={!active}>{visited && <LoadBoundary fallback={<><p role="alert">{t("secondaryViews.couldNotLoadHistoryReopenTheAppToTryAgain")}</p><Button variant="outline" onClick={onReturn}>{t("secondaryViews.backToImages")}</Button></>}><Suspense fallback={<p role="status">{t("secondaryViews.loadingHistory")}</p>}><History {...props} /></Suspense></LoadBoundary>}</div>;
+  return <div className={`history-view ${viewTransition(active)}`} hidden={!active} inert={!active}>{visited && <LoadBoundary fallback={<><p role="alert">{t("secondaryViews.couldNotLoadHistoryReopenTheAppToTryAgain")}</p><Button variant="outline" onClick={onReturn}>{t("secondaryViews.backToImages")}</Button></>}><Suspense fallback={<p role="status">{t("secondaryViews.loadingHistory")}</p>}><History {...props} /></Suspense></LoadBoundary>}</div>;
 }
 function UpdateFallback({ onClose, failed = false }: { onClose: () => void; failed?: boolean }) {
   return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}><DialogContent showCloseButton={false}><DialogHeader><DialogTitle>{t("secondaryViews.appUpdate")}</DialogTitle><DialogDescription>{failed ? t("secondaryViews.couldNotLoadAppUpdatesCloseAndReopenTheApp") : t("secondaryViews.loadingAppUpdates")}</DialogDescription></DialogHeader><p role={failed ? "alert" : "status"}>{failed ? t("secondaryViews.couldNotLoadTheUpdatePage") : t("secondaryViews.loading")}</p><DialogFooter><Button variant="outline" onClick={onClose}>{t("secondaryViews.close")}</Button></DialogFooter></DialogContent></Dialog>;

@@ -46,7 +46,7 @@ export default function WorkspaceSidebar(props: Props) {
           { value: "problems", label: t("workspaceSidebar.problems"), count: props.status.problemCount, icon: TriangleAlert },
           { value: "completed", label: t("workspaceSidebar.completed"), count: props.status.completedImages, icon: CircleCheck },
           { value: "ignored", label: t("workspaceSidebar.ignored"), count: props.status.ignoredCount, icon: CircleSlash },
-        ].map(({ value, label, count, icon: Icon }) => <ToggleGroupItem key={value} value={value} aria-label={`${label} ${count}`} className="h-8! min-h-8! w-full! justify-start! gap-2! rounded-md! border-0! px-2! text-xs! data-[state=on]:bg-black/8! data-[state=on]:text-foreground! [&_svg]:size-4"><Icon aria-hidden="true" className={value === "problems" && count ? "text-warning" : "text-primary"} /><span>{label}</span><span className="ml-auto text-muted-foreground tabular-nums">{count}</span></ToggleGroupItem>)}
+        ].map(({ value, label, count, icon: Icon }) => <ToggleGroupItem key={value} value={value} aria-label={`${label} ${count}`} className="h-8! min-h-8! w-full! justify-start! gap-2! rounded-md! border-0! px-2! text-xs! data-[state=on]:bg-black/8! data-[state=on]:text-foreground! [&_svg]:size-4"><Icon aria-hidden="true" className={(value === "problems" || value === "pending") && count ? "text-warning" : "text-muted-foreground"} /><span>{label}</span><span className="ml-auto text-muted-foreground tabular-nums">{count}</span></ToggleGroupItem>)}
       </ToggleGroup>
     </section>}
     {props.view !== "home" && recentEntries.length > 0 && <section className="navigation-section navigation-recents" aria-label={t("workspaceSidebar.recentProjects")}>

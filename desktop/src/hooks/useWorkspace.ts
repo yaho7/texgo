@@ -48,7 +48,7 @@ export function useWorkspace(ports: WorkspacePorts) {
     setFailedRecent(null);
     const saved = same || rememberWorkspace({ path: next.mainFile });
     setRecents(readRecents());
-    latest.current.onNotice(saved ? message ?? t("workspace.foundValueProjectImages", { arg0: next.status.totalImages }) : t("workspace.projectOpenedButTheRecentEntryCouldNotBeSaved"));
+    latest.current.onNotice(saved ? message ?? "" : t("workspace.projectOpenedButTheRecentEntryCouldNotBeSaved"));
     await latest.current.loadHistory();
   }
   async function refresh(message?: string) {
@@ -78,7 +78,7 @@ export function useWorkspace(ports: WorkspacePorts) {
   function closeProject() {
     if (latest.current.isBusy()) return;
     void latest.current.execute("opening", async () => {
-      await invoke("close_workspace"); discardProject(); latest.current.onNotice(t("workspace.currentProjectClosed"));
+      await invoke("close_workspace"); discardProject(); latest.current.onNotice("");
     });
   }
   function recordActivity() {
@@ -92,7 +92,7 @@ export function useWorkspace(ports: WorkspacePorts) {
   }
   function forgetRecent(entry: RecentWorkspace) {
     const saved = removeRecent(entry); setRecents(readRecents());
-    latest.current.onNotice(saved ? t("workspace.recentEntryRemovedTheFileWasNotDeleted") : t("workspace.cannotRemoveThisEntryCheckAppStoragePermissions"));
+    latest.current.onNotice(saved ? "" : t("workspace.cannotRemoveThisEntryCheckAppStoragePermissions"));
   }
   return { project, current, generation, contextKey, recents, failedRecent, settings,
     acceptProject, refresh, openProject, openRecent, openPath, closeProject, updateSettings, recordActivity, forgetRecent, discardProject, updateSnapshot };

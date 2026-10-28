@@ -1,10 +1,8 @@
 {
-  "projectStatusRefreshed": "项目状态已更新",
   "fileMonitoringIsTemporarilyUnavailable": "自动检测暂不可用",
   "updatedValueImages": "已更新 {arg0} 张图片",
   "valueReferencesAwaitApproval": "{arg0} 处引用等待确认",
   "resolveTheProjectSafetyIssueFirst": "项目存在安全问题，请先处理",
   "valueImagesNeedUpdating": "{arg0} 张图片需要更新",
-  "valueProblemsNeedAttention": "{arg0} 个问题需要处理",
-  "projectIsUpToDate": "项目已是最新状态"
+  "valueProblemsNeedAttention": "{arg0} 个问题需要处理"
 }

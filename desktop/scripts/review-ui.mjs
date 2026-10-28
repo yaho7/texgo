@@ -213,7 +213,7 @@ async function pageFor(scenario = "pending", viewport = { width: 1440, height: 9
 async function openProject(page, action = "处理 12 张图片") {
   await page.getByRole("button", { name: "打开或拖入 .tex 文件", exact: true }).click();
   if (action) await page.getByRole("button", { name: action, exact: true }).waitFor();
-  else await page.getByText("项目已是最新状态", { exact: true }).waitFor();
+  else await page.getByRole("button", { name: "输出参数：高质量 · 300 DPI", exact: true }).waitFor();
   await page.locator('.preview-content-frame[data-ready="true"] img').first().waitFor({ state: "visible" });
 }
 

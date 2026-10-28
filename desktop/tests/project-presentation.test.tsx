@@ -70,7 +70,7 @@ it("preserves row identity when a refreshed backend snapshot marks an image comp
   view.rerender(<AssetList {...props} pendingIds={new Set()} completedIds={new Set([pending.id])} />);
   expect(screen.getByRole("button", { name: "预览 plot.png" }).closest("tr")).toBe(original);
   expect(original).toHaveAttribute("data-highlight", "success");
-  expect(within(original!).getByText("已完成")).toBeInTheDocument();
+  expect(within(original!).queryByText("已完成")).not.toBeInTheDocument();
 });
 
 it("navigates images and operation history in the sidebar without a home action", async () => {

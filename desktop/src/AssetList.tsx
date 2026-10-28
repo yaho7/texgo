@@ -194,7 +194,7 @@ export default function AssetList(props: Props) {
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
     const node = scrollArea.current;
     if (!node?.animate) return;
-    const animation = node.animate([{ opacity: .7 }, { opacity: 1 }], { duration: motionDuration("fast"), easing: "ease-out" });
+    const animation = node.animate([{ opacity: .85, transform: "translateY(3px)" }, { opacity: 1, transform: "translateY(0)" }], { duration: motionDuration("fast"), easing: "cubic-bezier(.2,.8,.2,1)" });
     return () => animation.cancel();
   }, [props.filter]);
   function actionsFor(asset: ImageAsset, isExiting = false) {
@@ -246,7 +246,7 @@ export default function AssetList(props: Props) {
       </header>
       {props.showSearchAndFilters !== false && <Separator />}
       <div ref={scrollArea} className="asset-scroll min-h-0 flex-1 overflow-auto">
-        <Table className="table-fixed asset-filter-content min-w-[560px]" data-filter={props.filter}>
+        <Table className="table-fixed asset-filter-content min-w-[480px]" data-filter={props.filter}>
           <colgroup>{props.selectionMode && <col style={{width:48}} />}<col /><col style={{width:56}} /><col style={{width:80}} /><col style={{width:getLocale() === "en-US" ? 112 : 96}} /><col style={{width:36}} /></colgroup>
           <TableCaption className="sr-only">{t("assetList.projectImagesAndProcessingStatus")}</TableCaption>
           <TableHeader className="sr-only">
@@ -273,7 +273,7 @@ export default function AssetList(props: Props) {
               const ignored = ignoreMode !== "none";
               const missingPdf = asset.message === getLoadedCatalog("zh-CN")?.native.managedPdfMissing;
               const pendingRename = props.pendingRename?.id === asset.id;
-              const label = pendingRename ? t("assetList.pendingRename") : ignored ? t("assetList.ignored") : problem ? referenceProblem ? statusLabels[asset.status] : t("assetList.needsAttention") : result?.cancelled ? t("assetList.cancelled") : missingPdf ? t("assetList.missingPDF") : converted ? t("assetList.completed") : updatable ? t("assetList.updatedSource") : statusLabels[asset.status];
+              const label = pendingRename ? t("assetList.pendingRename") : ignored ? t("assetList.ignored") : problem ? referenceProblem ? statusLabels[asset.status] : t("assetList.needsAttention") : result?.cancelled ? t("assetList.cancelled") : missingPdf ? t("assetList.missingPDF") : converted || asset.status === "pdf" ? "" : updatable ? t("assetList.updatedSource") : statusLabels[asset.status];
               const normalizedPath = asset.relativePath.replaceAll("\\", "/");
               const slash = normalizedPath.lastIndexOf("/");
               const filename = normalizedPath.slice(slash + 1);
@@ -308,9 +308,9 @@ export default function AssetList(props: Props) {
                   <TableCell className="text-center"><span className="text-xs text-muted-foreground">{asset.format.toUpperCase()}</span></TableCell>
                   <TableCell className="text-center"><span className="text-xs tabular-nums text-muted-foreground">{formatBytes(asset.bytes)}</span></TableCell>
                   <TableCell className="text-center">
-                    <Badge key={label} className={updatable && !problem ? "status-badge update-badge" : "status-badge"} variant={ignored ? "secondary" : missingPdf ? "warning" : problem ? referenceProblem ? "warning" : "destructive" : converted ? "success" : "secondary"} title={nativeText(asset.message ?? result?.error ?? "") || (ignored ? ignoreMode === "permanent" ? t("assetList.alwaysIgnore") : t("assetList.ignoreForThisSession") : updatable ? t("assetList.theSourceImageOrSVGDependencyChangedAndCanBe") : result?.pdfPath ?? undefined)}>
+                    {label && <Badge key={label} className={updatable && !problem ? "status-badge update-badge" : "status-badge"} variant={ignored ? "secondary" : missingPdf ? "warning" : problem ? referenceProblem ? "warning" : "destructive" : converted ? "success" : "secondary"} title={nativeText(asset.message ?? result?.error ?? "") || (ignored ? ignoreMode === "permanent" ? t("assetList.alwaysIgnore") : t("assetList.ignoreForThisSession") : updatable ? t("assetList.theSourceImageOrSVGDependencyChangedAndCanBe") : result?.pdfPath ?? undefined)}>
                       {label}
-                    </Badge>
+                    </Badge>}
                   </TableCell>
                   <TableCell className="pr-2 text-right">
                     <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" className="asset-more size-6! min-h-6! min-w-6!" aria-label={t("assetList.moreActionsForValue", { arg0: asset.relativePath })} disabled={props.busy || isExiting || Boolean(rename)}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" onCloseAutoFocus={(event) => { if (renameHandoff.current || renameRef.current) event.preventDefault(); }}>{menuItems(asset, isExiting, false)}</DropdownMenuContent></DropdownMenu>

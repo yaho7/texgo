@@ -135,7 +135,7 @@ describe("LaTeX 项目唯一工作流", () => {
   it("updates all backend pending images without a selection and automatically opens reference review", async () => {
     const user = await openProject();
     const dialog = await convertAndReview(user);
-    expect(calls.find((call) => call.command === "convert_images")?.args.options).toMatchObject({ imageIds: ["a", "b"], dpi: 300, jpegQuality: 90 });
+    expect(calls.find((call) => call.command === "convert_images")?.args.options).toMatchObject({ imageIds: ["a", "b"], dpi: 300, jpegQuality: 100 });
     expect(within(dialog).getByRole("button", { name: "应用 2 处引用修改" })).toBeEnabled();
     expect(calls.some((call) => call.command === "apply_replacements")).toBe(false);
   });
@@ -816,7 +816,7 @@ it("opens standalone Settings from Home and persists English across the whole wo
   expect(screen.getByRole("navigation", {name:"Project navigation"})).toBeVisible();
   expect(screen.getByRole("columnheader", {name:"Name"})).toBeVisible();
   expect(screen.getByRole("columnheader", {name:"Format"})).toBeVisible();
-  expect(screen.getByRole("heading", {name:"Preview"})).toBeVisible();
+  expect(screen.getByRole("heading", {name:"alpha.png"})).toBeVisible();
   expect(screen.getByRole("radio", {name:"Pending 2"})).toBeVisible();
   await user.click(screen.getByRole("button", {name:"Process 2 images"}));
   const dialog = await screen.findByRole("dialog", {name:"Review reference changes"});

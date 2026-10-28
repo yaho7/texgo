@@ -1,10 +1,8 @@
 {
-  "projectStatusRefreshed": "Project status refreshed",
   "fileMonitoringIsTemporarilyUnavailable": "File monitoring is temporarily unavailable",
   "updatedValueImages": "Updated {arg0, plural, one {# image} other {# images}}",
   "valueReferencesAwaitApproval": "{arg0, plural, one {# reference} other {# references}} await approval",
   "resolveTheProjectSafetyIssueFirst": "Resolve the project safety issue first",
   "valueImagesNeedUpdating": "{arg0, plural, one {# image} other {# images}} need updating",
-  "valueProblemsNeedAttention": "{arg0, plural, one {# problem} other {# problems}} need attention",
-  "projectIsUpToDate": "Project is up to date"
+  "valueProblemsNeedAttention": "{arg0, plural, one {# problem} other {# problems}} need attention"
 }

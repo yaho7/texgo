@@ -52,7 +52,7 @@ export function useBackgroundAutomation(ports: Ports) {
     if (held()) { defer(); return; }
     const generation = latest.current.workspace.generation.current;
     const isCurrent = capture();
-    void latest.current.workspace.acceptProject(project, true, t("backgroundAutomation.projectStatusRefreshed")).catch((reason) => { if (isCurrent() && currentContext(generation)) { if (quiet) latest.current.setNotice(t("backgroundAutomation.fileMonitoringIsTemporarilyUnavailable")); else latest.current.setError(errorMessage(reason)); } });
+    void latest.current.workspace.acceptProject(project, true, "").catch((reason) => { if (isCurrent() && currentContext(generation)) { if (quiet) latest.current.setNotice(t("backgroundAutomation.fileMonitoringIsTemporarilyUnavailable")); else latest.current.setError(errorMessage(reason)); } });
   }
   function matchesObservation(identity: ObservationIdentity) {
     const p = latest.current;
@@ -139,7 +139,7 @@ export function useBackgroundAutomation(ports: Ports) {
     p.setRevision((value) => value + 1);
     const updated = report.result.images.filter((image) => !image.error).length;
     const status = report.project.status;
-    p.setNotice(updated ? t("backgroundAutomation.updatedValueImages", { arg0: updated }) : status.pendingReferences ? t("backgroundAutomation.valueReferencesAwaitApproval", { arg0: status.pendingReferences }) : status.blockingReason ? t("backgroundAutomation.resolveTheProjectSafetyIssueFirst") : status.pendingImages ? t("backgroundAutomation.valueImagesNeedUpdating", { arg0: status.pendingImages }) : status.problemCount ? t("backgroundAutomation.valueProblemsNeedAttention", { arg0: status.problemCount }) : t("backgroundAutomation.projectIsUpToDate"));
+    p.setNotice(updated ? t("backgroundAutomation.updatedValueImages", { arg0: updated }) : status.pendingReferences ? t("backgroundAutomation.valueReferencesAwaitApproval", { arg0: status.pendingReferences }) : status.blockingReason ? t("backgroundAutomation.resolveTheProjectSafetyIssueFirst") : status.pendingImages ? t("backgroundAutomation.valueImagesNeedUpdating", { arg0: status.pendingImages }) : status.problemCount ? t("backgroundAutomation.valueProblemsNeedAttention", { arg0: status.problemCount }) : "");
     // Read the preview before showing completion feedback, but never replace an open decision.
     void queuePreview(report.project, generation);
     if (updated) p.conversion.setCompletion(updated);
@@ -206,7 +206,7 @@ export function useBackgroundAutomation(ports: Ports) {
         await latest.current.onNavigate({ ...pendingNavigation.payload, project: fresh });
       } else {
         if (fresh.mainFile !== latest.current.workspace.current.current?.mainFile) return;
-        await latest.current.workspace.acceptProject(fresh, true, t("backgroundAutomation.projectStatusRefreshed"));
+        await latest.current.workspace.acceptProject(fresh, true, "");
         if (currentContext(generation)) await queuePreview(fresh, generation, true);
       }
     }).finally(() => { refreshing.current = false; });
@@ -225,7 +225,7 @@ export function useBackgroundAutomation(ports: Ports) {
         const next = await invoke<Project | null>("poll_workspace", { root });
         if (!next || disposed || !isCurrent() || !currentContext(generation) || next.mainFile !== latest.current.workspace.current.current?.mainFile) return;
         if (document.hidden || held() || latest.current.currentOperationKind()) { defer(); return; }
-        await latest.current.workspace.acceptProject(next, true, t("backgroundAutomation.projectStatusRefreshed"));
+        await latest.current.workspace.acceptProject(next, true, "");
       } catch { retryAt = Date.now() + 30_000; if (!disposed && currentContext(generation)) latest.current.setNotice(t("backgroundAutomation.fileMonitoringIsTemporarilyUnavailable")); }
       finally { pending = false; }
     }

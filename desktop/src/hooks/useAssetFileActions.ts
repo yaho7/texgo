@@ -24,7 +24,7 @@ export function useAssetFileActions(ports: Ports) {
       if (!isCurrent() || current.currentProject()?.mainFile !== project.mainFile) return;
       try { await invoke("asset_file_action", { imageId, action, expectedMainFile: project.mainFile }); }
       catch (error) { if (isCurrent()) throw error; return; }
-      if (isCurrent()) current.onNotice(action === "copyPath" ? t("assetFileActions.copiedTheFullImagePath") : t("assetFileActions.revealedTheImageInTheFileManager"));
+      if (isCurrent() && action === "copyPath") current.onNotice(t("assetFileActions.copiedTheFullImagePath"));
     });
   }
   return { revealPdf: (id: string) => { void perform(id, "revealPdf"); }, revealAsset: (id: string) => { void perform(id, "reveal"); }, copyAssetPath: (id: string) => { void perform(id, "copyPath"); } };
