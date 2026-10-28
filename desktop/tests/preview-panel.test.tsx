@@ -401,9 +401,9 @@ it("keeps fractional fit viewports inside their content box without introducing 
 it("keeps preview versions and zoom in the same viewer toolbar", () => {
   const {container} = render(<AssetPreview asset={asset} revision={1} result={result} />);
   const toolbar = container.querySelector(".preview-controls")!;
-  expect(within(toolbar as HTMLElement).getByRole("radio", {name:"原图", exact:true})).toBeInTheDocument();
-  expect(within(toolbar as HTMLElement).getByRole("radio", {name:"适应窗口", exact:true})).toBeInTheDocument();
-  expect(within(toolbar as HTMLElement).getByRole("radio", {name:"100%", exact:true})).toBeInTheDocument();
+  expect(within(toolbar as HTMLElement).getByRole("radio", {name:"原图"})).toBeInTheDocument();
+  expect(within(toolbar as HTMLElement).getByRole("radio", {name:"适应窗口"})).toBeInTheDocument();
+  expect(within(toolbar as HTMLElement).getByRole("radio", {name:"100%"})).toBeInTheDocument();
   expect(toolbar.parentElement).toBe(container.querySelector(".preview-surface")?.parentElement);
   expect(toolbar.querySelector('[aria-hidden="true"]')).toHaveTextContent("|");
 });
