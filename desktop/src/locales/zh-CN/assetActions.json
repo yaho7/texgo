@@ -1,0 +1,16 @@
+{
+  "revealInFinder": "在 Finder 中显示",
+  "showInFileExplorer": "在文件资源管理器中显示",
+  "showInFileManager": "在文件管理器中显示",
+  "rename": "重命名",
+  "viewDetails": "查看详细信息",
+  "reviewAndRepair": "查看并修复",
+  "viewDetails2": "查看详情",
+  "locateFile": "定位文件",
+  "processOnce": "手动处理一次",
+  "reprocessThisImage": "重新处理此图片",
+  "copyPath": "复制路径",
+  "resumeProcessing": "恢复处理",
+  "ignoreThisSession": "忽略本次",
+  "alwaysIgnore": "始终忽略"
+}

@@ -1,0 +1,9 @@
+{
+  "unknownTime": "Unknown time",
+  "valueValueValue": "{arg0}-{arg1}-{arg2}",
+  "todayValue": "Today · {arg0}",
+  "yesterdayValue": "Yesterday · {arg0}",
+  "valuePDFs": ", {arg0, plural, one {# PDF} other {# PDFs}}",
+  "andThePermanentIgnoreRule": ", and the permanent ignore rule",
+  "updated1SourceImageValueAndValueLaTeXReferencesValue": "Updated 1 source image{arg0} and {arg1, plural, one {# LaTeX reference} other {# LaTeX references}}{arg2}"
+}

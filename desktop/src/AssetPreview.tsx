@@ -1,3 +1,5 @@
+import { nativeText } from "./nativeText";
+import { t } from "./i18n";
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { FileImage, TriangleAlert, MoreHorizontal } from "lucide-react";
@@ -13,7 +15,7 @@ import "./inspector-settings.css";
 import "./preview.css";
 
 function PdfUnavailable({ onError }: { onError?: (message: string) => void }) {
-  useEffect(() => { onError?.("PDF 预览组件加载失败，请更新系统浏览器组件并重启应用"); }, []);
+  useEffect(() => { onError?.(t("assetPreview.couldNotLoadThePDFViewerUpdateYourSystemWebview")); }, []);
   return <></>;
 }
 const PdfPreview = lazy(() => import("./PdfPreview").catch(() => ({ default: PdfUnavailable })));
@@ -51,14 +53,14 @@ function PreviewContent({ asset, converted, revision, pdfPath, overlay = false, 
     void invoke<AssetPreviewData>("asset_preview", { imageId: asset.id, converted })
       .then((preview) => {
         if (disposed) return;
-        if (converted && preview.kind !== "pdf") { setError({ key: requestKey, message: "处理结果不是 PDF，无法对比" }); return; }
+        if (converted && preview.kind !== "pdf") { setError({ key: requestKey, message: t("assetPreview.theProcessedFileIsNotAPDFAndCannotBe") }); return; }
         const next = { key: requestKey, preview, label: converted ? pdfPath ?? asset.relativePath : asset.relativePath, width: asset.width ?? 1600, height: asset.height ?? 1000 };
         if (readyResponse.current?.preview.data === preview.data && readyResponse.current.preview.kind === preview.kind) {
           readyResponse.current = next; setReadyKey(requestKey); setPrevious(null);
         } else { setPrevious(readyResponse.current); }
         displayed.current = next; setResponse(next);
       })
-      .catch((reason: unknown) => { if (!disposed) setError({ key: requestKey, message: errorMessage(reason, "图片预览失败") }); });
+      .catch((reason: unknown) => { if (!disposed) setError({ key: requestKey, message: errorMessage(reason, t("assetPreview.imagePreviewFailed")) }); });
     return () => { disposed = true; };
   }, [asset.id, asset.path, asset.relativePath, asset.width, asset.height, converted, pdfPath, requestKey]);
 
@@ -72,13 +74,13 @@ function PreviewContent({ asset, converted, revision, pdfPath, overlay = false, 
   }
   function content(item: PreviewResponse, pending: boolean) {
     if (item.preview.kind === "pdf") return <Suspense fallback={null}><PdfPreview overlay={overlay} data={item.preview.data} label={item.label} onReady={() => markReady(item.key)} onError={(message) => { if (item.key === currentKey.current) setError({ key: item.key, message }); }} /></Suspense>;
-    return <div className="image-stage"><img src={item.preview.data} width={item.width} height={item.height} alt={`${pending ? "原始：" : "上一张："}${item.label}`} style={item.key !== currentKey.current ? { maxWidth: item.width, maxHeight: item.height, objectFit: "contain" } : undefined} onLoad={(event) => {
+    return <div className="image-stage"><img src={item.preview.data} width={item.width} height={item.height} alt={`${pending ? t("assetPreview.original") : t("assetPreview.previous")}${item.label}`} style={item.key !== currentKey.current ? { maxWidth: item.width, maxHeight: item.height, objectFit: "contain" } : undefined} onLoad={(event) => {
       const { naturalWidth, naturalHeight } = event.currentTarget;
       if (item.key === currentKey.current && naturalWidth && naturalHeight) {
         onNaturalSize?.(naturalWidth, naturalHeight);
         markReady(item.key, { width: asset.width ?? naturalWidth, height: asset.height ?? naturalHeight });
       } else markReady(item.key);
-    }} onError={() => { if (item.key === currentKey.current) setError({ key: item.key, message: "图片无法显示，请重新扫描后重试" }); }} /></div>;
+    }} onError={() => { if (item.key === currentKey.current) setError({ key: item.key, message: t("assetPreview.cannotDisplayThisImageRescanAndTryAgain") }); }} /></div>;
   }
   const current = response?.key === requestKey;
   const loaded = current && readyKey === requestKey;
@@ -89,9 +91,9 @@ function PreviewContent({ asset, converted, revision, pdfPath, overlay = false, 
     {response && <div key={response.key} className="preview-content-frame" data-ready={loaded || (!current && !previous)} data-stale={!current}>
       {content(response, true)}
     </div>}
-    {!hasFrame && !visibleError && <div className="preview-placeholder" role="status"><Skeleton className="h-36 w-4/5" /><span>正在载入{converted ? " PDF" : "原图"}…</span></div>}
-    {hasFrame && !loaded && !visibleError && <span className="preview-loading-note" role="status">正在载入{converted ? " PDF" : "原图"}…</span>}
-    {visibleError && <div className="preview-placeholder preview-error preview-load-error" role="alert"><TriangleAlert size={24} aria-hidden="true" /><span>{visibleError}</span></div>}
+    {!hasFrame && !visibleError && <div className="preview-placeholder" role="status"><Skeleton className="h-36 w-4/5" /><span>{t(converted ? "assetPreview.loadingPdf" : "assetPreview.loadingOriginal")}</span></div>}
+    {hasFrame && !loaded && !visibleError && <span className="preview-loading-note" role="status">{t(converted ? "assetPreview.loadingPdf" : "assetPreview.loadingOriginal")}</span>}
+    {visibleError && <div className="preview-placeholder preview-error preview-load-error" role="alert"><TriangleAlert size={24} aria-hidden="true" /><span>{nativeText(visibleError)}</span></div>}
   </div>;
 }
 
@@ -158,7 +160,7 @@ export default function AssetPreview({ asset, result, revision, busy = false, ig
     const bounds = artboard.current?.getBoundingClientRect();
     if (bounds?.width) setDivider(Math.max(0, Math.min(100, (event.clientX - bounds.left) / bounds.width * 100)));
   }
-  const problem = Boolean(asset && (["missing", "ambiguous", "unsupported"].includes(asset.status) || result?.error || statusLabel === "需要处理"));
+  const problem = Boolean(asset && (["missing", "ambiguous", "unsupported"].includes(asset.status) || result?.error || statusLabel === t("assetPreview.needsAttention")));
 
 
   const referencesByFile = new Map<string, ImageAsset["references"]>();
@@ -168,35 +170,35 @@ export default function AssetPreview({ asset, result, revision, busy = false, ig
     referencesByFile.set(reference.file, references);
   }
 
-  return <section className="preview-panel" aria-label="图片预览" tabIndex={0} onKeyDown={keydown}>
+  return <section className="preview-panel" aria-label={t("assetPreview.imagePreview")} tabIndex={0} onKeyDown={keydown}>
     <div className="preview-heading">
-      <div className="preview-heading-copy"><h2>预览</h2>{asset?.width && asset.height ? <p className="mt-1 text-xs text-muted-foreground tabular-nums">{asset.width} × {asset.height} px</p> : null}</div>
-      {asset && (onManualConvert || onIgnore) && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="当前图片操作" disabled={busy}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuGroup>
-        {onManualConvert && <DropdownMenuItem disabled={!canConvert} onSelect={() => onManualConvert(asset.id)}>{ignored ? "手动处理一次" : "重新处理此图片"}</DropdownMenuItem>}
+      <div className="preview-heading-copy"><h2>{t("assetPreview.preview")}</h2>{asset?.width && asset.height ? <p className="mt-1 text-xs text-muted-foreground tabular-nums">{asset.width} × {asset.height} px</p> : null}</div>
+      {asset && (onManualConvert || onIgnore) && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={t("assetPreview.currentImageActions")} disabled={busy}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuGroup>
+        {onManualConvert && <DropdownMenuItem disabled={!canConvert} onSelect={() => onManualConvert(asset.id)}>{ignored ? t("assetPreview.processOnce") : t("assetPreview.reprocessThisImage")}</DropdownMenuItem>}
         {onManualConvert && onIgnore && <DropdownMenuSeparator />}
-        {onIgnore && (ignored ? <DropdownMenuItem onSelect={() => onIgnore(asset.id, "none")}>恢复处理</DropdownMenuItem> : <DropdownMenuItem onSelect={() => onIgnore(asset.id, "session")}>忽略本次</DropdownMenuItem>)}
-        {onIgnore && ignoreMode !== "permanent" && <DropdownMenuItem onSelect={() => onIgnore(asset.id, "permanent")}>始终忽略</DropdownMenuItem>}
+        {onIgnore && (ignored ? <DropdownMenuItem onSelect={() => onIgnore(asset.id, "none")}>{t("assetPreview.resumeProcessing")}</DropdownMenuItem> : <DropdownMenuItem onSelect={() => onIgnore(asset.id, "session")}>{t("assetPreview.ignoreThisSession")}</DropdownMenuItem>)}
+        {onIgnore && ignoreMode !== "permanent" && <DropdownMenuItem onSelect={() => onIgnore(asset.id, "permanent")}>{t("assetPreview.alwaysIgnore")}</DropdownMenuItem>}
       </DropdownMenuGroup></DropdownMenuContent></DropdownMenu>}
 
-      <ToggleGroup type="single" value={visibleMode} onValueChange={(value) => { if (value) setMode(value); }} variant="outline" size="sm" aria-label="预览版本">
-        <ToggleGroupItem value="original" disabled={!asset}>原图</ToggleGroupItem><ToggleGroupItem value="pdf" disabled={!hasConverted}>PDF</ToggleGroupItem><ToggleGroupItem value="compare" disabled={!hasConverted}>对比</ToggleGroupItem>
+      <ToggleGroup type="single" value={visibleMode} onValueChange={(value) => { if (value) setMode(value); }} variant="outline" size="sm" aria-label={t("assetPreview.previewVersion")}>
+        <ToggleGroupItem value="original" disabled={!asset}>{t("assetPreview.original2")}</ToggleGroupItem><ToggleGroupItem value="pdf" disabled={!hasConverted}>PDF</ToggleGroupItem><ToggleGroupItem value="compare" disabled={!hasConverted}>{t("assetPreview.compare")}</ToggleGroupItem>
       </ToggleGroup>
     </div>
-    {!sourcePdf && <div className="preview-scale-controls"><ToggleGroup type="single" value={scale} onValueChange={(value) => { if (value) setScale(value); }} variant="outline" size="sm" aria-label="预览缩放">
-      <ToggleGroupItem value="fit" disabled={unavailable}>适应窗口</ToggleGroupItem><ToggleGroupItem value="actual" disabled={unavailable}>100%</ToggleGroupItem>
+    {!sourcePdf && <div className="preview-scale-controls"><ToggleGroup type="single" value={scale} onValueChange={(value) => { if (value) setScale(value); }} variant="outline" size="sm" aria-label={t("assetPreview.previewZoom")}>
+      <ToggleGroupItem value="fit" disabled={unavailable}>{t("assetPreview.fitToWindow")}</ToggleGroupItem><ToggleGroupItem value="actual" disabled={unavailable}>100%</ToggleGroupItem>
     </ToggleGroup></div>}
     <div ref={surface} className="preview-surface" data-scale={scale} data-dragging={dragging} data-resetting={resetting} onPointerDown={(event) => { if (!(event.target as HTMLElement).closest('button, input, [role="slider"]')) event.currentTarget.closest<HTMLElement>(".preview-panel")?.focus(); }}>
-      {unavailable ? <Empty><EmptyHeader><EmptyMedia variant="icon"><FileImage aria-hidden="true" /></EmptyMedia><EmptyTitle>{asset ? asset.status === "missing" ? "文件缺失" : asset.status === "ambiguous" ? "找到多个候选文件" : "此图片暂不可预览" : "选择图片查看预览"}</EmptyTitle></EmptyHeader></Empty> : <>
+      {unavailable ? <Empty><EmptyHeader><EmptyMedia variant="icon"><FileImage aria-hidden="true" /></EmptyMedia><EmptyTitle>{asset ? asset.status === "missing" ? t("assetPreview.missingFile") : asset.status === "ambiguous" ? t("assetPreview.multipleCandidateFilesFound") : t("assetPreview.previewUnavailableForThisImage") : t("assetPreview.selectAnImageToPreview")}</EmptyTitle></EmptyHeader></Empty> : <>
         <div ref={artboard} className="preview-artboard" style={{ width: sourcePdf ? size.width : Math.max(size.width, width + 28), height: sourcePdf ? size.height : Math.max(size.height, height + 28) }}>
         <div className="comparison-frame" data-native-known={sourcePdf || Boolean(dimensions)} style={{ width, height, visibility: visibleMode === "pdf" ? "hidden" : undefined }}>
-          <section className="comparison-layer" aria-label="原图预览"><PreviewContent asset={asset!} converted={false} revision={revision} onNaturalSize={(width, height) => setNatural({ key: sourceKey, width, height })} /></section>
+          <section className="comparison-layer" aria-label={t("assetPreview.originalPreview")}><PreviewContent asset={asset!} converted={false} revision={revision} onNaturalSize={(width, height) => setNatural({ key: sourceKey, width, height })} /></section>
         </div>
         {showPdf && <div className="comparison-clip" style={{ clipPath: compare ? `inset(0 0 0 ${divider}%)` : undefined }}>
-          <div className="comparison-frame" style={{ width, height }}><section className="comparison-layer" aria-label={compare ? "PDF 对比预览" : "PDF 预览"}><PreviewContent asset={asset!} converted revision={revision} pdfPath={result?.pdfPath} overlay /></section></div>
+          <div className="comparison-frame" style={{ width, height }}><section className="comparison-layer" aria-label={compare ? t("assetPreview.pDFComparisonPreview") : t("assetPreview.pDFPreview")}><PreviewContent asset={asset!} converted revision={revision} pdfPath={result?.pdfPath} overlay /></section></div>
         </div>}
         {compare && <>
-          <span className="comparison-label comparison-label-left">原图</span><span className="comparison-label comparison-label-right">PDF</span>
-          <div role="slider" tabIndex={0} aria-label="原图与 PDF 分隔线" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(divider)} aria-valuetext={`原图 ${Math.round(divider)}%，PDF ${100 - Math.round(divider)}%`} aria-orientation="horizontal" className="comparison-divider" style={{ left: `${divider}%` }}
+          <span className="comparison-label comparison-label-left">{t("assetPreview.original2")}</span><span className="comparison-label comparison-label-right">PDF</span>
+          <div role="slider" tabIndex={0} aria-label={t("assetPreview.originalAndPDFDivider")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(divider)} aria-valuetext={t("assetPreview.originalValuePDFValue", { arg0: Math.round(divider), arg1: 100 - Math.round(divider) })} aria-orientation="horizontal" className="comparison-divider" style={{ left: `${divider}%` }}
             onDoubleClick={resetDivider} onPointerDown={(event) => { event.preventDefault(); setResetting(false); setDragging(true); event.currentTarget.focus(); event.currentTarget.setPointerCapture?.(event.pointerId); moveDivider(event); }}
             onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture?.(event.pointerId)) moveDivider(event); }}
             onPointerUp={(event) => { setDragging(false); event.currentTarget.releasePointerCapture?.(event.pointerId); }} onPointerCancel={() => setDragging(false)} onLostPointerCapture={() => setDragging(false)}><span aria-hidden="true">‹ ›</span></div>
@@ -205,24 +207,24 @@ export default function AssetPreview({ asset, result, revision, busy = false, ig
       </>}
     </div>
     <div className="preview-metadata">
-      {hasConverted && <span>结果 {formatBytes(pdfBytes ?? null)}</span>}
-      {saving !== null && <span className="preview-savings">{saving >= 0 ? `节省 ${Number(saving.toFixed(1))}%` : `增大 ${Number((-saving).toFixed(1))}%`}</span>}
+      {hasConverted && <span>{t("assetPreview.output")}{formatBytes(pdfBytes ?? null)}</span>}
+      {saving !== null && <span className="preview-savings">{saving >= 0 ? t("assetPreview.valueSmaller", { arg0: Number(saving.toFixed(1)) }) : t("assetPreview.valueLarger", { arg0: Number((-saving).toFixed(1)) })}</span>}
     </div>
-    {asset && <section aria-label="引用与输出" className="mx-[18px] mb-3 shrink-0 border-t border-border text-xs">
+    {asset && <section aria-label={t("assetPreview.referencesAndOutput")} className="mx-[18px] mb-3 shrink-0 border-t border-border text-xs">
       <details className="group border-b border-border py-2">
-        <summary className="cursor-pointer rounded px-1 py-1.5 font-medium focus-visible:outline-2 focus-visible:outline-primary">引用位置（{asset.references.length}）</summary>
-        <ul className="max-h-36 overflow-auto px-1">{[...referencesByFile].map(([file, references]) => <li key={file} className="flex items-center justify-between gap-3 border-t border-border/50 py-2"><span className="min-w-0 truncate" title={file}>{file.split(/[\\/]/).pop()}</span><span className="max-w-[55%] text-right text-muted-foreground" title={`${references.length} 处引用`}>{references.map((reference) => `第 ${reference.line} 行`).join("、")}</span></li>)}</ul>
-        {!asset.references.length && <p className="px-1 py-2 text-muted-foreground">未发现 LaTeX 引用</p>}
+        <summary className="cursor-pointer rounded px-1 py-1.5 font-medium focus-visible:outline-2 focus-visible:outline-primary">{t("assetPreview.referenceLocations", {count:asset.references.length})}</summary>
+        <ul className="max-h-36 overflow-auto px-1">{[...referencesByFile].map(([file, references]) => <li key={file} className="flex items-center justify-between gap-3 border-t border-border/50 py-2"><span className="min-w-0 truncate" title={file}>{file.split(/[\\/]/).pop()}</span><span className="max-w-[55%] text-right text-muted-foreground" title={t("assetPreview.valueReferences", { arg0: references.length })}>{references.map((reference) => t("assetPreview.lineValue", { arg0: reference.line })).join("、")}</span></li>)}</ul>
+        {!asset.references.length && <p className="px-1 py-2 text-muted-foreground">{t("assetPreview.noLaTeXReferencesFound")}</p>}
       </details>
-      {hasConverted && <div className="px-1 py-3"><h3 className="mb-1 font-medium">输出文件</h3><p className="break-all leading-relaxed text-muted-foreground">{result?.pdfPath}</p></div>}
+      {hasConverted && <div className="px-1 py-3"><h3 className="mb-1 font-medium">{t("assetPreview.outputFile")}</h3><p className="break-all leading-relaxed text-muted-foreground">{result?.pdfPath}</p></div>}
     </section>}
     {asset && problem && <div className="inspector-image-state">
-      <p>{result?.error ?? asset.message}</p>
-      {asset.status === "missing" && <p>引用路径：<code>{asset.relativePath}</code></p>}
+      <p>{nativeText(result?.error ?? asset.message ?? "")}</p>
+      {asset.status === "missing" && <p>{t("assetPreview.referencedPath")}<code>{asset.relativePath}</code></p>}
       <div className="inspector-image-actions">
-        {asset.status === "ready" && !ignored && onRetry && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onRetry(asset.id)}>重试此图片</Button>}
-        {onLocate && ["missing", "ambiguous"].includes(asset.status) && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onLocate(asset.id)}>定位文件</Button>}
-        {onInspect && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onInspect(asset.id)}>{["missing", "ambiguous"].includes(asset.status) ? "修复" : "查看详情"}</Button>}
+        {asset.status === "ready" && !ignored && onRetry && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onRetry(asset.id)}>{t("assetPreview.retryThisImage")}</Button>}
+        {onLocate && ["missing", "ambiguous"].includes(asset.status) && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onLocate(asset.id)}>{t("assetPreview.locateFile")}</Button>}
+        {onInspect && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onInspect(asset.id)}>{["missing", "ambiguous"].includes(asset.status) ? t("assetPreview.repair") : t("assetPreview.viewDetails")}</Button>}
       </div>
     </div>}
 

@@ -1,0 +1,21 @@
+{
+  "checkingForUpdates": "Checking for updates…",
+  "downloadingAndVerifyingTheSignature": "Downloading and verifying the signature…",
+  "installingUpdate": "Installing update…",
+  "restarting": "Restarting…",
+  "updateInstalledRestartToUseIt": "Update installed. Restart to use it.",
+  "versionValueIsVerifiedAndReadyToInstall": "Version {arg0} is verified and ready to install",
+  "newVersionValue": "New version: {arg0}",
+  "youHaveTheLatestVersion": "You have the latest version",
+  "couldNotCheckForUpdates": "Could not check for updates",
+  "appUpdate": "App update",
+  "currentVersionValue": "Current version: {arg0}",
+  "checkForANewVersion": "Check for a new version",
+  "installationWillCloseAndReopenTexgoSaveYourWorkFirst": "Installation will close and reopen Texgo. Save your work first.",
+  "restartTexgoAfterInstallation": "Restart Texgo after installation.",
+  "close": "Close",
+  "downloadUpdate": "Download update",
+  "installUpdate": "Install update",
+  "restartApp": "Restart app",
+  "checkAgain": "Check again"
+}

@@ -1,3 +1,5 @@
+import { nativeText } from "./nativeText";
+import { t, getLocale } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import AssetThumbnail from "./AssetThumbnail";
 import { useAssetThumbnails } from "./hooks/useAssetThumbnails";
@@ -22,10 +24,10 @@ import { formatBytes } from "./utils";
 import { motionDuration } from "./motion";
 
 export const statusLabels: Record<AssetStatus, string> = {
-  ready: "待处理",
-  missing: "文件缺失",
-  unsupported: "不支持",
-  ambiguous: "路径不明确",
+  get ready() { return t("assetList.pending"); },
+  get missing() { return t("assetList.missingFile"); },
+  get unsupported() { return t("assetList.unsupported"); },
+  get ambiguous() { return t("assetList.ambiguousPath"); },
   pdf: "PDF",
 };
 
@@ -110,7 +112,7 @@ export default function AssetList(props: Props) {
     if (!rename || savingRename.current || !props.onRename) return;
     const name = rename.name;
     if (!name.trim() || name === "." || name === ".." || /[\\/\x00-\x1f\x7f]/.test(name) || /[<>:"|?*]/.test(name) || /[. ]$/.test(name) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) {
-      setRename({ ...rename, error: "请输入有效的文件名，不包含路径、扩展名或系统保留字符" }); return;
+      setRename({ ...rename, error: t("assetList.enterAValidFilenameWithoutAPathExtensionOrReserved") }); return;
     }
     savingRename.current = true; setRename({ ...rename, saving: true, error: null });
     try {
@@ -123,7 +125,7 @@ export default function AssetList(props: Props) {
       const renamed = latestImages.current.find((image) => image.relativePath.replaceAll("\\", "/") === newPath);
       setRenamedId(renamed?.id ?? rename.id); setRenamedPath(renamed ? null : newPath); setRename(null);
     }
-    catch (reason) { renameIdentity.current = null; setRename({ ...rename, saving: false, error: errorMessage(reason, "无法安全重命名，请重新扫描后重试") }); requestAnimationFrame(() => renameRef.current?.focus()); }
+    catch (reason) { renameIdentity.current = null; setRename({ ...rename, saving: false, error: errorMessage(reason, t("assetList.cannotRenameSafelyRescanAndTryAgain")) }); requestAnimationFrame(() => renameRef.current?.focus()); }
     finally { savingRename.current = false; }
   }
   const pageSize = 40;
@@ -161,10 +163,10 @@ export default function AssetList(props: Props) {
   }, [presence.exiting]);
   const ignoredCount = sourceImages.filter((image) => image.ignoreMode ? image.ignoreMode !== "none" : props.ignored?.has(image.id)).length;
   const summary = [
-    { value: "pending", label: "待处理", count: props.pendingIds.size },
-    { value: "problems", label: "问题", count: props.problemIds.size },
-    { value: "completed", label: "已完成", count: props.completedIds.size },
-    { value: "all", label: "全部", count: sourceImages.length },
+    { value: "pending", label: t("assetList.pending"), count: props.pendingIds.size },
+    { value: "problems", label: t("assetList.problems"), count: props.problemIds.size },
+    { value: "completed", label: t("assetList.completed"), count: props.completedIds.size },
+    { value: "all", label: t("assetList.allImages"), count: sourceImages.length },
   ];
   const scrollArea = useRef<HTMLDivElement>(null);
   const previousStates = useRef<Record<string, string>>({});
@@ -225,34 +227,34 @@ export default function AssetList(props: Props) {
     </Group>);
   }
   return (
-    <section className="asset-panel @container flex min-h-0 min-w-0 flex-1 flex-col bg-background" aria-label="项目图片">
+    <section className="asset-panel @container flex min-h-0 min-w-0 flex-1 flex-col bg-background" aria-label={t("assetList.projectImages")}>
       <header hidden={props.showSearchAndFilters === false} className="flex shrink-0 flex-col gap-3 px-4 py-3">
-        <h2 className="sr-only">项目图片</h2>
+        <h2 className="sr-only">{t("assetList.projectImages")}</h2>
         <div className="flex min-w-0 items-center gap-2">
           <InputGroup className="min-w-0 flex-1">
-            <InputGroupInput type="search" name="imageSearch" autoComplete="off" spellCheck={false} aria-label="搜索图片" placeholder="搜索路径或格式…" value={props.search} onChange={(event) => props.onSearch(event.target.value)} />
+            <InputGroupInput type="search" name="imageSearch" autoComplete="off" spellCheck={false} aria-label={t("assetList.searchImages")} placeholder={t("assetList.searchPathsOrFormats")} value={props.search} onChange={(event) => props.onSearch(event.target.value)} />
             <InputGroupAddon><Search aria-hidden="true" /></InputGroupAddon>
           </InputGroup>
-          {ignoredCount > 0 && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="更多筛选"><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuGroup><DropdownMenuItem onSelect={() => props.onFilter("ignored")}>已忽略 {ignoredCount}</DropdownMenuItem></DropdownMenuGroup></DropdownMenuContent></DropdownMenu>}
+          {ignoredCount > 0 && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={t("assetList.moreFilters")}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuGroup><DropdownMenuItem onSelect={() => props.onFilter("ignored")}>{t("assetList.ignored")}{ignoredCount}</DropdownMenuItem></DropdownMenuGroup></DropdownMenuContent></DropdownMenu>}
         </div>
-        <ToggleGroup type="single" className="asset-summary" value={props.filter} onValueChange={(value) => { if (value) props.onFilter(value); }} aria-label="图片状态摘要">
+        <ToggleGroup type="single" className="asset-summary" value={props.filter} onValueChange={(value) => { if (value) props.onFilter(value); }} aria-label={t("assetList.imageStatusFilters")}>
           {summary.map((item) => <ToggleGroupItem key={item.value} value={item.value} aria-label={`${item.label} ${item.count}`}><span>{item.label}</span><span className="tabular-nums">{item.count}</span></ToggleGroupItem>)}
         </ToggleGroup>
       </header>
       {props.showSearchAndFilters !== false && <Separator />}
       <div ref={scrollArea} className="asset-scroll min-h-0 flex-1 overflow-auto">
         <Table className="table-fixed asset-filter-content min-w-[560px]" data-filter={props.filter}>
-          <TableCaption className="sr-only">项目图片及处理状态</TableCaption>
+          <TableCaption className="sr-only">{t("assetList.projectImagesAndProcessingStatus")}</TableCaption>
           <TableHeader>
             <TableRow>
               {props.selectionMode && <TableHead className="asset-selection-cell w-12">
-                <label className="asset-selection-target"><Checkbox aria-label="选择当前列表" checked={allChecked ? true : checkedCount > 0 ? "indeterminate" : false} disabled={props.busy || readyIds.length === 0} onCheckedChange={() => props.onSelectAll(readyIds, !allChecked)} /></label>
+                <label className="asset-selection-target"><Checkbox aria-label={t("assetList.selectVisibleImages")} checked={allChecked ? true : checkedCount > 0 ? "indeterminate" : false} disabled={props.busy || readyIds.length === 0} onCheckedChange={() => props.onSelectAll(readyIds, !allChecked)} /></label>
               </TableHead>}
-              <TableHead>名称</TableHead>
-              <TableHead className="w-14 text-center">格式</TableHead>
-              <TableHead className="w-20 text-right">大小</TableHead>
-              <TableHead className="w-24 text-center">状态</TableHead>
-              <TableHead className="w-9 text-center"><span className="sr-only">图片操作</span></TableHead>
+              <TableHead>{t("assetList.name")}</TableHead>
+              <TableHead className="w-14 text-center">{t("assetList.format")}</TableHead>
+              <TableHead className="w-20 text-right">{t("assetList.size")}</TableHead>
+              <TableHead className={getLocale() === "en-US" ? "w-28 text-center" : "w-24 text-center"}>{t("assetList.status")}</TableHead>
+              <TableHead className="w-9 text-center"><span className="sr-only">{t("assetList.imageActions")}</span></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -265,7 +267,7 @@ export default function AssetList(props: Props) {
               const problem = props.problemIds.has(asset.id);
               const ignoreMode = asset.ignoreMode ?? (props.ignored?.has(asset.id) ? "session" : "none");
               const ignored = ignoreMode !== "none";
-              const label = ignored ? "已忽略" : problem ? referenceProblem ? statusLabels[asset.status] : "需要处理" : result?.cancelled ? "已取消" : converted ? "已完成" : updatable ? "有更新" : statusLabels[asset.status];
+              const label = ignored ? t("assetList.ignored") : problem ? referenceProblem ? statusLabels[asset.status] : t("assetList.needsAttention") : result?.cancelled ? t("assetList.cancelled") : converted ? t("assetList.completed") : updatable ? t("assetList.updatedSource") : statusLabels[asset.status];
               const normalizedPath = asset.relativePath.replaceAll("\\", "/");
               const slash = normalizedPath.lastIndexOf("/");
               const filename = normalizedPath.slice(slash + 1);
@@ -279,19 +281,19 @@ export default function AssetList(props: Props) {
                   }
                 }} data-state={props.activeId === asset.id ? "selected" : undefined} data-exiting={isExiting || undefined} aria-hidden={isExiting || undefined} data-disabled={Boolean(props.previewDisabled) || isExiting} data-highlight={renamedId === asset.id ? "success" : highlights[asset.id]} className="asset-row h-[72px]">
                   {props.selectionMode && <TableCell className="asset-selection-cell">
-                    <label className="asset-selection-target"><Checkbox aria-label={`选择 ${asset.relativePath}`} checked={props.selected.has(asset.id)} disabled={props.busy || isExiting || !convertible.has(asset.id)} onCheckedChange={() => props.onSelect(asset.id)} /></label>
+                    <label className="asset-selection-target"><Checkbox aria-label={t("assetList.selectValue", { arg0: asset.relativePath })} checked={props.selected.has(asset.id)} disabled={props.busy || isExiting || !convertible.has(asset.id)} onCheckedChange={() => props.onSelect(asset.id)} /></label>
                   </TableCell>}
                   <TableCell className="min-w-0 whitespace-normal">
                     <div className="flex min-w-0 items-center gap-2.5"><AssetThumbnail source={thumbnail(asset.id)} problem={problem} /><div className="flex min-w-0 flex-1 flex-col gap-1">
                       {rename?.id === asset.id ? <div className="asset-rename" onClick={(event) => event.stopPropagation()}>
-                        <div className="asset-rename-field"><Input ref={renameRef} aria-label="图片新名称" value={rename.name} readOnly={rename.saving} aria-invalid={Boolean(rename.error)} aria-describedby={rename.error ? `rename-error-${asset.id}` : undefined} onChange={(event) => setRename({ ...rename, name: event.target.value, error: null })} onBlur={(event) => {
+                        <div className="asset-rename-field"><Input ref={renameRef} aria-label={t("assetList.newImageName")} value={rename.name} readOnly={rename.saving} aria-invalid={Boolean(rename.error)} aria-describedby={rename.error ? `rename-error-${asset.id}` : undefined} onChange={(event) => setRename({ ...rename, name: event.target.value, error: null })} onBlur={(event) => {
                           if (savingRename.current) return;
                           const target = event.relatedTarget;
                           if (renameHandoff.current && (!target || target instanceof HTMLElement && target.closest('.asset-preview-trigger, .asset-more, [role="menu"]'))) return;
                           renameHandoff.current = false; setRename(null);
                         }} onKeyDown={(event) => { if (event.nativeEvent.isComposing) return; if (event.key === "Enter") { event.preventDefault(); void submitRename(); } else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (!savingRename.current) setRename(null); } }} /></div>
                         {rename.error && <p role="alert" id={`rename-error-${asset.id}`} className="absolute left-2 top-full z-10 max-w-80 rounded border border-destructive/30 bg-background px-2 py-1 text-xs text-destructive shadow-sm">{rename.error}</p>}
-                      </div> : <Button variant="ghost" className="asset-preview-trigger h-auto min-w-0 justify-start px-0 py-0 hover:bg-transparent!" disabled={props.previewDisabled || isExiting} aria-label={`预览 ${asset.relativePath}`} aria-pressed={props.activeId === asset.id} onClick={() => props.onActivate(asset.id)} title={asset.relativePath}>
+                      </div> : <Button variant="ghost" className="asset-preview-trigger h-auto min-w-0 justify-start px-0 py-0 hover:bg-transparent!" disabled={props.previewDisabled || isExiting} aria-label={t("assetList.previewValue", { arg0: asset.relativePath })} aria-pressed={props.activeId === asset.id} onClick={() => props.onActivate(asset.id)} title={asset.relativePath}>
                         <span className="truncate asset-filename" onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); beginRename(asset); }}>{baseName}</span>
                       </Button>}
                     </div></div>
@@ -299,24 +301,24 @@ export default function AssetList(props: Props) {
                   <TableCell className="text-center"><span className="text-xs text-muted-foreground">{asset.format.toUpperCase()}</span></TableCell>
                   <TableCell className="text-right"><span className="text-xs tabular-nums text-muted-foreground">{formatBytes(asset.bytes)}</span></TableCell>
                   <TableCell className="text-center">
-                    <Badge key={label} className={updatable && !problem ? "status-badge update-badge" : "status-badge"} variant={ignored ? "secondary" : problem ? referenceProblem ? "warning" : "destructive" : converted ? "success" : "secondary"} title={asset.message ?? result?.error ?? (ignored ? ignoreMode === "permanent" ? "始终忽略" : "仅本次忽略" : updatable ? "源图片或 SVG 依赖已变化，可重新处理" : result?.pdfPath ?? undefined)}>
+                    <Badge key={label} className={updatable && !problem ? "status-badge update-badge" : "status-badge"} variant={ignored ? "secondary" : problem ? referenceProblem ? "warning" : "destructive" : converted ? "success" : "secondary"} title={nativeText(asset.message ?? result?.error ?? "") || (ignored ? ignoreMode === "permanent" ? t("assetList.alwaysIgnore") : t("assetList.ignoreForThisSession") : updatable ? t("assetList.theSourceImageOrSVGDependencyChangedAndCanBe") : result?.pdfPath ?? undefined)}>
                       {converted && !problem && !ignored && <CircleCheck data-icon="inline-start" aria-hidden="true" />}{updatable && !problem && !ignored && <RefreshCw data-icon="inline-start" aria-hidden="true" />}{label}
                     </Badge>
                   </TableCell>
                   <TableCell className="pr-2 text-right">
-                    <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" className="asset-more size-6! min-h-6! min-w-6!" aria-label={`更多操作 ${asset.relativePath}`} disabled={props.busy || isExiting || Boolean(rename)}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" onCloseAutoFocus={(event) => { if (renameHandoff.current || renameRef.current) event.preventDefault(); }}>{menuItems(asset, isExiting, false)}</DropdownMenuContent></DropdownMenu>
+                    <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" className="asset-more size-6! min-h-6! min-w-6!" aria-label={t("assetList.moreActionsForValue", { arg0: asset.relativePath })} disabled={props.busy || isExiting || Boolean(rename)}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" onCloseAutoFocus={(event) => { if (renameHandoff.current || renameRef.current) event.preventDefault(); }}>{menuItems(asset, isExiting, false)}</DropdownMenuContent></DropdownMenu>
                   </TableCell>
                 </TableRow></ContextMenuTrigger><ContextMenuContent onCloseAutoFocus={(event) => { if (renameHandoff.current || renameRef.current) event.preventDefault(); }}>{menuItems(asset, isExiting, true)}</ContextMenuContent></ContextMenu>
               );
             })}
           </TableBody>
         </Table>
-        {props.images.length === 0 && <Empty><EmptyHeader><EmptyTitle>{props.total ? "没有匹配的图片" : "项目中还没有图片"}</EmptyTitle></EmptyHeader></Empty>}
+        {props.images.length === 0 && <Empty><EmptyHeader><EmptyTitle>{props.total ? t("assetList.noMatchingImages") : t("assetList.thisProjectHasNoImagesYet")}</EmptyTitle></EmptyHeader></Empty>}
       </div>
       {(showResultCount || pageCount > 1) && <><Separator />
       <footer className="flex shrink-0 items-center justify-between gap-3 px-4 py-2 text-xs text-muted-foreground">
-        <span>{showResultCount ? props.search.trim() || props.filter !== "all" ? `${props.images.length} 项结果` : `${props.total} 张图片` : ""}</span>
-        {pageCount > 1 && <div className="flex items-center gap-2"><Button variant="ghost" size="icon-sm" aria-label="上一页图片" disabled={page === 0} onClick={() => setPagination({ key: pageKey, page: page - 1 })}><ChevronLeft aria-hidden="true" /></Button><span className="tabular-nums">{page + 1} / {pageCount}</span><Button variant="ghost" size="icon-sm" aria-label="下一页图片" disabled={page + 1 >= pageCount} onClick={() => setPagination({ key: pageKey, page: page + 1 })}><ChevronRight aria-hidden="true" /></Button></div>}
+        <span>{showResultCount ? props.search.trim() || props.filter !== "all" ? t("assetList.valueResults", { arg0: props.images.length }) : t("assetList.valueImages", { arg0: props.total }) : ""}</span>
+        {pageCount > 1 && <div className="flex items-center gap-2"><Button variant="ghost" size="icon-sm" aria-label={t("assetList.previousImagePage")} disabled={page === 0} onClick={() => setPagination({ key: pageKey, page: page - 1 })}><ChevronLeft aria-hidden="true" /></Button><span className="tabular-nums">{page + 1} / {pageCount}</span><Button variant="ghost" size="icon-sm" aria-label={t("assetList.nextImagePage")} disabled={page + 1 >= pageCount} onClick={() => setPagination({ key: pageKey, page: page + 1 })}><ChevronRight aria-hidden="true" /></Button></div>}
       </footer></>}
     </section>
   );

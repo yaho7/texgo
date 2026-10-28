@@ -1,3 +1,4 @@
+import { t } from "./../i18n";
 import { useWorkspaceGuard } from "./useWorkspaceGuard";
 import type { DecisionAction } from "../state/businessDecision";
 import { useRef, useState } from "react";
@@ -39,7 +40,7 @@ export function useHistory(ports: HistoryPorts) {
       const entries = await invoke<ConversionHistoryEntry[]>("conversion_history");
       if (isCurrent()) setHistory(entries);
     } catch (reason) {
-      if (isCurrent()) { setHistory([]); latest.current.onError(`无法读取操作记录，请重新扫描后重试：${errorMessage(reason)}`); }
+      if (isCurrent()) { setHistory([]); latest.current.onError(t("history.couldNotReadHistoryRescanAndTryAgainValue", { arg0: errorMessage(reason) })); }
     }
   }
   function requestUndo(entry: ConversionHistoryEntry) { setUndoEntry(entry); }
@@ -57,10 +58,10 @@ export function useHistory(ports: HistoryPorts) {
       catch (reason) {
         if (!isCurrent()) return;
         setUndoEntry(null);
-        try { await latest.current.refresh("撤销未全部完成，已重新读取恢复记录"); }
+        try { await latest.current.refresh(t("history.undoIsIncompleteRecoveryRecordsHaveBeenReloaded")); }
         catch (refreshError) {
           if (!isCurrent()) return;
-          latest.current.discardProject(); throw new Error(`${errorMessage(reason)}；重新扫描失败：${errorMessage(refreshError)}`);
+          latest.current.discardProject(); throw new Error(t("history.valueRescanFailedValue", { arg0: errorMessage(reason), arg1: errorMessage(refreshError) }));
         }
         if (!isCurrent()) return;
         latest.current.restoreFocus();
@@ -69,7 +70,7 @@ export function useHistory(ports: HistoryPorts) {
       if (!isCurrent()) return;
       latest.current.restoreRename(next, entry);
       setUndoEntry(null);
-      await latest.current.acceptProject(next, true, "已撤销此次操作");
+      await latest.current.acceptProject(next, true, t("history.operationUndone"));
     }, "confirm-undo");
   }
   return { history, undoEntry, load, reset, requestUndo, dismissUndo, undoConversion };

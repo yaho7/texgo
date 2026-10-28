@@ -1,0 +1,20 @@
+{
+  "projectNavigation": "Project navigation",
+  "texgoHome": "Texgo Home",
+  "home": "Home",
+  "openProject": "Open project",
+  "currentProject": "Current project",
+  "images": "Images",
+  "history": "History",
+  "imageFilters": "Image filters",
+  "library": "Library",
+  "imageStatusFilters": "Image status filters",
+  "allImages": "All images",
+  "pending": "Pending",
+  "problems": "Problems",
+  "completed": "Completed",
+  "ignored": "Ignored",
+  "recentProjects": "Recent projects",
+  "openRecentProjectValue": "Open recent project {arg0}",
+  "removeRecentProjectValue": "Remove recent project {arg0}"
+}

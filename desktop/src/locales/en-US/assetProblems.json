@@ -1,0 +1,11 @@
+{
+  "imageReferenceProblem": "Image reference problem",
+  "closeImageProblem": "Close image problem",
+  "affectedReferences": "Affected references",
+  "candidateFiles": "Candidate files",
+  "findingCandidateFiles": "Finding candidate files",
+  "noMatchingCandidateFiles": "No matching candidate files",
+  "ignoreThisSession": "Ignore this session",
+  "locateFile": "Locate file",
+  "reviewRepair": "Review repair"
+}

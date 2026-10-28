@@ -1,4 +1,4 @@
-/** Display native paths without assuming the current user's home directory. */
+import { t } from "./i18n";
 export function recentProjectPath(path: string): { name: string; directory: string } {
   const separator = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   if (separator < 0) return { name: path, directory: "." };
@@ -8,15 +8,15 @@ export function recentProjectPath(path: string): { name: string; directory: stri
 
 export function recentOpenedAt(openedAt: number, now = Date.now()): { label: string; iso?: string } {
   const opened = new Date(openedAt);
-  if (!Number.isFinite(opened.getTime())) return { label: "时间未知" };
+  if (!Number.isFinite(opened.getTime())) return { label: t("recentPresentation.unknownTime") };
   const iso = opened.toISOString();
-  if (!Number.isFinite(now) || openedAt > now) return { label: "时间未知", iso };
+  if (!Number.isFinite(now) || openedAt > now) return { label: t("recentPresentation.unknownTime"), iso };
   // Calendar dates avoid 23/25-hour daylight-saving days and midnight rounding.
   const calendarDay = (date: Date) => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000;
   const days = calendarDay(new Date(now)) - calendarDay(opened);
   if (days === 0) {
     const minutes = Math.floor((now - openedAt) / 60_000);
-    return { label: minutes < 1 ? "刚刚" : minutes < 60 ? `${minutes} 分钟前` : "今天", iso };
+    return { label: minutes < 1 ? t("recentPresentation.justNow") : minutes < 60 ? t("recentPresentation.valueMinutesAgo", { arg0: minutes }) : t("recentPresentation.today"), iso };
   }
-  return { label: days === 1 ? "昨天" : `${days} 天前`, iso };
+  return { label: days === 1 ? t("recentPresentation.yesterday") : t("recentPresentation.valueDaysAgo", { arg0: days }), iso };
 }

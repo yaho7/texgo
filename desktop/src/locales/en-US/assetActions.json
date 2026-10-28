@@ -1,0 +1,16 @@
+{
+  "revealInFinder": "Reveal in Finder",
+  "showInFileExplorer": "Show in File Explorer",
+  "showInFileManager": "Show in file manager",
+  "rename": "Rename",
+  "viewDetails": "View details",
+  "reviewAndRepair": "Review and repair",
+  "viewDetails2": "View details",
+  "locateFile": "Locate file",
+  "processOnce": "Process once",
+  "reprocessThisImage": "Reprocess this image",
+  "copyPath": "Copy path",
+  "resumeProcessing": "Resume processing",
+  "ignoreThisSession": "Ignore this session",
+  "alwaysIgnore": "Always ignore"
+}

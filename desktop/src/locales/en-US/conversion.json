@@ -1,0 +1,11 @@
+{
+  "cancelledNoImagesCompleted": "Cancelled: no images completed",
+  "noPDFGenerated": "No PDF generated",
+  "noProcessingResultReturned": "No processing result returned",
+  "cancelledValueImagesCompleted": "Cancelled: {arg0, plural, one {# image} other {# images}} completed",
+  "valueImagesNeedAttention": "; {arg0, plural, one {# image} other {# images}} need attention",
+  "updatedValueImagesValue": "Updated {arg0, plural, one {# image} other {# images}}{arg1}",
+  "updateInterruptedProjectStatusHasBeenReloaded": "Update interrupted. Project status has been reloaded.",
+  "valueRescanFailedValue": "{arg0}; rescan failed: {arg1}",
+  "couldNotCancelTryAgain": "Could not cancel. Try again."
+}

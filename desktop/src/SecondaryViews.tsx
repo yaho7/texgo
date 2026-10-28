@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { Component, lazy, Suspense, useState } from "react";
 import type { ComponentProps, ReactNode } from "react";
 import { Button } from "@/controls/button";
@@ -15,8 +16,8 @@ class LoadBoundary extends Component<{ children: ReactNode; fallback: ReactNode 
   render() { return this.state.failed ? this.props.fallback : this.props.children; }
 }
 function SettingsFallback({ onClose, failed = false, active = true }: { onClose: () => void; failed?: boolean; active?: boolean }) {
-  return <main id={active ? "main-content" : undefined} tabIndex={-1} className="settings-page" aria-label="设置" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
-    <h1>设置</h1><p role={failed ? "alert" : "status"}>{failed ? "无法加载设置。返回工作区后可重新打开应用再试。" : "正在加载设置…"}</p><Button variant="outline" onClick={onClose}>返回工作区</Button>
+  return <main id={active ? "main-content" : undefined} tabIndex={-1} className="settings-page" aria-label={t("common.settings")} onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
+    <h1>{t("common.settings")}</h1><p role={failed ? "alert" : "status"}>{failed ? t("secondaryViews.couldNotLoadSettingsReturnToTheWorkspaceAndReopen") : t("secondaryViews.loadingSettings")}</p><Button variant="outline" onClick={onClose}>{t("secondaryViews.backToWorkspace")}</Button>
   </main>;
 }
 export function SettingsView({ active = true, ...props }: ComponentProps<typeof SettingsPage>) {
@@ -28,10 +29,10 @@ export function HistoryView({ active, onReturn, ...props }: ComponentProps<typeo
   // Load on first activation, then retain expanded rows and pagination while hidden.
   const [visited, setVisited] = useState(active);
   if (active && !visited) setVisited(true);
-  return <div className="history-view page-enter" hidden={!active}>{visited && <LoadBoundary fallback={<><p role="alert">无法加载历史记录。重新打开应用后再试。</p><Button variant="outline" onClick={onReturn}>返回图片</Button></>}><Suspense fallback={<p role="status">正在加载历史记录…</p>}><History {...props} /></Suspense></LoadBoundary>}</div>;
+  return <div className="history-view page-enter" hidden={!active}>{visited && <LoadBoundary fallback={<><p role="alert">{t("secondaryViews.couldNotLoadHistoryReopenTheAppToTryAgain")}</p><Button variant="outline" onClick={onReturn}>{t("secondaryViews.backToImages")}</Button></>}><Suspense fallback={<p role="status">{t("secondaryViews.loadingHistory")}</p>}><History {...props} /></Suspense></LoadBoundary>}</div>;
 }
 function UpdateFallback({ onClose, failed = false }: { onClose: () => void; failed?: boolean }) {
-  return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}><DialogContent showCloseButton={false}><DialogHeader><DialogTitle>应用更新</DialogTitle><DialogDescription>{failed ? "无法加载应用更新。关闭后可重新打开应用再试。" : "正在加载应用更新…"}</DialogDescription></DialogHeader><p role={failed ? "alert" : "status"}>{failed ? "更新页面加载失败" : "正在加载…"}</p><DialogFooter><Button variant="outline" onClick={onClose}>关闭</Button></DialogFooter></DialogContent></Dialog>;
+  return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}><DialogContent showCloseButton={false}><DialogHeader><DialogTitle>{t("secondaryViews.appUpdate")}</DialogTitle><DialogDescription>{failed ? t("secondaryViews.couldNotLoadAppUpdatesCloseAndReopenTheApp") : t("secondaryViews.loadingAppUpdates")}</DialogDescription></DialogHeader><p role={failed ? "alert" : "status"}>{failed ? t("secondaryViews.couldNotLoadTheUpdatePage") : t("secondaryViews.loading")}</p><DialogFooter><Button variant="outline" onClick={onClose}>{t("secondaryViews.close")}</Button></DialogFooter></DialogContent></Dialog>;
 }
 export function UpdateView(props: ComponentProps<typeof ApplicationUpdate>) {
   return <LoadBoundary fallback={<UpdateFallback onClose={props.onClose} failed />}><Suspense fallback={<UpdateFallback onClose={props.onClose} />}><Update {...props} /></Suspense></LoadBoundary>;

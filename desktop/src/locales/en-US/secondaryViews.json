@@ -1,0 +1,14 @@
+{
+  "couldNotLoadSettingsReturnToTheWorkspaceAndReopen": "Could not load Settings. Return to the workspace and reopen the app to try again.",
+  "loadingSettings": "Loading Settings…",
+  "backToWorkspace": "Back to workspace",
+  "couldNotLoadHistoryReopenTheAppToTryAgain": "Could not load history. Reopen the app to try again.",
+  "backToImages": "Back to images",
+  "loadingHistory": "Loading history…",
+  "appUpdate": "App update",
+  "couldNotLoadAppUpdatesCloseAndReopenTheApp": "Could not load app updates. Close and reopen the app to try again.",
+  "loadingAppUpdates": "Loading app updates…",
+  "couldNotLoadTheUpdatePage": "Could not load the update page",
+  "loading": "Loading…",
+  "close": "Close"
+}

@@ -1,0 +1,8 @@
+{
+  "unknownTime": "时间未知",
+  "justNow": "刚刚",
+  "valueMinutesAgo": "{arg0} 分钟前",
+  "today": "今天",
+  "yesterday": "昨天",
+  "valueDaysAgo": "{arg0} 天前"
+}

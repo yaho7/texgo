@@ -1,3 +1,5 @@
+import { nativeText } from "./nativeText";
+import { t } from "./i18n";
 import { useId, useState } from "react";
 import { ArrowRight, EyeOff, FileSearch, FileWarning, LoaderCircle, X } from "lucide-react";
 import { Alert, AlertDescription } from "@/controls/alert";
@@ -51,25 +53,25 @@ function ProblemDialog(props: AssetProblemsProps & { asset: ImageAsset }) {
       >
         <div className="flex min-w-0 shrink-0 items-start justify-between gap-3 p-5">
           <DialogHeader className="min-w-0 text-left">
-            <DialogTitle>图片引用问题</DialogTitle>
+            <DialogTitle>{t("assetProblems.imageReferenceProblem")}</DialogTitle>
             <DialogDescription className="break-all">{props.asset.relativePath}</DialogDescription>
           </DialogHeader>
-          <Button variant="ghost" size="icon" aria-label="关闭图片问题" title="关闭图片问题" disabled={props.busy} onClick={props.onClose}>
+          <Button variant="ghost" size="icon" aria-label={t("assetProblems.closeImageProblem")} title={t("assetProblems.closeImageProblem")} disabled={props.busy} onClick={props.onClose}>
             <X aria-hidden="true" />
           </Button>
         </div>
         <Separator />
         <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-5">
-          {props.asset.message && <p className="break-words text-sm text-muted-foreground">{props.asset.message}</p>}
-          <ul aria-label="受影响的引用" className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
+          {props.asset.message && <p className="break-words text-sm text-muted-foreground">{nativeText(props.asset.message)}</p>}
+          <ul aria-label={t("assetProblems.affectedReferences")} className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
             {props.asset.references.map((reference) => (
               <li className="break-all" key={`${reference.file}:${reference.start}`} title={reference.file}>{relativeFile(reference.file, props.projectRoot)}:{reference.line}</li>
             ))}
           </ul>
           <FieldSet disabled={locked || !repairable} className="min-w-0 gap-3">
-            <FieldLegend variant="label">候选文件</FieldLegend>
-            {loading ? <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" aria-hidden="true" />正在查找候选文件</p>
-              : props.candidates.length === 0 ? <p className="text-sm text-muted-foreground">没有匹配的候选文件</p>
+            <FieldLegend variant="label">{t("assetProblems.candidateFiles")}</FieldLegend>
+            {loading ? <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" aria-hidden="true" />{t("assetProblems.findingCandidateFiles")}</p>
+              : props.candidates.length === 0 ? <p className="text-sm text-muted-foreground">{t("assetProblems.noMatchingCandidateFiles")}</p>
                 : <FieldGroup className="gap-3">
                   {props.candidates.map((candidate, index) => (
                     <Field key={candidate.path} orientation="horizontal" data-disabled={locked || !repairable}>
@@ -86,15 +88,14 @@ function ProblemDialog(props: AssetProblemsProps & { asset: ImageAsset }) {
                   ))}
                 </FieldGroup>}
           </FieldSet>
-          {props.error && <Alert variant="destructive"><FileWarning aria-hidden="true" /><AlertDescription className="break-words">{props.error}</AlertDescription></Alert>}
+          {props.error && <Alert variant="destructive"><FileWarning aria-hidden="true" /><AlertDescription className="break-words">{nativeText(props.error)}</AlertDescription></Alert>}
         </div>
         <Separator />
         <DialogFooter className="shrink-0 flex-wrap p-5">
-          <Button variant="ghost" disabled={props.busy} onClick={() => props.onIgnore(props.asset.id)}><EyeOff data-icon="inline-start" aria-hidden="true" />忽略本次</Button>
-          <Button variant="outline" disabled={locked || !repairable} onClick={() => props.onLocate(props.asset.id)}><FileSearch data-icon="inline-start" aria-hidden="true" />定位文件</Button>
+          <Button variant="ghost" disabled={props.busy} onClick={() => props.onIgnore(props.asset.id)}><EyeOff data-icon="inline-start" aria-hidden="true" />{t("assetProblems.ignoreThisSession")}</Button>
+          <Button variant="outline" disabled={locked || !repairable} onClick={() => props.onLocate(props.asset.id)}><FileSearch data-icon="inline-start" aria-hidden="true" />{t("assetProblems.locateFile")}</Button>
           <Button disabled={locked || !repairable || !chosen} onClick={() => { if (chosen && !locked && repairable) props.onChoose(props.asset.id, chosen.path); }}>
-            <ArrowRight data-icon="inline-start" aria-hidden="true" />查看修复
-          </Button>
+            <ArrowRight data-icon="inline-start" aria-hidden="true" />{t("assetProblems.reviewRepair")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

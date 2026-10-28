@@ -1,0 +1,5 @@
+{
+  "dPIMustBeAnIntegerFrom72To1200": "DPI must be an integer from 72 to 1200",
+  "qualityMustBeAnIntegerFrom1To100": "Quality must be an integer from 1 to 100",
+  "enterADirectoryInsideTheWorkspaceSuchAsFiguresPdf": "Enter a directory inside the workspace, such as figures-pdf. Parent paths and reserved names are not allowed."
+}

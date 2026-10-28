@@ -1,0 +1,6 @@
+{
+  "couldNotReadHistoryRescanAndTryAgainValue": "无法读取操作记录，请重新扫描后重试：{arg0}",
+  "undoIsIncompleteRecoveryRecordsHaveBeenReloaded": "撤销未全部完成，已重新读取恢复记录",
+  "valueRescanFailedValue": "{arg0}；重新扫描失败：{arg1}",
+  "operationUndone": "已撤销此次操作"
+}

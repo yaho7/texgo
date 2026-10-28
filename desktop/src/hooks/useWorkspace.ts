@@ -1,3 +1,4 @@
+import { t } from "./../i18n";
 import { useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -47,7 +48,7 @@ export function useWorkspace(ports: WorkspacePorts) {
     setFailedRecent(null);
     const saved = rememberWorkspace({ path: next.mainFile });
     setRecents(readRecents());
-    latest.current.onNotice(saved ? message ?? `已识别 ${next.status.totalImages} 张项目图片` : "项目已打开，最近记录暂未保存");
+    latest.current.onNotice(saved ? message ?? t("workspace.foundValueProjectImages", { arg0: next.status.totalImages }) : t("workspace.projectOpenedButTheRecentEntryCouldNotBeSaved"));
     await latest.current.loadHistory();
   }
   async function refresh(message?: string) {
@@ -62,7 +63,7 @@ export function useWorkspace(ports: WorkspacePorts) {
   }
   function openProject() {
     void latest.current.execute("opening", async () => {
-      const mainFile = await open({ multiple: false, directory: false, title: "打开 .tex 主文件", filters: [{ name: "LaTeX", extensions: ["tex"] }] });
+      const mainFile = await open({ multiple: false, directory: false, title: t("workspace.openATexMainFile"), filters: [{ name: "LaTeX", extensions: ["tex"] }] });
       if (typeof mainFile === "string") await acceptProject(await invoke<Project>("open_project", { mainFile }), false);
     });
   }
@@ -77,16 +78,16 @@ export function useWorkspace(ports: WorkspacePorts) {
   function closeProject() {
     if (latest.current.isBusy()) return;
     void latest.current.execute("opening", async () => {
-      await invoke("close_workspace"); discardProject(); latest.current.onNotice("已关闭当前项目");
+      await invoke("close_workspace"); discardProject(); latest.current.onNotice(t("workspace.currentProjectClosed"));
     });
   }
   function updateSettings(next: ConversionSettings) {
     setSettings(next);
-    if (current.current && !storeSettings(workspaceKey({ path: current.current.mainFile }), next)) latest.current.onNotice("设置仅保留在本次会话中，请检查应用存储权限");
+    if (current.current && !storeSettings(workspaceKey({ path: current.current.mainFile }), next)) latest.current.onNotice(t("workspace.settingsWereKeptForThisSessionOnlyCheckAppStorage"));
   }
   function forgetRecent(entry: RecentWorkspace) {
     const saved = removeRecent(entry); setRecents(readRecents());
-    latest.current.onNotice(saved ? "已移除最近记录，文件未删除" : "无法移除记录，请检查应用存储权限");
+    latest.current.onNotice(saved ? t("workspace.recentEntryRemovedTheFileWasNotDeleted") : t("workspace.cannotRemoveThisEntryCheckAppStoragePermissions"));
   }
   return { project, current, generation, contextKey, recents, failedRecent, settings,
     acceptProject, refresh, openProject, openRecent, openPath, closeProject, updateSettings, forgetRecent, discardProject, updateSnapshot };

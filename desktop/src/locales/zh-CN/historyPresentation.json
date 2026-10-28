@@ -1,0 +1,9 @@
+{
+  "unknownTime": "时间未知",
+  "valueValueValue": "{arg0}年{arg1}月{arg2}日",
+  "todayValue": "今天 · {arg0}",
+  "yesterdayValue": "昨天 · {arg0}",
+  "valuePDFs": "、{arg0} 个 PDF",
+  "andThePermanentIgnoreRule": "、永久忽略规则",
+  "updated1SourceImageValueAndValueLaTeXReferencesValue": "同步更新：1 张源图片{arg0}、{arg1} 处 LaTeX 引用{arg2}"
+}

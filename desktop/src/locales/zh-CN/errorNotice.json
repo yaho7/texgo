@@ -1,0 +1,7 @@
+{
+  "checkThatTheAffectedFilesAreAccessibleTechnicalDetailsExplain": "请检查相关文件是否仍可访问，并查看技术信息了解失败详情。",
+  "operationIncomplete": "操作未完成",
+  "affectedFiles": "相关文件：",
+  "technicalDetails": "技术信息",
+  "dismissError": "关闭错误提示"
+}

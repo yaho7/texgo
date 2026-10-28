@@ -1,0 +1,20 @@
+{
+  "projectNavigation": "项目导航",
+  "texgoHome": "Texgo 首页",
+  "home": "首页",
+  "openProject": "打开项目",
+  "currentProject": "当前项目",
+  "images": "图片",
+  "history": "操作记录",
+  "imageFilters": "图片筛选",
+  "library": "资料库",
+  "imageStatusFilters": "图片状态摘要",
+  "allImages": "全部",
+  "pending": "待处理",
+  "problems": "问题",
+  "completed": "已完成",
+  "ignored": "已忽略",
+  "recentProjects": "最近项目",
+  "openRecentProjectValue": "打开最近项目 {arg0}",
+  "removeRecentProjectValue": "移除最近记录 {arg0}"
+}

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit",
+    "check:i18n": "node scripts/check-i18n.mjs",
     "test": "vitest run",
     "test:pdf": "node --test tests/pdf-engine.test.mjs",
     "build": "vite build",
@@ -18,6 +19,7 @@
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-dialog": "^2.4.0",
     "clsx": "^2.1.1",
+    "intl-messageformat": "^12.1.4",
     "lucide-react": "^0.468.0",
     "pdfjs-dist": "^6.2.108",
     "radix-ui": "^1.8.1",

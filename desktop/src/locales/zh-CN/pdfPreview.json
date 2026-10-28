@@ -1,0 +1,13 @@
+{
+  "couldNotLoadPDF": "PDF 载入失败",
+  "valuePageValue": "{arg0}，第 {arg1} 页",
+  "couldNotCreateThePDFCanvas": "无法创建 PDF 画布",
+  "pDFPreviewFailed": "PDF 预览失败",
+  "pDFPreviewControls": "PDF 预览工具",
+  "previousPage": "上一页",
+  "nextPage": "下一页",
+  "zoomOut": "缩小",
+  "zoomIn": "放大",
+  "fitPage": "适合页面",
+  "rendering": "正在渲染"
+}

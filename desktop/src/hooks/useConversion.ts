@@ -1,3 +1,4 @@
+import { t } from "./../i18n";
 import { useWorkspaceGuard } from "./useWorkspaceGuard";
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -70,22 +71,22 @@ export function useConversion(ports: Ports) {
           if (acceptingEvents && isCurrent() && imageIds.includes(payload.id)) setResults((previous) => ({ ...previous, [payload.id]: payload }));
         }));
         if (!isCurrent()) return;
-        if (cancelRef.current) { setNotice("已取消：0 张已完成"); return; }
+        if (cancelRef.current) { setNotice(t("conversion.cancelledNoImagesCompleted")); return; }
         const result = await invoke<ConversionResult>("convert_images", { options: conversionOptions(settings, imageIds), intent });
         if (!isCurrent()) return;
         const next: Record<string, ImageResult> = {};
-        for (const image of result.images) next[image.id] = { ...image, error: image.error || (!image.pdfPath ? "未生成 PDF" : null) };
+        for (const image of result.images) next[image.id] = { ...image, error: image.error || (!image.pdfPath ? t("conversion.noPDFGenerated") : null) };
         for (const id of imageIds) {
-          if (!next[id]) next[id] = { id, pdfPath: null, bytes: null, cached: false, error: result.cancelled ? null : "未返回转换结果", cancelled: result.cancelled };
+          if (!next[id]) next[id] = { id, pdfPath: null, bytes: null, cached: false, error: result.cancelled ? null : t("conversion.noProcessingResultReturned"), cancelled: result.cancelled };
         }
         setResults((previous) => ({ ...previous, ...next }));
         selection.clearSelection();
         const succeeded = result.images.filter((image) => image.pdfPath && !image.error).length;
         const failed = Object.values(next).filter((image) => image.error).length;
-        setNotice(result.cancelled ? `已取消：${succeeded} 张已完成` : `已更新 ${succeeded} 张图片${failed ? `，${failed} 张需要处理` : ""}`);
+        setNotice(result.cancelled ? t("conversion.cancelledValueImagesCompleted", { arg0: succeeded }) : t("conversion.updatedValueImagesValue", { arg0: succeeded, arg1: failed ? t("conversion.valueImagesNeedAttention", { arg0: failed }) : "" }));
         const fresh = await invoke<Project>("refresh_workspace");
         if (!isCurrent() || fresh.mainFile !== project.mainFile) return;
-        await acceptProject(fresh, true, result.cancelled ? `已取消：${succeeded} 张已完成` : `已更新 ${succeeded} 张图片${failed ? `，${failed} 张需要处理` : ""}`);
+        await acceptProject(fresh, true, result.cancelled ? t("conversion.cancelledValueImagesCompleted", { arg0: succeeded }) : t("conversion.updatedValueImagesValue", { arg0: succeeded, arg1: failed ? t("conversion.valueImagesNeedAttention", { arg0: failed }) : "" }));
         if (!isCurrent()) return;
         if (succeeded > 0) setCompletion(succeeded);
         if (fresh.status.pendingReferences > 0) {
@@ -96,8 +97,8 @@ export function useConversion(ports: Ports) {
       } catch (reason) {
         if (!isCurrent()) return;
         // A multi-destination update may have partially completed before returning an error.
-        try { await refresh("更新中断，已重新读取项目状态"); }
-        catch (recovery) { if (!isCurrent()) return; workspace.discardProject(); throw new Error(`${errorMessage(reason)}；重新扫描失败：${errorMessage(recovery)}`); }
+        try { await refresh(t("conversion.updateInterruptedProjectStatusHasBeenReloaded")); }
+        catch (recovery) { if (!isCurrent()) return; workspace.discardProject(); throw new Error(t("conversion.valueRescanFailedValue", { arg0: errorMessage(reason), arg1: errorMessage(recovery) })); }
         throw reason;
       } finally {
         dispose();
@@ -121,7 +122,7 @@ export function useConversion(ports: Ports) {
       if (isCurrent() && currentOperationKind() === "converting") {
         cancelRef.current = false;
         setCancelRequested(false);
-        setError(errorMessage(reason, "取消失败，请重试"));
+        setError(errorMessage(reason, t("conversion.couldNotCancelTryAgain")));
       }
     }
   }

@@ -19,7 +19,7 @@ export default defineConfig({
     watch: { ignored: ["**/src-tauri/**"] },
   },
   envPrefix: ["VITE_", "TAURI_ENV_*"],
-  build: { target: "es2022" },
+  build: { target: "es2022", rollupOptions: { output: { manualChunks(id) { if (/\/node_modules\/(?:react|react-dom|scheduler)\//.test(id)) return "react"; } } } },
   test: {
     environment: "jsdom",
     setupFiles: ["./tests/setup.ts"],

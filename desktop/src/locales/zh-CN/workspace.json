@@ -1,0 +1,9 @@
+{
+  "foundValueProjectImages": "已识别 {arg0} 张项目图片",
+  "projectOpenedButTheRecentEntryCouldNotBeSaved": "项目已打开，最近记录暂未保存",
+  "openATexMainFile": "打开 .tex 主文件",
+  "currentProjectClosed": "已关闭当前项目",
+  "settingsWereKeptForThisSessionOnlyCheckAppStorage": "设置仅保留在本次会话中，请检查应用存储权限",
+  "recentEntryRemovedTheFileWasNotDeleted": "已移除最近记录，文件未删除",
+  "cannotRemoveThisEntryCheckAppStoragePermissions": "无法移除记录，请检查应用存储权限"
+}

@@ -1,0 +1,14 @@
+{
+  "referencesAreUpToDate": "引用已是最新状态",
+  "locateAnImageInsideTheProject": "定位项目内的图片",
+  "imagesOrPDFs": "图片或 PDF",
+  "operationInterruptedWorkspaceHasBeenReloaded": "操作中断，已重新读取工作区",
+  "valueRescanFailedReopenTheWorkspaceValue": "{arg0}；重新扫描失败，请重新打开工作区：{arg1}",
+  "restored": "已恢复",
+  "replaced": "已替换",
+  "valueValueReferencesInValueFiles": "{arg0} {arg1} 个文件中的 {arg2} 处引用",
+  "valueButRescanningFailedReopenTheWorkspaceValue": "{arg0}，但重新扫描失败，请重新打开工作区：{arg1}",
+  "rescannedReviewTheReferenceChangesAgain": "已重新扫描，请重新审核引用变更",
+  "repairPreviewExpiredLocateTheFileAgain": "修复预览已失效，请重新定位文件",
+  "repairPreviewExpiredLocateTheFileAgainValue": "修复预览已失效，请重新定位文件：{arg0}"
+}

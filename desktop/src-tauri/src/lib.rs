@@ -1,6 +1,8 @@
 mod conversion;
 mod thumbnail;
 mod diagnostics;
+#[cfg(any(feature = "desktop", test))]
+mod localization;
 mod models;
 mod manifest;
 mod journal;

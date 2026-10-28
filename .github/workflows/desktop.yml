@@ -50,6 +50,7 @@ jobs:
           path: desktop/src-tauri/Cargo.lock
       - run: npm ci
       - run: npm run check
+      - run: npm run check:i18n
       - run: npm test
       - run: npm run test:pdf
       - run: cargo test --no-fail-fast --manifest-path src-tauri/Cargo.toml --locked --no-default-features --features automation

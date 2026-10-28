@@ -1,3 +1,5 @@
+import { nativeText } from "./nativeText";
+import { t } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, FileCheck2, SlidersHorizontal, Square, TriangleAlert } from "lucide-react";
 import { Button } from "@/controls/button";
@@ -54,24 +56,24 @@ export default function CommandBar(props: Props) {
     if (props.onConvert) props.onConvert(intent, ids); else props.onAction();
   }
   const preset = conversionPreset(Number(settings.dpi), Number(settings.jpegQuality));
-  const presetLabel = preset?.label ?? "自定义";
+  const presetLabel = preset?.label ?? t("commandBar.custom");
   const count = props.selectionMode ? props.selectedCount : status.pendingImages;
   const issues = settingsIssues(settings);
   const blocked = Boolean(status.blockingReason);
-  const label = props.converting ? `正在处理 ${props.progress?.current ?? 0} / ${props.progress?.total ?? count}`
-    : props.completion !== null ? `已处理 ${props.completion} 张`
-    : blocked ? "请先解决安全问题"
-    : props.selectionMode ? `处理 ${count} 张图片`
-    : status.nextAction === "reviewReferences" ? `检查 ${status.pendingReferences} 处引用`
-    : recommendedConvert ? `处理 ${count} 张图片`
-    : status.nextAction === "resolveProblems" ? "处理问题" : "项目已是最新状态";
-  const message = props.converting ? `${label} · ${props.progress?.name || "正在准备更新图片…"}`
-    : props.completion !== null ? `已处理 ${props.completion} 张图片`
-    : blocked ? "操作已暂停"
-    : props.selectionMode ? "选择要处理的图片"
-    : status.nextAction === "reviewReferences" ? "处理结果已就绪"
-    : status.nextAction === "convertImages" ? "准备处理图片"
-    : status.nextAction === "resolveProblems" ? "请定位或修复问题图片" : "项目已是最新状态";
+  const label = props.converting ? t("commandBar.processingValueValue", { arg0: props.progress?.current ?? 0, arg1: props.progress?.total ?? count })
+    : props.completion !== null ? t("commandBar.processedValueImages", { arg0: props.completion })
+    : blocked ? t("commandBar.resolveTheSafetyIssueFirst")
+    : props.selectionMode ? t("commandBar.processValueImages", { arg0: count })
+    : status.nextAction === "reviewReferences" ? t("commandBar.reviewValueReferences", { arg0: status.pendingReferences })
+    : recommendedConvert ? t("commandBar.processValueImages", { arg0: count })
+    : status.nextAction === "resolveProblems" ? t("commandBar.resolveProblems") : t("commandBar.projectIsUpToDate");
+  const message = props.converting ? `${label} · ${props.progress?.name || t("commandBar.preparingImageUpdates")}`
+    : props.completion !== null ? t("commandBar.processedValueImages2", { arg0: props.completion })
+    : blocked ? t("commandBar.operationPaused")
+    : props.selectionMode ? t("commandBar.selectImagesToProcess")
+    : status.nextAction === "reviewReferences" ? t("commandBar.processedImagesAreReady")
+    : status.nextAction === "convertImages" ? t("commandBar.readyToProcessImages")
+    : status.nextAction === "resolveProblems" ? t("commandBar.locateOrRepairTheAffectedImages") : t("commandBar.projectIsUpToDate");
   const transitionKey = props.converting ? "converting" : props.completion !== null ? "complete" : blocked ? "blocked" : props.selectionMode ? "selection" : status.nextAction;
   // Retain the departing message for one token duration; it never creates a second action.
   const [departing, setDeparting] = useState<string | null>(null);
@@ -98,36 +100,36 @@ export default function CommandBar(props: Props) {
   }
   const idle = status.nextAction === "upToDate" && !props.selectionMode && !props.busy && props.completion === null && !blocked;
   const progress = props.progress && props.progress.total > 0 ? props.progress.current / props.progress.total * 100 : 0;
-  return <section className="command-bar" aria-label="项目下一步" data-state={transitionKey}>
+  return <section className="command-bar" aria-label={t("commandBar.nextProjectAction")} data-state={transitionKey}>
     <div className="command-status">
       <div className="command-message-stage" aria-live="polite" role="status">
         {departing && <span aria-hidden="true" className="command-message command-message-exit">{departing}</span>}
-        <span key={transitionKey} title={blocked ? status.blockingReason ?? undefined : undefined} className="command-message command-message-enter">
+        <span key={transitionKey} title={blocked ? nativeText(status.blockingReason ?? "") : undefined} className="command-message command-message-enter">
           {(idle || props.completion !== null) && <Check className="command-success" aria-hidden="true" />}
           {blocked && <TriangleAlert aria-hidden="true" />}{message}
         </span>
       </div>
-      {props.converting && <Progress value={progress} aria-label="图片更新进度" className="command-progress" />}
+      {props.converting && <Progress value={progress} aria-label={t("commandBar.imageUpdateProgress")} className="command-progress" />}
     </div>
     {!props.converting && props.completion === null && (
         <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
-          <PopoverTrigger asChild><Button variant="ghost" size="sm" className="command-parameters" disabled={props.busy} aria-label={`输出参数：${presetLabel} · ${settings.dpi} DPI`}><SlidersHorizontal data-icon="inline-start" aria-hidden="true" />{presetLabel} · {settings.dpi} DPI<ChevronDown data-icon="inline-end" aria-hidden="true" /></Button></PopoverTrigger>
-          <PopoverContent side="top" align="end" className="command-settings" aria-label="输出参数">
-            <FieldSet disabled={props.busy}><FieldLegend>输出参数</FieldLegend><FieldGroup>
-              <Field><FieldLabel id="conversion-preset-label">预设{!preset && <span className="text-muted-foreground"> · 自定义</span>}</FieldLabel>
+          <PopoverTrigger asChild><Button variant="ghost" size="sm" className="command-parameters" disabled={props.busy} aria-label={t("commandBar.outputSettingsValueValueDPI", { arg0: presetLabel, arg1: settings.dpi })}><SlidersHorizontal data-icon="inline-start" aria-hidden="true" />{presetLabel} · {settings.dpi} DPI<ChevronDown data-icon="inline-end" aria-hidden="true" /></Button></PopoverTrigger>
+          <PopoverContent side="top" align="end" className="command-settings" aria-label={t("commandBar.outputSettings")}>
+            <FieldSet disabled={props.busy}><FieldLegend>{t("commandBar.outputSettings")}</FieldLegend><FieldGroup>
+              <Field><FieldLabel id="conversion-preset-label">{t("commandBar.preset")}{!preset && <span className="text-muted-foreground"> {t("commandBar.custom2")}</span>}</FieldLabel>
                 <ToggleGroup type="single" variant="outline" value={preset?.id ?? ""} aria-labelledby="conversion-preset-label" onValueChange={(value) => { const next = conversionPresets.find((item) => item.id === value); if (next) props.onSettings({ ...settings, dpi: String(next.dpi), jpegQuality: String(next.jpegQuality) }); }}>
                   {conversionPresets.map((item) => <ToggleGroupItem key={item.id} value={item.id}>{item.label}</ToggleGroupItem>)}
                 </ToggleGroup>
               </Field><Separator />
               <Field data-invalid={Boolean(issues.dpi)}><FieldLabel htmlFor="conversion-dpi">DPI</FieldLabel><Input id="conversion-dpi" type="number" inputMode="numeric" min={72} max={1200} value={settings.dpi} aria-invalid={Boolean(issues.dpi)} aria-describedby={issues.dpi ? "conversion-dpi-error" : undefined} onChange={(event) => props.onSettings({ ...settings, dpi: event.target.value })} />{issues.dpi && <FieldError id="conversion-dpi-error">{issues.dpi}</FieldError>}</Field>
-              <Field data-invalid={Boolean(issues.jpegQuality)}><FieldLabel htmlFor="conversion-quality">质量 (%)</FieldLabel><Input id="conversion-quality" type="number" inputMode="numeric" min={1} max={100} value={settings.jpegQuality} aria-invalid={Boolean(issues.jpegQuality)} aria-describedby={issues.jpegQuality ? "conversion-quality-error" : undefined} onChange={(event) => props.onSettings({ ...settings, jpegQuality: event.target.value })} />{issues.jpegQuality && <FieldError id="conversion-quality-error">{issues.jpegQuality}</FieldError>}</Field>
-              <Field data-invalid={Boolean(issues.outputDir)}><FieldLabel htmlFor="conversion-output">输出目录</FieldLabel><Input id="conversion-output" value={settings.outputDir} spellCheck={false} aria-invalid={Boolean(issues.outputDir)} aria-describedby={issues.outputDir ? "conversion-output-error" : undefined} onChange={(event) => props.onSettings({ ...settings, outputDir: event.target.value })} />{issues.outputDir && <FieldError id="conversion-output-error">{issues.outputDir}</FieldError>}</Field>
+              <Field data-invalid={Boolean(issues.jpegQuality)}><FieldLabel htmlFor="conversion-quality">{t("commandBar.quality")}</FieldLabel><Input id="conversion-quality" type="number" inputMode="numeric" min={1} max={100} value={settings.jpegQuality} aria-invalid={Boolean(issues.jpegQuality)} aria-describedby={issues.jpegQuality ? "conversion-quality-error" : undefined} onChange={(event) => props.onSettings({ ...settings, jpegQuality: event.target.value })} />{issues.jpegQuality && <FieldError id="conversion-quality-error">{issues.jpegQuality}</FieldError>}</Field>
+              <Field data-invalid={Boolean(issues.outputDir)}><FieldLabel htmlFor="conversion-output">{t("commandBar.outputDirectory")}</FieldLabel><Input id="conversion-output" value={settings.outputDir} spellCheck={false} aria-invalid={Boolean(issues.outputDir)} aria-describedby={issues.outputDir ? "conversion-output-error" : undefined} onChange={(event) => props.onSettings({ ...settings, outputDir: event.target.value })} />{issues.outputDir && <FieldError id="conversion-output-error">{issues.outputDir}</FieldError>}</Field>
             </FieldGroup></FieldSet>
           </PopoverContent>
         </Popover>
     )}
     <div className="command-actions">
-      {!props.converting && props.completion === null && props.selectionMode && <Button variant="ghost" size="sm" disabled={props.busy} onClick={() => props.onSelectionMode(false)}>取消选择</Button>}
+      {!props.converting && props.completion === null && props.selectionMode && <Button variant="ghost" size="sm" disabled={props.busy} onClick={() => props.onSelectionMode(false)}>{t("commandBar.cancelSelection")}</Button>}
       {!props.converting && props.completion === null && !props.selectionMode && <DropdownMenu open={manualOpen && !manualUnavailable} onOpenChange={(open) => {
         if (open && (manualUnavailable || props.onManualOpen?.() === false)) return;
         setManualOpen(open);
@@ -135,18 +137,18 @@ export default function CommandBar(props: Props) {
         <div className={recommendedConvert && !blocked ? "command-split" : undefined}>
           {recommendedConvert && !blocked && <Button className="command-action" disabled={working || count === 0} onClick={submit}><span className="command-action-label-stage">{departingLabel && <span className="command-action-label-exit" aria-hidden="true">{departingLabel}</span>}<span key={transitionKey} className="command-action-label-enter">{label}</span></span></Button>}
           <DropdownMenuTrigger asChild>{recommendedConvert && !blocked
-            ? <Button aria-label="更多处理操作" className="command-split-menu" size="icon" disabled={working}><ChevronDown aria-hidden="true" /></Button>
-            : <Button variant="outline" disabled={working}>处理图片…</Button>}
+            ? <Button aria-label={t("commandBar.moreProcessingActions")} className="command-split-menu" size="icon" disabled={working}><ChevronDown aria-hidden="true" /></Button>
+            : <Button variant="outline" disabled={working}>{t("commandBar.processImages")}</Button>}
           </DropdownMenuTrigger>
         </div>
         <DropdownMenuContent align="end" side="top"><DropdownMenuGroup>
-          <DropdownMenuItem disabled={blocked || !status.pendingImages} onSelect={() => convert("pending")}>处理待更新图片</DropdownMenuItem>
-          <DropdownMenuItem disabled={blocked || !convertibleIds.length} onSelect={() => props.onSelectionMode(true)}>选择图片…</DropdownMenuItem>
-          <DropdownMenuItem disabled={blocked || !currentConvertible} onSelect={() => convert("reconvert", [props.currentImageId!])}>重新处理当前图片</DropdownMenuItem>
-          <DropdownMenuItem disabled={blocked || !convertibleIds.length} onSelect={() => convert("reconvert", convertibleIds)}>重新处理全部图片</DropdownMenuItem>
+          <DropdownMenuItem disabled={blocked || !status.pendingImages} onSelect={() => convert("pending")}>{t("commandBar.processPendingImages")}</DropdownMenuItem>
+          <DropdownMenuItem disabled={blocked || !convertibleIds.length} onSelect={() => props.onSelectionMode(true)}>{t("commandBar.selectImages")}</DropdownMenuItem>
+          <DropdownMenuItem disabled={blocked || !currentConvertible} onSelect={() => convert("reconvert", [props.currentImageId!])}>{t("commandBar.reprocessCurrentImage")}</DropdownMenuItem>
+          <DropdownMenuItem disabled={blocked || !convertibleIds.length} onSelect={() => convert("reconvert", convertibleIds)}>{t("commandBar.reprocessAllImages")}</DropdownMenuItem>
         </DropdownMenuGroup></DropdownMenuContent>
       </DropdownMenu>}
-      {props.converting && <Button variant="outline" size="sm" disabled={props.cancelRequested} onClick={props.onCancel}><Square data-icon="inline-start" aria-hidden="true" />{props.cancelRequested ? "等待取消…" : "取消处理"}</Button>}
+      {props.converting && <Button variant="outline" size="sm" disabled={props.cancelRequested} onClick={props.onCancel}><Square data-icon="inline-start" aria-hidden="true" />{props.cancelRequested ? t("commandBar.cancelling") : t("commandBar.cancelProcessing")}</Button>}
       {(!props.converting && props.completion === null && !idle && (!recommendedConvert || blocked || props.selectionMode)) && <Button className="command-action" disabled={props.busy || props.completion !== null || blocked || (recommendedConvert && count === 0)} onClick={submit}>
         {status.nextAction === "reviewReferences" ? <FileCheck2 data-icon="inline-start" aria-hidden="true" /> : null}<span className="command-action-label-stage">{departingLabel && <span className="command-action-label-exit" aria-hidden="true">{departingLabel}</span>}<span key={transitionKey} className="command-action-label-enter">{label}</span></span>
       </Button>}

@@ -1,0 +1,5 @@
+{
+  "dPIMustBeAnIntegerFrom72To1200": "DPI 需为 72–1200 的整数",
+  "qualityMustBeAnIntegerFrom1To100": "质量需为 1–100 的整数",
+  "enterADirectoryInsideTheWorkspaceSuchAsFiguresPdf": "请输入工作区内的目录名，例如 figures-pdf；不能使用上级路径或保留名称"
+}

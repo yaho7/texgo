@@ -142,6 +142,9 @@ async fn save_preferences(preferences: Preferences, app: tauri::AppHandle, state
             diagnostics::set_debug(preferences.debug_logging);
             Ok(())
         })?;
+        crate::localization::set_language(&preferences.language);
+        if let Err(error) = crate::desktop_menu::refresh(&app).and_then(|_| refresh_tray_menu(&app)) { let _ = app.emit("desktop-error", error.to_string()); }
+        if let Ok(preview) = state.preview.lock() { if let Some(ws) = preview.as_ref() { update_tray_status(&app, ws.project()); } }
         sync_observer(&app, &state);
         Ok(preferences)
     }).await.map_err(|e| e.to_string())?
@@ -418,12 +421,13 @@ pub fn run() {
         }).build())
         .manage(AppState::default())
         .setup(|app| {
-            crate::desktop_menu::install(app)?;
             let path = app.path().app_config_dir()?.join("preferences.json");
             match Preferences::load(&path) {
                 Ok(preferences) => *app.state::<AppState>().preferences.lock().unwrap() = preferences,
                 Err(error) => { *app.state::<AppState>().startup_error.lock().unwrap() = Some(error); }
             }
+            crate::localization::set_language(&app.state::<AppState>().preferences.lock().unwrap().language);
+            crate::desktop_menu::install(app)?;
             let debug = app.state::<AppState>().preferences.lock().is_ok_and(|prefs| prefs.debug_logging);
             if let Ok(directory) = app.path().app_log_dir() { diagnostics::initialize(&directory, debug); }
             install_background(app);
@@ -491,7 +495,7 @@ fn conversion_target(ws: &Workspace, result: &ConversionResult, batch_id: Option
 }
 fn update_tray_status(app: &tauri::AppHandle, project: &Project) {
     if let Some(tray) = app.tray_by_id("texgo") {
-        let _ = tray.set_tooltip(Some(format!("Texgo · {}", crate::background::status_label(&project.status))));
+        let _ = tray.set_tooltip(Some(format!("Texgo · {}", crate::localization::text(&crate::background::status_label(&project.status)))));
     }
 }
 
@@ -503,7 +507,7 @@ fn publish_workspace(app: &tauri::AppHandle, project: &Project) {
 fn deliver_notice(app: &tauri::AppHandle, notice: Notice, target: NotificationTarget) {
     // Register on_action once at setup, BEFORE any notification can be sent.
     // extra travels with the specific notification, including old workspaces/batches.
-    if let Err(error) = app.notification().builder().title(notice.title).body(notice.body).extra("texgoTarget", target).show() {
+    if let Err(error) = app.notification().builder().title(crate::localization::text(&notice.title)).body(crate::localization::text(&notice.body)).extra("texgoTarget", target).show() {
         diagnostics::event(Category::Notification, Level::Warn, Event::ActionUnavailable, 1);
         let _ = app.emit("desktop-error", format!("系统通知不可用：{error}"));
     } else { diagnostics::event(Category::Notification, Level::Debug, Event::Completed, 1); }
@@ -616,7 +620,7 @@ fn trigger_smart(app: &tauri::AppHandle) {
             let _ = app.emit("desktop-error", &error);
             // No workspace: inform without showing or activating the main window.
             if error.contains("请先打开") && state.preferences.lock().is_ok_and(|p| p.notify_failure) {
-                if let Err(error) = app.notification().builder().title("Texgo · 尚未打开项目").body("请打开 Texgo 并选择项目").show() { diagnostics::event(Category::Notification, Level::Warn, Event::ActionUnavailable, 1); let _ = app.emit("desktop-error", format!("系统通知不可用：{error}")); }
+                if let Err(error) = app.notification().builder().title(crate::localization::tr("texgoNoProjectOpen", &[])).body(crate::localization::tr("openTexgoAndSelectAProject", &[])).show() { diagnostics::event(Category::Notification, Level::Warn, Event::ActionUnavailable, 1); let _ = app.emit("desktop-error", format!("系统通知不可用：{error}")); }
             }
         }
     });
@@ -637,12 +641,21 @@ fn install_background(app: &tauri::App) {
     if install_tray(app).is_err() { diagnostics::event(Category::Notification, Level::Warn, Event::TrayUnavailable, 1); }
 }
 
+fn tray_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{Menu, MenuItem};
+    let convert = MenuItem::with_id(app, "smart-convert", crate::localization::tr("quicklyUpdateProjectImages", &[]), true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "show-texgo", crate::localization::tr("openTexgo", &[]), true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit-texgo", crate::localization::tr("quit", &[]), true, None::<&str>)?;
+    Menu::with_items(app, &[&convert, &open, &quit])
+}
+fn refresh_tray_menu(app: &tauri::AppHandle) -> tauri::Result<()> {
+    if let Some(tray) = app.tray_by_id("texgo") { tray.set_menu(Some(tray_menu(app)?))?; }
+    Ok(())
+}
+
 fn install_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    use tauri::{menu::{Menu, MenuItem}, tray::TrayIconBuilder};
-    let convert = MenuItem::with_id(app, "smart-convert", "快速更新项目图片", true, None::<&str>)?;
-    let open = MenuItem::with_id(app, "show-texgo", "打开 Texgo", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit-texgo", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&convert, &open, &quit])?;
+    use tauri::tray::TrayIconBuilder;
+    let menu = tray_menu(app.handle())?;
     let mut tray = TrayIconBuilder::with_id("texgo").tooltip("Texgo").menu(&menu).on_menu_event(|app, event| match event.id.as_ref() {
         "smart-convert" => trigger_smart(app), "show-texgo" => show_window(app), "quit-texgo" => app.exit(0), _ => (),
     });

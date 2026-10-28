@@ -1,3 +1,5 @@
+import { nativeText } from "./nativeText";
+import { t } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { LoaderCircle } from "lucide-react";
@@ -37,18 +39,18 @@ export default function ApplicationUpdate({ onClose }: { onClose: () => void }) 
     finally { inFlight.current = false; if (mounted.current) setOperation(null); }
   }
   const busy = operation !== null;
-  const status = operation === "checking" ? "正在检查更新…" : operation === "downloading" ? "正在下载并验证签名…" : operation === "installing" ? "正在安装更新…" : operation === "restarting" ? "正在重启…"
-    : info?.stage === "installed" ? "更新已安装，重启后生效" : info?.stage === "ready" ? `${info.version} 签名验证通过，可以安装` : info?.stage === "available" ? `新版本：${info.version}` : info?.stage === "current" ? "已是最新版本" : "未能检查更新";
+  const status = operation === "checking" ? t("applicationUpdate.checkingForUpdates") : operation === "downloading" ? t("applicationUpdate.downloadingAndVerifyingTheSignature") : operation === "installing" ? t("applicationUpdate.installingUpdate") : operation === "restarting" ? t("applicationUpdate.restarting")
+    : info?.stage === "installed" ? t("applicationUpdate.updateInstalledRestartToUseIt") : info?.stage === "ready" ? t("applicationUpdate.versionValueIsVerifiedAndReadyToInstall", { arg0: info.version }) : info?.stage === "available" ? t("applicationUpdate.newVersionValue", { arg0: info.version }) : info?.stage === "current" ? t("applicationUpdate.youHaveTheLatestVersion") : t("applicationUpdate.couldNotCheckForUpdates");
   return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }}><DialogContent showCloseButton={false} onEscapeKeyDown={event => { if (busy) event.preventDefault(); }} onInteractOutside={event => { if (busy) event.preventDefault(); }} onCloseAutoFocus={event => { event.preventDefault(); (document.querySelector<HTMLButtonElement>(".workbench-menu-trigger") ?? document.getElementById("main-content"))?.focus(); }}>
-    <DialogHeader><DialogTitle>应用更新</DialogTitle><DialogDescription>{info ? `当前版本：${info.currentVersion}` : "检查可用的新版本"}</DialogDescription></DialogHeader>
+    <DialogHeader><DialogTitle>{t("applicationUpdate.appUpdate")}</DialogTitle><DialogDescription>{info ? t("applicationUpdate.currentVersionValue", { arg0: info.currentVersion }) : t("applicationUpdate.checkForANewVersion")}</DialogDescription></DialogHeader>
     <p role="status" className="flex items-center gap-2">{busy && <LoaderCircle className="animate-spin" aria-hidden="true" />}{status}</p>
-    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-    {info?.stage === "ready" && <p className="text-xs text-muted-foreground">{info.installerRestarts ? "安装时将退出并重新打开 Texgo，请先保存工作。" : "安装后需重启 Texgo。"}</p>}
-    <DialogFooter><Button variant="outline" disabled={busy} onClick={onClose}>关闭</Button>
-      {info?.stage === "available" && <Button disabled={busy} onClick={() => { void act("downloading", "download_application_update"); }}>下载更新</Button>}
-      {info?.stage === "ready" && <Button disabled={busy} onClick={() => { void act("installing", "install_application_update"); }}>安装更新</Button>}
-      {info?.stage === "installed" && <Button disabled={busy} onClick={() => { void act("restarting", "restart_after_update"); }}>重启应用</Button>}
-      {!busy && info?.stage !== "installed" && <Button variant="outline" onClick={() => { void act("checking", "check_application_update"); }}>重新检查</Button>}
+    {error && <p role="alert" className="text-sm text-destructive">{nativeText(error)}</p>}
+    {info?.stage === "ready" && <p className="text-xs text-muted-foreground">{info.installerRestarts ? t("applicationUpdate.installationWillCloseAndReopenTexgoSaveYourWorkFirst") : t("applicationUpdate.restartTexgoAfterInstallation")}</p>}
+    <DialogFooter><Button variant="outline" disabled={busy} onClick={onClose}>{t("applicationUpdate.close")}</Button>
+      {info?.stage === "available" && <Button disabled={busy} onClick={() => { void act("downloading", "download_application_update"); }}>{t("applicationUpdate.downloadUpdate")}</Button>}
+      {info?.stage === "ready" && <Button disabled={busy} onClick={() => { void act("installing", "install_application_update"); }}>{t("applicationUpdate.installUpdate")}</Button>}
+      {info?.stage === "installed" && <Button disabled={busy} onClick={() => { void act("restarting", "restart_after_update"); }}>{t("applicationUpdate.restartApp")}</Button>}
+      {!busy && info?.stage !== "installed" && <Button variant="outline" onClick={() => { void act("checking", "check_application_update"); }}>{t("applicationUpdate.checkAgain")}</Button>}
     </DialogFooter>
   </DialogContent></Dialog>;
 }

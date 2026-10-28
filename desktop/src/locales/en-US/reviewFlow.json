@@ -1,0 +1,14 @@
+{
+  "referencesAreUpToDate": "References are up to date",
+  "locateAnImageInsideTheProject": "Locate an image inside the project",
+  "imagesOrPDFs": "Images or PDFs",
+  "operationInterruptedWorkspaceHasBeenReloaded": "Operation interrupted. Workspace has been reloaded.",
+  "valueRescanFailedReopenTheWorkspaceValue": "{arg0}; rescan failed. Reopen the workspace: {arg1}",
+  "restored": "Restored",
+  "replaced": "Replaced",
+  "valueValueReferencesInValueFiles": "{arg0} {arg2, plural, one {# reference} other {# references}} in {arg1, plural, one {# file} other {# files}}",
+  "valueButRescanningFailedReopenTheWorkspaceValue": "{arg0}, but rescanning failed. Reopen the workspace: {arg1}",
+  "rescannedReviewTheReferenceChangesAgain": "Rescanned. Review the reference changes again.",
+  "repairPreviewExpiredLocateTheFileAgain": "Repair preview expired. Locate the file again.",
+  "repairPreviewExpiredLocateTheFileAgainValue": "Repair preview expired. Locate the file again: {arg0}"
+}

@@ -52,7 +52,7 @@ function convertResponse(ids: string[], references = true): ConversionResult {
 beforeEach(() => {
   localStorage.clear(); calls = []; backend = structuredClone(initial); entries = []; changes = { files: [], referenceCount: 0 };
   handlers = {
-    desktop_status: () => ({ error: null }), get_preferences: () => ({ ...defaultPreferences, autoUpdate: false }),
+    save_preferences: args => args.preferences, desktop_status: () => ({ error: null }), get_preferences: () => ({ ...defaultPreferences, autoUpdate: false }),
     close_workspace: () => undefined, set_shortcut_recording: () => undefined, "plugin:dialog|open": () => "/paper/main.tex",
     open_project: () => structuredClone(backend), refresh_workspace: () => structuredClone(backend),
     conversion_history: () => entries, poll_workspace: () => null,
@@ -265,6 +265,9 @@ describe("LaTeX 项目唯一工作流", () => {
     expect(within(screen.getByRole("region", { name: "操作记录" })).queryByText(/0 张|300 DPI/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "设置" }));
     await screen.findByRole("main", { name: "设置" });
+    expect(screen.queryByRole("navigation", {name:"项目导航"})).not.toBeInTheDocument();
+    expect(document.querySelector(".app-toolbar")).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", {name:"返回"}));
     await user.click(screen.getByRole("radio", { name: "全部 5" }));
     expect(screen.getByRole("button", { name: "预览 figures/alpha.png" })).toHaveAttribute("aria-pressed", "true");
     expect(calls.some((call) => call.command === "close_workspace")).toBe(false);
@@ -373,7 +376,7 @@ describe("LaTeX 项目唯一工作流", () => {
     await screen.findByRole("main", { name: "设置" });
     await act(async () => { await act(async () => { await new Promise((resolve) => setTimeout(resolve, 750)); }); });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("radio", { name: "全部 5" }));
+    await user.click(screen.getByRole("button", { name: "返回" }));
     expect(await screen.findByRole("dialog", { name: "检查引用变更" })).toBeInTheDocument();
   });
   it("shows one Home entry and resumes the live project without resetting its selection", async () => {
@@ -402,11 +405,12 @@ describe("LaTeX 项目唯一工作流", () => {
     expect(calls.some(call => call.command === "close_workspace")).toBe(false);
     expect(document.querySelectorAll("#main-content")).toHaveLength(1);
   });
-  it("preserves an unsaved settings draft when the brand returns Home", async () => {
+  it("preserves an unsaved settings draft across the standalone page and Home", async () => {
     const user = await openProject();
     await user.click(screen.getByRole("button", { name: "设置" }));
     const output = await screen.findByLabelText("默认输出目录");
     await user.clear(output); await user.type(output, "draft-pdf");
+    await user.click(screen.getByRole("button", {name:"返回"}));
     await user.click(screen.getByRole("button", { name: "Texgo 首页" }));
     expect(screen.getByRole("heading", { name: "加快 LaTeX 编译" })).toBeVisible();
     await user.keyboard("{Control>},{/Control}");
@@ -779,4 +783,30 @@ it("ignores a rescan response from an unmounted review lifetime", async () => {
   await act(async () => { late.resolve({ files: [{ path: "/paper/main.tex", fingerprint: "obsolete", changes: [{ id: "obsolete", line: 1, before: "old.png", after: "old.pdf" }] }], referenceCount: 1 }); });
   expect(screen.queryByRole("dialog", { name: "检查引用变更" })).not.toBeInTheDocument();
   expect(screen.queryByText("old.pdf")).not.toBeInTheDocument();
+});
+
+it("opens standalone Settings from Home and persists English across the whole workspace", async () => {
+  const user = userEvent.setup(); render(<App />);
+  await user.click(screen.getByRole("button", {name:"设置"}));
+  await user.selectOptions(await screen.findByLabelText("语言"), "en-US");
+  expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+  expect(document.querySelector(".app-toolbar")).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", {name:"设置"})).toBeVisible();
+  expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", {name:"保存设置"}));
+  await user.click(await screen.findByRole("button", {name:"Back"}));
+  expect(screen.getByRole("heading", {name:"Speed up LaTeX compilation"})).toBeVisible();
+  await user.click(screen.getByRole("button", {name:"Open or drop a .tex file"}));
+  expect(await screen.findByRole("button", {name:"Process 2 images"})).toBeVisible();
+  expect(screen.getByRole("navigation", {name:"Project navigation"})).toBeVisible();
+  expect(screen.getByRole("columnheader", {name:"Name"})).toBeVisible();
+  expect(screen.getByRole("columnheader", {name:"Format"})).toBeVisible();
+  expect(screen.getByRole("heading", {name:"Preview"})).toBeVisible();
+  expect(screen.getByRole("radio", {name:"Pending 2"})).toBeVisible();
+  await user.click(screen.getByRole("button", {name:"Process 2 images"}));
+  const dialog = await screen.findByRole("dialog", {name:"Review reference changes"});
+  expect(within(dialog).getByRole("button", {name:"Apply 2 reference changes"})).toBeEnabled();
+  expect(within(dialog).getByText(/Texgo cannot detect unsaved editor buffers/)).toBeVisible();
+  expect(calls.some(call => call.command === "apply_replacements")).toBe(false);
+  expect(calls.find(call => call.command === "save_preferences")?.args.preferences).toMatchObject({language:"en-US"});
 });

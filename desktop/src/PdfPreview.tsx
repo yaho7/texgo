@@ -1,3 +1,5 @@
+import { nativeText } from "./nativeText";
+import { t } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, LoaderCircle, Maximize, Minus, Plus } from "lucide-react";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
@@ -58,7 +60,7 @@ export default function PdfPreview({ data, label, overlay = false, onReady, onEr
         const pdf = await task.promise;
         if (!disposed) { setPages(pdf.numPages); setDocument({ data, pdf }); }
       } catch (reason) {
-        if (!disposed) { const message = errorMessage(reason, "PDF 载入失败"); setError(message); setLoading(false); errorCallback.current?.(message); }
+        if (!disposed) { const message = errorMessage(reason, t("pdfPreview.couldNotLoadPDF")); setError(message); setLoading(false); errorCallback.current?.(message); }
       }
     }
     void load();
@@ -78,7 +80,7 @@ export default function PdfPreview({ data, label, overlay = false, onReady, onEr
     // Each render owns its canvas, so cancellation cannot paint onto the next page.
     const canvas = window.document.createElement("canvas");
     canvas.setAttribute("role", "img");
-    canvas.setAttribute("aria-label", `${label}，第 ${page} 页`);
+    canvas.setAttribute("aria-label", t("pdfPreview.valuePageValue", { arg0: label, arg1: page }));
     canvas.className = "pdf-canvas-enter";
     async function renderPage() {
       try {
@@ -95,12 +97,12 @@ export default function PdfPreview({ data, label, overlay = false, onReady, onEr
         canvas.style.width = overlay ? "100%" : `${viewport.width}px`;
         canvas.style.height = overlay ? "100%" : `${viewport.height}px`;
         const context = canvas.getContext("2d");
-        if (!context) throw new Error("无法创建 PDF 画布");
+        if (!context) throw new Error(t("pdfPreview.couldNotCreateThePDFCanvas"));
         renderTask = pdfPage.render({ canvas, canvasContext: context, viewport, transform: [ratio, 0, 0, ratio, 0, 0] });
         await renderTask.promise;
         if (!disposed) { element!.replaceChildren(canvas); setLoading(false); readyCallback.current?.(); }
       } catch (reason) {
-        if (!disposed) { const message = errorMessage(reason, "PDF 预览失败"); setError(message); setLoading(false); errorCallback.current?.(message); }
+        if (!disposed) { const message = errorMessage(reason, t("pdfPreview.pDFPreviewFailed")); setError(message); setLoading(false); errorCallback.current?.(message); }
       }
     }
     void renderPage();
@@ -113,11 +115,11 @@ export default function PdfPreview({ data, label, overlay = false, onReady, onEr
   }, [document, data, label, page, size, zoom, overlay]);
 
   return <div className={overlay ? "pdf-preview pdf-overlay" : "pdf-preview"}>
-    {!overlay && <div className="pdf-toolbar" role="group" aria-label="PDF 预览工具">
-      <IconButton label="上一页" size="icon-sm" disabled={page <= 1 || loading} onClick={() => setPage((value) => value - 1)}><ChevronLeft aria-hidden="true" /></IconButton><span className="page-count">{page} / {pages || "…"}</span><IconButton label="下一页" size="icon-sm" disabled={page >= pages || loading} onClick={() => setPage((value) => value + 1)}><ChevronRight aria-hidden="true" /></IconButton>
+    {!overlay && <div className="pdf-toolbar" role="group" aria-label={t("pdfPreview.pDFPreviewControls")}>
+      <IconButton label={t("pdfPreview.previousPage")} size="icon-sm" disabled={page <= 1 || loading} onClick={() => setPage((value) => value - 1)}><ChevronLeft aria-hidden="true" /></IconButton><span className="page-count">{page} / {pages || "…"}</span><IconButton label={t("pdfPreview.nextPage")} size="icon-sm" disabled={page >= pages || loading} onClick={() => setPage((value) => value + 1)}><ChevronRight aria-hidden="true" /></IconButton>
       <Separator orientation="vertical" className="mx-1 h-4" />
-      <IconButton label="缩小" size="icon-sm" disabled={zoom <= 0.25} onClick={() => setZoom((value) => Math.max(0.25, value - 0.25))}><Minus aria-hidden="true" /></IconButton><span className="zoom-value">{Math.round(zoom * 100)}%</span><IconButton label="放大" size="icon-sm" disabled={zoom >= 4} onClick={() => setZoom((value) => Math.min(4, value + 0.25))}><Plus aria-hidden="true" /></IconButton><IconButton label="适合页面" size="icon-sm" onClick={() => setZoom(1)}><Maximize aria-hidden="true" /></IconButton>
+      <IconButton label={t("pdfPreview.zoomOut")} size="icon-sm" disabled={zoom <= 0.25} onClick={() => setZoom((value) => Math.max(0.25, value - 0.25))}><Minus aria-hidden="true" /></IconButton><span className="zoom-value">{Math.round(zoom * 100)}%</span><IconButton label={t("pdfPreview.zoomIn")} size="icon-sm" disabled={zoom >= 4} onClick={() => setZoom((value) => Math.min(4, value + 0.25))}><Plus aria-hidden="true" /></IconButton><IconButton label={t("pdfPreview.fitPage")} size="icon-sm" onClick={() => setZoom(1)}><Maximize aria-hidden="true" /></IconButton>
     </div>}
-    <div ref={frame} className="pdf-viewport"><div ref={host} className="pdf-canvas-host" aria-busy={loading} />{loading && <div className="pdf-render-status" role="status"><LoaderCircle size={16} className="spin" aria-hidden="true" />正在渲染</div>}{error && <p className="preview-error pdf-error" role="alert">{error}</p>}</div>
+    <div ref={frame} className="pdf-viewport"><div ref={host} className="pdf-canvas-host" aria-busy={loading} />{loading && <div className="pdf-render-status" role="status"><LoaderCircle size={16} className="spin" aria-hidden="true" />{t("pdfPreview.rendering")}</div>}{error && <p className="preview-error pdf-error" role="alert">{nativeText(error)}</p>}</div>
   </div>;
 }

@@ -1,3 +1,4 @@
+import { t } from "./../i18n";
 import { useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Project } from "../types";
@@ -21,7 +22,7 @@ export function useAssetFileActions(ports: Ports) {
       if (!isCurrent() || current.currentProject()?.mainFile !== project.mainFile) return;
       try { await invoke("asset_file_action", { imageId, action, expectedMainFile: project.mainFile }); }
       catch (error) { if (isCurrent()) throw error; return; }
-      if (isCurrent()) current.onNotice(action === "copyPath" ? "已复制图片完整路径" : "已在文件管理器中显示图片");
+      if (isCurrent()) current.onNotice(action === "copyPath" ? t("assetFileActions.copiedTheFullImagePath") : t("assetFileActions.revealedTheImageInTheFileManager"));
     });
   }
   return { revealAsset: (id: string) => { void perform(id, "reveal"); }, copyAssetPath: (id: string) => { void perform(id, "copyPath"); } };

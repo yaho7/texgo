@@ -1,3 +1,4 @@
+import { t } from "./../i18n";
 import { hasTransientOverlay } from "./useTransientOverlay";
 import { useWorkspaceGuard } from "./useWorkspaceGuard";
 import { useEffect, useRef, useState } from "react";
@@ -51,7 +52,7 @@ export function useReviewFlow(ports: Ports) {
       const preview = await invoke<ChangePreview>("preview_changes");
       if (!isCurrent()) return;
       if (preview.referenceCount > 0) showReview(preview);
-      else await refresh("引用已是最新状态");
+      else await refresh(t("reviewFlow.referencesAreUpToDate"));
     });
   }
 
@@ -74,7 +75,7 @@ export function useReviewFlow(ports: Ports) {
   function locateRepair(imageId: string) {
     const isCurrent = capture();
     void execute("opening", async () => {
-      const target = await open({ multiple: false, directory: false, title: "定位项目内的图片", defaultPath: project?.root, filters: [{ name: "图片或 PDF", extensions: ["png", "jpg", "jpeg", "svg", "webp", "tif", "tiff", "bmp", "pdf"] }] });
+      const target = await open({ multiple: false, directory: false, title: t("reviewFlow.locateAnImageInsideTheProject"), defaultPath: project?.root, filters: [{ name: t("reviewFlow.imagesOrPDFs"), extensions: ["png", "jpg", "jpeg", "svg", "webp", "tif", "tiff", "bmp", "pdf"] }] });
       if (!isCurrent() || typeof target !== "string") return;
       const preview = await invoke<ChangePreview>("preview_repair", { imageId, target });
       if (isCurrent()) showReview(preview, "repair", { imageId, target });
@@ -95,22 +96,22 @@ export function useReviewFlow(ports: Ports) {
         }
         // A failed write may still have created an undo record or changed some files.
         setReview(null);
-        try { await refresh("操作中断，已重新读取工作区"); }
+        try { await refresh(t("reviewFlow.operationInterruptedWorkspaceHasBeenReloaded")); }
         catch (refreshError) {
           if (!isCurrent()) return;
           workspace.discardProject();
-          throw new Error(`${reviewErrorMessage(reason)}；重新扫描失败，请重新打开工作区：${errorMessage(refreshError)}`);
+          throw new Error(t("reviewFlow.valueRescanFailedReopenTheWorkspaceValue", { arg0: reviewErrorMessage(reason), arg1: errorMessage(refreshError) }));
         }
         restoreFocus();
         throw new Error(reviewErrorMessage(reason));
       }
       if (!isCurrent()) return;
       setReview(null);
-      const message = `${undo ? "已恢复" : "已替换"} ${result.filesChanged} 个文件中的 ${result.referencesChanged} 处引用`;
+      const message = t("reviewFlow.valueValueReferencesInValueFiles", { arg0: undo ? t("reviewFlow.restored") : t("reviewFlow.replaced"), arg1: result.filesChanged, arg2: result.referencesChanged });
       setNotice(message);
       try { await refresh(message); }
       catch (reason) {
-        if (!isCurrent()) return; workspace.discardProject(); throw new Error(`${message}，但重新扫描失败，请重新打开工作区：${errorMessage(reason)}`); }
+        if (!isCurrent()) return; workspace.discardProject(); throw new Error(t("reviewFlow.valueButRescanningFailedReopenTheWorkspaceValue", { arg0: message, arg1: errorMessage(reason) })); }
     }, undo ? undefined : "apply-review");
   }
 
@@ -119,11 +120,11 @@ export function useReviewFlow(ports: Ports) {
     if (!project || currentOperationKind() || stale.kind !== "review" || !stale.conflict) return;
     const isCurrent = capture();
     void execute("reviewing", async () => {
-      await refresh("已重新扫描，请重新审核引用变更");
+      await refresh(t("reviewFlow.rescannedReviewTheReferenceChangesAgain"));
       if (!isCurrent()) return;
       if (stale.repair) {
         const context = stale.repairContext;
-        if (!context) { decide({ kind: "none" }); setNotice("修复预览已失效，请重新定位文件"); return; }
+        if (!context) { decide({ kind: "none" }); setNotice(t("reviewFlow.repairPreviewExpiredLocateTheFileAgain")); return; }
         try {
           const preview = await invoke<ChangePreview>("preview_repair", context);
           if (isCurrent()) showReview(preview, "repair", context);
@@ -134,7 +135,7 @@ export function useReviewFlow(ports: Ports) {
           if (workspace.current.current?.images.some((image) => image.id === context.imageId)) {
             setRepairCandidates([]); decide({ kind: "problem", imageId: context.imageId });
           } else decide({ kind: "none" });
-          throw new Error(`修复预览已失效，请重新定位文件：${errorMessage(reason)}`);
+          throw new Error(t("reviewFlow.repairPreviewExpiredLocateTheFileAgainValue", { arg0: errorMessage(reason) }));
         }
       } else {
         const preview = await invoke<ChangePreview>("preview_changes");

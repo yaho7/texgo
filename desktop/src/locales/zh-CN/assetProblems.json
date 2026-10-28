@@ -1,0 +1,11 @@
+{
+  "imageReferenceProblem": "图片引用问题",
+  "closeImageProblem": "关闭图片问题",
+  "affectedReferences": "受影响的引用",
+  "candidateFiles": "候选文件",
+  "findingCandidateFiles": "正在查找候选文件",
+  "noMatchingCandidateFiles": "没有匹配的候选文件",
+  "ignoreThisSession": "忽略本次",
+  "locateFile": "定位文件",
+  "reviewRepair": "查看修复"
+}

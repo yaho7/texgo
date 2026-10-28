@@ -24,10 +24,10 @@ it("exposes a single LaTeX opening flow and recent projects", async () => {
   await user.click(screen.getByRole("button", { name: /main.tex/ })); expect(recent).toHaveBeenCalledWith({ path: "/paper/main.tex", openedAt: 1 });
 });
 
-it("keeps native recent paths and opening times readable while busy", () => {
+it("keeps recent names and times without visible paths while busy", () => {
   const entry = { path: "C:\\papers\\main.tex", openedAt: Date.now() - 5 * 60_000 };
   const view = render(<Home busy onOpenTex={vi.fn()} recents={[entry]} onRecent={vi.fn()} />);
-  expect(screen.getByText("C:\\papers")).toBeInTheDocument();
+  expect(screen.queryByText("C:\\papers")).not.toBeInTheDocument();
   expect(screen.getByText("main.tex")).toBeInTheDocument();
   const time = view.container.querySelector("time")!;
   expect(time).toHaveAttribute("datetime", new Date(entry.openedAt).toISOString());
@@ -42,7 +42,7 @@ it("preserves removal of a failed recent project after shared formatting", async
   const entry = { path: "/main.tex", openedAt: 1 };
   const remove = vi.fn(); const open = vi.fn(); const user = userEvent.setup();
   render(<TooltipProvider><WorkspaceSidebar busy={false} activeKey={null} projectPath={null} view="assets" recents={[entry]} failedRecent="tex:/main.tex" onView={vi.fn()} onSettings={vi.fn()} onOpenTex={vi.fn()} onRecent={open} onRemove={remove} /></TooltipProvider>);
-  expect(screen.getByText("/")).toBeInTheDocument();
+  expect(screen.queryByText("/")).not.toBeInTheDocument();
   expect(screen.getByText("无法打开，请重新选择")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "移除最近记录 /main.tex" }));
   expect(remove).toHaveBeenCalledWith(entry); expect(open).not.toHaveBeenCalled();

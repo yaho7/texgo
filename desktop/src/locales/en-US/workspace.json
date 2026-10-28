@@ -1,0 +1,9 @@
+{
+  "foundValueProjectImages": "Found {arg0, plural, one {# project image} other {# project images}}",
+  "projectOpenedButTheRecentEntryCouldNotBeSaved": "Project opened, but the recent entry could not be saved",
+  "openATexMainFile": "Open a .tex main file",
+  "currentProjectClosed": "Current project closed",
+  "settingsWereKeptForThisSessionOnlyCheckAppStorage": "Settings were kept for this session only. Check app storage permissions.",
+  "recentEntryRemovedTheFileWasNotDeleted": "Recent entry removed. The file was not deleted.",
+  "cannotRemoveThisEntryCheckAppStoragePermissions": "Cannot remove this entry. Check app storage permissions."
+}

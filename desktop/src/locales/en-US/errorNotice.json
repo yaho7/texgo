@@ -1,0 +1,7 @@
+{
+  "checkThatTheAffectedFilesAreAccessibleTechnicalDetailsExplain": "Check that the affected files are accessible. Technical details explain the failure.",
+  "operationIncomplete": "Operation incomplete",
+  "affectedFiles": "Affected files: ",
+  "technicalDetails": "Technical details",
+  "dismissError": "Dismiss error"
+}

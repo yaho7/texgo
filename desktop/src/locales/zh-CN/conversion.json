@@ -1,0 +1,11 @@
+{
+  "cancelledNoImagesCompleted": "已取消：0 张已完成",
+  "noPDFGenerated": "未生成 PDF",
+  "noProcessingResultReturned": "未返回转换结果",
+  "cancelledValueImagesCompleted": "已取消：{arg0} 张已完成",
+  "valueImagesNeedAttention": "，{arg0} 张需要处理",
+  "updatedValueImagesValue": "已更新 {arg0} 张图片{arg1}",
+  "updateInterruptedProjectStatusHasBeenReloaded": "更新中断，已重新读取项目状态",
+  "valueRescanFailedValue": "{arg0}；重新扫描失败：{arg1}",
+  "couldNotCancelTryAgain": "取消失败，请重试"
+}

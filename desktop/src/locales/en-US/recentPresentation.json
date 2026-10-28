@@ -1,0 +1,8 @@
+{
+  "unknownTime": "Unknown time",
+  "justNow": "Just now",
+  "valueMinutesAgo": "{arg0, plural, one {# minute} other {# minutes}} ago",
+  "today": "Today",
+  "yesterday": "Yesterday",
+  "valueDaysAgo": "{arg0, plural, one {# day} other {# days}} ago"
+}

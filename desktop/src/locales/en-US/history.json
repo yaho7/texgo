@@ -1,0 +1,6 @@
+{
+  "couldNotReadHistoryRescanAndTryAgainValue": "Could not read history. Rescan and try again: {arg0}",
+  "undoIsIncompleteRecoveryRecordsHaveBeenReloaded": "Undo is incomplete. Recovery records have been reloaded.",
+  "valueRescanFailedValue": "{arg0}; rescan failed: {arg1}",
+  "operationUndone": "Operation undone"
+}

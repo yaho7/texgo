@@ -1,0 +1,14 @@
+{
+  "couldNotLoadSettingsReturnToTheWorkspaceAndReopen": "无法加载设置。返回工作区后可重新打开应用再试。",
+  "loadingSettings": "正在加载设置…",
+  "backToWorkspace": "返回工作区",
+  "couldNotLoadHistoryReopenTheAppToTryAgain": "无法加载历史记录。重新打开应用后再试。",
+  "backToImages": "返回图片",
+  "loadingHistory": "正在加载历史记录…",
+  "appUpdate": "应用更新",
+  "couldNotLoadAppUpdatesCloseAndReopenTheApp": "无法加载应用更新。关闭后可重新打开应用再试。",
+  "loadingAppUpdates": "正在加载应用更新…",
+  "couldNotLoadTheUpdatePage": "更新页面加载失败",
+  "loading": "正在加载…",
+  "close": "关闭"
+}

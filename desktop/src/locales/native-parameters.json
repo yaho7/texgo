@@ -1,0 +1,82 @@
+{
+  "couldNotCheckForUpdatesValue": [
+    "arg0"
+  ],
+  "downloadOrSignatureVerificationFailedNoUpdateWasInstalled": [
+    "arg0"
+  ],
+  "couldNotInstallTheUpdateValue": [
+    "arg0"
+  ],
+  "couldNotRevealTheImageInTheFileManager": [
+    "arg0"
+  ],
+  "couldNotCopyTheImagePathValue": [
+    "arg0"
+  ],
+  "valueCouldNotRestoreThePreviousShortcutValue": [
+    "arg0",
+    "arg1"
+  ],
+  "backgroundTaskFailedValue": [
+    "arg0"
+  ],
+  "couldNotOpenTheLogFolderValue": [
+    "arg0"
+  ],
+  "couldNotRegisterGlobalShortcutValueItMayBe": [
+    "arg1"
+  ],
+  "couldNotReleaseTheGlobalShortcutValue": [
+    "arg0"
+  ],
+  "invalidShortcutValue": [
+    "arg0"
+  ],
+  "systemNotificationsAreUnavailableValue": [
+    "arg0"
+  ],
+  "imageDecodingFailedValue": [
+    "arg0"
+  ],
+  "couldNotReadTheGeneratedPDFValue": [
+    "arg0"
+  ],
+  "couldNotParseTheSVGValue": [
+    "arg0"
+  ],
+  "sVGProcessingFailedValue": [
+    "arg0"
+  ],
+  "theSettingsFileIsCorruptValue": [
+    "arg0"
+  ],
+  "cannotReadSettingsValue": [
+    "arg0"
+  ],
+  "valueTransactionRecoveryIsIncompleteValue": [
+    "arg0",
+    "arg1"
+  ],
+  "cannotOpenTheMainFileValue": [
+    "arg0"
+  ],
+  "couldNotReadValueValue": [
+    "arg1"
+  ],
+  "theProcessedFileIsMissingValue": [
+    "arg0"
+  ],
+  "referenceChangesAreIncompleteValueRecoveryRecordsWereRetained": [
+    "arg0"
+  ],
+  "theRecoveryRecordIsCorruptValue": [
+    "arg0"
+  ],
+  "cannotLocateTheImageValue": [
+    "arg0"
+  ],
+  "cannotReloadProjectStatusReopenTheProjectValue": [
+    "arg0"
+  ]
+}

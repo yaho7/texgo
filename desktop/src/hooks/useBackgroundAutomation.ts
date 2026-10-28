@@ -1,3 +1,4 @@
+import { t } from "./../i18n";
 import { useWorkspaceGuard } from "./useWorkspaceGuard";
 import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -51,7 +52,7 @@ export function useBackgroundAutomation(ports: Ports) {
     if (held()) { defer(); return; }
     const generation = latest.current.workspace.generation.current;
     const isCurrent = capture();
-    void latest.current.workspace.acceptProject(project, true, "项目状态已更新").catch((reason) => { if (isCurrent() && currentContext(generation)) { if (quiet) latest.current.setNotice("自动检测暂不可用"); else latest.current.setError(errorMessage(reason)); } });
+    void latest.current.workspace.acceptProject(project, true, t("backgroundAutomation.projectStatusRefreshed")).catch((reason) => { if (isCurrent() && currentContext(generation)) { if (quiet) latest.current.setNotice(t("backgroundAutomation.fileMonitoringIsTemporarilyUnavailable")); else latest.current.setError(errorMessage(reason)); } });
   }
   function matchesObservation(identity: ObservationIdentity) {
     const p = latest.current;
@@ -79,7 +80,7 @@ export function useBackgroundAutomation(ports: Ports) {
     if (!matchesObservation(identity)) return;
     if (held() || latest.current.currentOperationKind() || document.hidden) {
       observationUnavailable.current = latest.current.workspace.generation.current;
-    } else latest.current.setNotice("自动检测暂不可用");
+    } else latest.current.setNotice(t("backgroundAutomation.fileMonitoringIsTemporarilyUnavailable"));
   }
   useEffect(() => {
     observation.current = null;
@@ -125,7 +126,7 @@ export function useBackgroundAutomation(ports: Ports) {
       const state = latest.current.operationDomain.current();
       if (latest.current.reviewFlow.decisionRef.current.kind !== "none" || (!ownRead && state.status === "running" && state.owner === "foreground")) { defer(); return; }
       if (preview.referenceCount) latest.current.reviewFlow.queueReview(preview);
-    } catch (reason) { if (isCurrent() && currentContext(generation)) { if (ownRead) latest.current.setNotice("自动检测暂不可用"); else onNativeError(errorMessage(reason)); } }
+    } catch (reason) { if (isCurrent() && currentContext(generation)) { if (ownRead) latest.current.setNotice(t("backgroundAutomation.fileMonitoringIsTemporarilyUnavailable")); else onNativeError(errorMessage(reason)); } }
   }
   function onFinished(report: SmartReport) {
     if (!matches(report.project)) return;
@@ -138,7 +139,7 @@ export function useBackgroundAutomation(ports: Ports) {
     p.setRevision((value) => value + 1);
     const updated = report.result.images.filter((image) => !image.error).length;
     const status = report.project.status;
-    p.setNotice(updated ? `已更新 ${updated} 张图片` : status.pendingReferences ? `${status.pendingReferences} 处引用等待确认` : status.blockingReason ? "项目存在安全问题，请先处理" : status.pendingImages ? `${status.pendingImages} 张图片需要更新` : status.problemCount ? `${status.problemCount} 个问题需要处理` : "项目已是最新状态");
+    p.setNotice(updated ? t("backgroundAutomation.updatedValueImages", { arg0: updated }) : status.pendingReferences ? t("backgroundAutomation.valueReferencesAwaitApproval", { arg0: status.pendingReferences }) : status.blockingReason ? t("backgroundAutomation.resolveTheProjectSafetyIssueFirst") : status.pendingImages ? t("backgroundAutomation.valueImagesNeedUpdating", { arg0: status.pendingImages }) : status.problemCount ? t("backgroundAutomation.valueProblemsNeedAttention", { arg0: status.problemCount }) : t("backgroundAutomation.projectIsUpToDate"));
     // Read the preview before showing completion feedback, but never replace an open decision.
     void queuePreview(report.project, generation);
     if (updated) p.conversion.setCompletion(updated);
@@ -167,7 +168,7 @@ export function useBackgroundAutomation(ports: Ports) {
     const generation = p.workspace.generation.current;
     const isCurrent = capture();
     if (observationUnavailable.current !== null) {
-      if (observationUnavailable.current === generation) p.setNotice("自动检测暂不可用");
+      if (observationUnavailable.current === generation) p.setNotice(t("backgroundAutomation.fileMonitoringIsTemporarilyUnavailable"));
       observationUnavailable.current = null;
     }
     if (dirty.current !== null && dirty.current !== generation) dirty.current = null;
@@ -187,7 +188,7 @@ export function useBackgroundAutomation(ports: Ports) {
     void p.execute("updating", async () => {
       let fresh = await invoke<Project>("refresh_workspace").catch((reason) => {
         if (pendingNavigation) throw reason;
-        if (isCurrent() && currentContext(generation)) latest.current.setNotice("自动检测暂不可用");
+        if (isCurrent() && currentContext(generation)) latest.current.setNotice(t("backgroundAutomation.fileMonitoringIsTemporarilyUnavailable"));
         return null;
       });
       if (!fresh) return;
@@ -205,7 +206,7 @@ export function useBackgroundAutomation(ports: Ports) {
         await latest.current.onNavigate({ ...pendingNavigation.payload, project: fresh });
       } else {
         if (fresh.mainFile !== latest.current.workspace.current.current?.mainFile) return;
-        await latest.current.workspace.acceptProject(fresh, true, "项目状态已更新");
+        await latest.current.workspace.acceptProject(fresh, true, t("backgroundAutomation.projectStatusRefreshed"));
         if (currentContext(generation)) await queuePreview(fresh, generation, true);
       }
     }).finally(() => { refreshing.current = false; });
@@ -224,8 +225,8 @@ export function useBackgroundAutomation(ports: Ports) {
         const next = await invoke<Project | null>("poll_workspace", { root });
         if (!next || disposed || !isCurrent() || !currentContext(generation) || next.mainFile !== latest.current.workspace.current.current?.mainFile) return;
         if (document.hidden || held() || latest.current.currentOperationKind()) { defer(); return; }
-        await latest.current.workspace.acceptProject(next, true, "项目状态已更新");
-      } catch { retryAt = Date.now() + 30_000; if (!disposed && currentContext(generation)) latest.current.setNotice("自动检测暂不可用"); }
+        await latest.current.workspace.acceptProject(next, true, t("backgroundAutomation.projectStatusRefreshed"));
+      } catch { retryAt = Date.now() + 30_000; if (!disposed && currentContext(generation)) latest.current.setNotice(t("backgroundAutomation.fileMonitoringIsTemporarilyUnavailable")); }
       finally { pending = false; }
     }
     const timer = window.setInterval(() => { void poll(); }, 30_000);
