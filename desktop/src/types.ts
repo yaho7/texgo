@@ -81,6 +81,8 @@ export interface ConversionHistoryEntry {
   filesChanged?: number;
 }
 
+export interface RenamePreview { newRelativePath: string; references: ChangePreview }
+
 export interface RenameResult {
   project: Project;
   oldImageId: string;

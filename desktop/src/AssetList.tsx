@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import AssetThumbnail from "./AssetThumbnail";
 import { useAssetThumbnails } from "./hooks/useAssetThumbnails";
 import type { ThumbnailContext } from "./hooks/useAssetThumbnails";
-import { ChevronLeft, ChevronRight, Search, MoreHorizontal } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Search, MoreHorizontal } from "lucide-react";
 import { Input } from "@/controls/input";
 import { errorMessage } from "./utils";
 import { Badge } from "@/controls/badge";
@@ -44,6 +44,7 @@ interface Props {
   ignored?: Set<string>;
   onIgnore?: (id: string, mode: "none" | "session" | "permanent") => void;
   onRename?: (id: string, newBaseName: string) => Promise<void>;
+  pendingRename?: { id: string; name: string };
   renameRequest?: { id: string; token: number };
   convertibleIds?: Set<string>;
   onManualConvert?: (id: string) => void;
@@ -246,6 +247,7 @@ export default function AssetList(props: Props) {
       {props.showSearchAndFilters !== false && <Separator />}
       <div ref={scrollArea} className="asset-scroll min-h-0 flex-1 overflow-auto">
         <Table className="table-fixed asset-filter-content min-w-[560px]" data-filter={props.filter}>
+          <colgroup>{props.selectionMode && <col style={{width:48}} />}<col /><col style={{width:56}} /><col style={{width:80}} /><col style={{width:getLocale() === "en-US" ? 112 : 96}} /><col style={{width:36}} /></colgroup>
           <TableCaption className="sr-only">{t("assetList.projectImagesAndProcessingStatus")}</TableCaption>
           <TableHeader className="sr-only">
             <TableRow>
@@ -270,12 +272,13 @@ export default function AssetList(props: Props) {
               const ignoreMode = asset.ignoreMode ?? (props.ignored?.has(asset.id) ? "session" : "none");
               const ignored = ignoreMode !== "none";
               const missingPdf = asset.message === getLoadedCatalog("zh-CN")?.native.managedPdfMissing;
-              const label = ignored ? t("assetList.ignored") : problem ? referenceProblem ? statusLabels[asset.status] : t("assetList.needsAttention") : result?.cancelled ? t("assetList.cancelled") : missingPdf ? t("assetList.missingPDF") : converted ? t("assetList.completed") : updatable ? t("assetList.updatedSource") : statusLabels[asset.status];
+              const pendingRename = props.pendingRename?.id === asset.id;
+              const label = pendingRename ? t("assetList.pendingRename") : ignored ? t("assetList.ignored") : problem ? referenceProblem ? statusLabels[asset.status] : t("assetList.needsAttention") : result?.cancelled ? t("assetList.cancelled") : missingPdf ? t("assetList.missingPDF") : converted ? t("assetList.completed") : updatable ? t("assetList.updatedSource") : statusLabels[asset.status];
               const normalizedPath = asset.relativePath.replaceAll("\\", "/");
               const slash = normalizedPath.lastIndexOf("/");
               const filename = normalizedPath.slice(slash + 1);
               const dot = filename.lastIndexOf(".");
-              const baseName = dot > 0 ? filename.slice(0, dot) : filename;
+              const baseName = props.pendingRename?.id === asset.id ? props.pendingRename.name : dot > 0 ? filename.slice(0, dot) : filename;
               return (
                 <ContextMenu key={rowKeys.current.get(asset.id) ?? asset.id}><ContextMenuTrigger asChild disabled={props.busy || isExiting || Boolean(rename)}><TableRow tabIndex={isExiting ? -1 : 0} aria-selected={props.activeId === asset.id} onKeyDown={(event) => {
                   if ((event.key === "ContextMenu" || event.key === "F10" && event.shiftKey) && !props.busy && !isExiting && !rename) {
@@ -291,10 +294,11 @@ export default function AssetList(props: Props) {
                       {rename?.id === asset.id ? <div className="asset-rename" onClick={(event) => event.stopPropagation()}>
                         <div className="asset-rename-field"><Input ref={renameRef} aria-label={t("assetList.newImageName")} value={rename.name} readOnly={rename.saving} aria-invalid={Boolean(rename.error)} aria-describedby={rename.error ? `rename-error-${asset.id}` : undefined} onChange={(event) => setRename({ ...rename, name: event.target.value, error: null })} onBlur={(event) => {
                           if (savingRename.current) return;
+                          if (event.relatedTarget instanceof HTMLElement && event.currentTarget.closest(".asset-rename")?.contains(event.relatedTarget)) return;
                           const target = event.relatedTarget;
                           if (renameHandoff.current && (!target || target instanceof HTMLElement && target.closest('.asset-preview-trigger, .asset-more, [role="menu"]'))) return;
                           renameHandoff.current = false; setRename(null);
-                        }} onKeyDown={(event) => { if (event.nativeEvent.isComposing) return; if (event.key === "Enter") { event.preventDefault(); void submitRename(); } else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (!savingRename.current) setRename(null); } }} /></div>
+                        }} onKeyDown={(event) => { if (event.nativeEvent.isComposing) return; if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); void submitRename(); } else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (!savingRename.current) setRename(null); } }} /><Button className="asset-rename-confirm" variant="ghost" size="icon-xs" aria-label={t("assetList.confirmRename")} disabled={rename.saving} onPointerDown={(event) => event.preventDefault()} onClick={() => { void submitRename(); }}><Check aria-hidden="true" /></Button></div>
                         {rename.error && <p role="alert" id={`rename-error-${asset.id}`} className="absolute left-2 top-full z-10 max-w-80 rounded border border-destructive/30 bg-background px-2 py-1 text-xs text-destructive shadow-sm">{rename.error}</p>}
                       </div> : <Button variant="ghost" className="asset-preview-trigger h-auto min-w-0 justify-start px-0 py-0 hover:bg-transparent!" disabled={props.previewDisabled || isExiting} aria-label={t("assetList.previewValue", { arg0: asset.relativePath })} aria-pressed={props.activeId === asset.id} onClick={() => props.onActivate(asset.id)} title={asset.relativePath}>
                         <span className="truncate asset-filename" onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); beginRename(asset); }}>{baseName}</span>

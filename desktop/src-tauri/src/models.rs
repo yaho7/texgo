@@ -118,6 +118,13 @@ pub enum ConversionIntent {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RenamePreview {
+    pub new_relative_path: String,
+    pub references: ReplacementPlan,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RenameResult {
     pub project: Project,
     pub old_image_id: String,

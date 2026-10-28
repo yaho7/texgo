@@ -69,6 +69,10 @@ beforeEach(() => {
     },
     undo_replacements: () => { backend.undoAvailable = false; return { filesChanged: 1, referencesChanged: 1 }; },
     undo_conversion: () => { backend = structuredClone(initial); entries = [{ ...record, undone: true, canUndo: false }]; return structuredClone(backend); },
+    preview_rename: ({imageId,newBaseName}) => {
+      const asset = backend.images.find(image => image.id === imageId)!;
+      return {newRelativePath:`figures/${newBaseName}.png`,references:{referenceCount:1,files:[{path:"/paper/main.tex",fingerprint:"review-hash",changes:[{id:"rename-ref",line:1,before:asset.relativePath,after:`figures/${newBaseName}.png`}]}]}};
+    },
     repair_candidates: () => [],
     ignore_asset: ({ imageId, mode }) => {
       const id = imageId as string;
@@ -512,12 +516,17 @@ describe("explicit asset control", () => {
     await user.dblClick(within(screen.getByRole("button", { name: "预览 figures/alpha.png" })).getByText("alpha"));
     const input = await screen.findByRole("textbox", { name: "图片新名称" });
     await user.clear(input); await user.type(input, "pressure-map{Enter}");
+    expect(calls.some(call => call.command === "rename_asset")).toBe(false);
+    await user.click(await screen.findByRole("button", {name:"应用重命名"}));
+    const review = await screen.findByRole("dialog", {name:"审核重命名"});
+    expect(within(review).getByText(/应用前请保存/)).toBeInTheDocument();
+    await user.click(within(review).getByRole("button", {name:"应用重命名"}));
     expect(await screen.findByRole("button", { name: "预览 figures/pressure-map.png" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("searchbox")).toHaveValue("figures");
     expect(screen.queryByRole("textbox", { name: "图片新名称" })).not.toBeInTheDocument();
   });
   it("F2 requests rename only outside text fields and errors remain inline", async () => {
-    handlers.rename_asset = () => { throw new Error("该文件名已存在"); };
+    handlers.preview_rename = () => { throw new Error("该文件名已存在"); };
     const user = await openProject();
     const search = screen.getByRole("searchbox"); await user.click(search); fireEvent.keyDown(search, { key: "F2" });
     expect(screen.queryByRole("textbox", { name: "图片新名称" })).not.toBeInTheDocument();
@@ -547,8 +556,11 @@ it("never shows a fallback image while rename history is still loading", async (
   fireEvent.keyDown(document.body, { key: "F2" });
   const input = await screen.findByRole("textbox", { name: "图片新名称" });
   await user.clear(input); await user.type(input, "renamed-beta{Enter}");
-  await waitFor(() => expect(screen.getByRole("button", { name: "预览 figures/renamed-beta.jpg" })).toHaveAttribute("aria-pressed", "true"));
-  expect(screen.getByRole("button", { name: "预览 figures/alpha.png" })).toHaveAttribute("aria-pressed", "false");
+  await user.click(await screen.findByRole("button", {name:"应用重命名"}));
+  const review = await screen.findByRole("dialog", {name:"审核重命名"});
+  await user.click(within(review).getByRole("button", {name:"应用重命名"}));
+  await waitFor(() => expect(document.querySelector('button[aria-label="预览 figures/renamed-beta.jpg"]')).toHaveAttribute("aria-pressed", "true"));
+  expect(document.querySelector('button[aria-label="预览 figures/alpha.png"]')).toHaveAttribute("aria-pressed", "false");
   await act(async () => { historyLoad.resolve([]); });
   await waitFor(() => expect(screen.getByRole("button", { name: "处理 2 张图片" })).toBeEnabled());
 });

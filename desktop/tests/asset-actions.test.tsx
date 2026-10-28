@@ -104,3 +104,13 @@ it("omits redundant details from the context menu while row selection still open
   await user.click(screen.getByRole("button", { name: "预览 figures/plot.png" }));
   expect(p.onActivate).toHaveBeenCalledWith("plot"); expect(p.onInspect).not.toHaveBeenCalled();
 });
+
+it("confirms inline rename with the adjacent check button without cancelling on blur", async () => {
+  const user = userEvent.setup(); const p = props(); render(<AssetList {...p} />);
+  await user.dblClick(screen.getByText("plot"));
+  const input = screen.getByRole("textbox", {name:"图片新名称"});
+  await user.clear(input); await user.type(input,"renamed");
+  await user.click(screen.getByRole("button", {name:"确认新名称"}));
+  expect(p.onRename).toHaveBeenCalledExactlyOnceWith("plot","renamed");
+  expect(screen.queryByRole("textbox", {name:"图片新名称"})).not.toBeInTheDocument();
+});

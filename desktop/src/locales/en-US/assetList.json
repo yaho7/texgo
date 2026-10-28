@@ -37,5 +37,7 @@
   "valueImages": "{arg0, plural, one {# image} other {# images}}",
   "previousImagePage": "Previous image page",
   "nextImagePage": "Next image page",
-  "missingPDF": "PDF missing"
+  "missingPDF": "PDF missing",
+  "confirmRename": "Confirm new name",
+  "pendingRename": "Pending"
 }

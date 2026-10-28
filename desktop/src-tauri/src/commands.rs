@@ -358,6 +358,11 @@ async fn asset_file_action(image_id: String, action: crate::asset_file_actions::
 }
 
 #[tauri::command]
+async fn preview_rename(image_id: String, new_base_name: String, expected_fingerprint: String, state: State<'_, AppState>) -> Result<RenamePreview, String> {
+    work(state.inner().clone(), move |workspace| current(workspace)?.preview_rename(&image_id, &new_base_name, &expected_fingerprint)).await
+}
+
+#[tauri::command]
 async fn rename_asset(image_id: String, new_base_name: String, expected_fingerprint: String, app: tauri::AppHandle, state: State<'_, AppState>) -> Result<RenameResult, String> {
     if state.converting.swap(true, Ordering::SeqCst) { return Err("已有项目操作正在运行，请稍后重试".into()); }
     let guard = ConversionGuard(state.converting.clone());
@@ -433,7 +438,7 @@ pub fn run() {
             install_background(app);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![crate::app_update::check_application_update, crate::app_update::download_application_update, crate::app_update::install_application_update, crate::app_update::restart_after_update, observation_identity, desktop_status, set_shortcut_recording, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, asset_file_action, rename_asset, retry_asset, open_project, refresh_workspace, poll_workspace, open_log_directory, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, asset_thumbnail, preview_changes, apply_replacements, undo_replacements])
+        .invoke_handler(tauri::generate_handler![crate::app_update::check_application_update, crate::app_update::download_application_update, crate::app_update::install_application_update, crate::app_update::restart_after_update, observation_identity, desktop_status, set_shortcut_recording, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, asset_file_action, preview_rename, rename_asset, retry_asset, open_project, refresh_workspace, poll_workspace, open_log_directory, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, asset_thumbnail, preview_changes, apply_replacements, undo_replacements])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let background = window.state::<AppState>().preferences.lock().is_ok_and(|p| p.close_action == "background");

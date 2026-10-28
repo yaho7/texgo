@@ -26,6 +26,7 @@ interface Props {
   progress: ConversionProgress | null;
   completion: number | null;
   cancelRequested: boolean;
+  pendingRename?: { referenceCount: number };
   onAction: () => void;
   onManualOpen?: () => boolean;
   onConvert?: (intent: "pending" | "selected" | "reconvert", imageIds?: string[]) => void;
@@ -100,6 +101,10 @@ export default function CommandBar(props: Props) {
   }
   const idle = status.nextAction === "upToDate" && !props.selectionMode && !props.busy && props.completion === null && !blocked;
   const progress = props.progress && props.progress.total > 0 ? props.progress.current / props.progress.total * 100 : 0;
+  if (props.pendingRename) return <section className="command-bar" aria-label={t("commandBar.nextProjectAction")}>
+    <span className="command-message">{t("commandBar.renamePending", {count:props.pendingRename.referenceCount})}</span>
+    <Button className="command-action" disabled={props.busy} onClick={props.onAction}>{t("commandBar.applyRename")}</Button>
+  </section>;
   return <section className="command-bar" aria-label={t("commandBar.nextProjectAction")} data-state={transitionKey}>
     <div className="command-status">
       <div className="command-message-stage" aria-live="polite" role="status">

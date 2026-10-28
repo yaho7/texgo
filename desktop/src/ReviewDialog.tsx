@@ -13,6 +13,10 @@ import { relativeFile } from "./utils";
 
 interface Props {
   preview: ChangePreview;
+  title?: string;
+  description?: string;
+  applyLabel?: string;
+  lockSelection?: boolean;
   root: string;
   busy: boolean;
   error: string | null;
@@ -38,7 +42,7 @@ export default function ReviewDialog(props: Props) {
   const checkbox = (values: string[], label: string) => {
     const valid = values.filter(Boolean);
     const count = valid.filter((id) => selection.has(id)).length;
-    return <label className="flex items-center gap-2 text-sm"><input type="checkbox" disabled={props.busy || valid.length === 0} checked={valid.length > 0 && count === valid.length} ref={(element) => { if (element) element.indeterminate = count > 0 && count < valid.length; }} onChange={(event) => toggle(valid, event.target.checked)} />{label}</label>;
+    return <label className="flex items-center gap-2 text-sm"><input type="checkbox" disabled={props.busy || props.lockSelection || valid.length === 0} checked={valid.length > 0 && count === valid.length} ref={(element) => { if (element) element.indeterminate = count > 0 && count < valid.length; }} onChange={(event) => toggle(valid, event.target.checked)} />{label}</label>;
   };
   return (
     <Dialog open onOpenChange={(open) => { if (!open && !props.busy) props.onClose(); }}>
@@ -52,8 +56,8 @@ export default function ReviewDialog(props: Props) {
       >
         <div className="flex shrink-0 items-start justify-between gap-4 p-5">
           <DialogHeader>
-            <DialogTitle>{t("reviewDialog.reviewReferenceChanges")}</DialogTitle>
-            <DialogDescription>{t("reviewDialog.summary", {files:props.preview.files.length, references:props.preview.referenceCount})}</DialogDescription>
+            <DialogTitle>{props.title ?? t("reviewDialog.reviewReferenceChanges")}</DialogTitle>
+            <DialogDescription>{props.description ?? t("reviewDialog.summary", {files:props.preview.files.length, references:props.preview.referenceCount})}</DialogDescription>
           </DialogHeader>
           <DialogClose asChild>
             <Button variant="ghost" size="icon" aria-label={t("reviewDialog.closeReferenceReview")} title={t("reviewDialog.closeReferenceReview")} disabled={props.busy}><X aria-hidden="true" /></Button>
@@ -93,8 +97,8 @@ export default function ReviewDialog(props: Props) {
         <DialogFooter className="shrink-0 p-5">
           <DialogClose asChild><Button variant="outline" disabled={props.busy}>{t("reviewDialog.back")}</Button></DialogClose>
           {props.conflict && <Button variant="outline" disabled={props.busy} onClick={props.onRescan}>{t("reviewDialog.rescan")}</Button>}
-          <Button disabled={props.busy || Boolean(props.conflict) || selected.length === 0} onClick={() => props.onApply(selected)}>
-            {props.busy ? <LoaderCircle data-icon="inline-start" className="animate-spin" aria-hidden="true" /> : <ArrowRight data-icon="inline-start" aria-hidden="true" />}{t("reviewDialog.applyChanges", {count:selected.length})}</Button>
+          <Button disabled={props.busy || Boolean(props.conflict) || (selected.length === 0 && !props.lockSelection)} onClick={() => props.onApply(selected)}>
+            {props.busy ? <LoaderCircle data-icon="inline-start" className="animate-spin" aria-hidden="true" /> : <ArrowRight data-icon="inline-start" aria-hidden="true" />}{props.applyLabel ?? t("reviewDialog.applyChanges", {count:selected.length})}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

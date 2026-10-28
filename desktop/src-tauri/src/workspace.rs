@@ -226,6 +226,11 @@ impl Workspace {
         refreshed
     }
 
+    pub fn preview_rename(&self, image_id: &str, new_base_name: &str, expected_fingerprint: &str) -> Result<RenamePreview, String> {
+        let _lock = transaction::lock_project(Path::new(&self.scan.project.root))?;
+        crate::rename::preview_locked(&self.scan.project, &self.scan.sources, &self.rename_fingerprints, image_id, new_base_name, expected_fingerprint)
+    }
+
     pub fn rename_asset(&mut self, image_id: &str, new_base_name: &str, expected_fingerprint: &str) -> Result<RenameResult, String> {
         let root = PathBuf::from(&self.scan.project.root);
         let (old_image_id, new_image_id) = {

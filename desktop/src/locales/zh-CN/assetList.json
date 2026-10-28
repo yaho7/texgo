@@ -37,5 +37,7 @@
   "valueImages": "{arg0} 张图片",
   "previousImagePage": "上一页图片",
   "nextImagePage": "下一页图片",
-  "missingPDF": "PDF 缺失"
+  "missingPDF": "PDF 缺失",
+  "confirmRename": "确认新名称",
+  "pendingRename": "待应用"
 }

@@ -42,5 +42,8 @@
   "restoreThisOperationSFilesAndReferencesIncludingOriginalFilenames": "将恢复此次操作修改的文件与引用。重命名操作也会恢复原文件名；文件被外部修改时会停止撤销。",
   "undoOperation": "确认撤销",
   "dropToOpenTheTexMainFile": "松开以打开 .tex 主文件",
-  "pendingReviewDescription": "当前有 {count} 处引用尚未审核。建议先完成引用审核，再开始新的转换。"
+  "pendingReviewDescription": "当前有 {count} 处引用尚未审核。建议先完成引用审核，再开始新的转换。",
+  "reviewRename": "审核重命名",
+  "applyRename": "应用重命名",
+  "renameDescription": "将重命名原图和托管 PDF，并更新以下引用。"
 }

@@ -313,3 +313,26 @@ fn old_journal_without_rename_metadata_reopens_and_undoes_managed_files() {
     assert!(!dir.path().join("map.png").exists());
     assert!(!dir.path().join("out/map.pdf").exists());
 }
+
+#[test]
+fn rename_preview_never_writes_and_apply_rejects_files_changed_during_review() {
+    let dir = tempfile::tempdir().unwrap(); let root = dir.path().canonicalize().unwrap();
+    image::RgbImage::new(2, 2).save(root.join("result.png")).unwrap();
+    let tex = "\\includegraphics{result.png}";
+    fs::write(root.join("main.tex"), tex).unwrap();
+    let mut ws = Workspace::open(&root.join("main.tex")).unwrap();
+    let id = ws.project().images[0].id.clone(); let fingerprint = ws.project().state_fingerprint.clone();
+    let preview = ws.preview_rename(&id, "renamed", &fingerprint).unwrap();
+    assert_eq!(preview.references.reference_count, 1);
+    assert!(!preview.references.files[0].fingerprint.is_empty());
+    assert_eq!(fs::read_to_string(root.join("main.tex")).unwrap(), tex);
+    assert!(root.join("result.png").exists()); assert!(!root.join("renamed.png").exists());
+    fs::write(root.join("main.tex"), format!("% external edit\n{tex}")).unwrap();
+    assert!(ws.rename_asset(&id,"renamed",&fingerprint).is_err());
+    assert!(root.join("result.png").exists()); assert!(!root.join("renamed.png").exists());
+    ws.refresh().unwrap(); let fresh = ws.project().state_fingerprint.clone();
+    ws.preview_rename(&id,"renamed",&fresh).unwrap();
+    ws.rename_asset(&id,"renamed",&fresh).unwrap();
+    assert!(root.join("renamed.png").exists());
+    assert!(fs::read_to_string(root.join("main.tex")).unwrap().contains("% external edit\n\\includegraphics{renamed.png}"));
+}

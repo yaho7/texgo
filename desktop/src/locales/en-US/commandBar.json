@@ -30,5 +30,7 @@
   "reprocessCurrentImage": "Reprocess current image",
   "reprocessAllImages": "Reprocess all images",
   "cancelling": "Cancelling…",
-  "cancelProcessing": "Cancel processing"
+  "cancelProcessing": "Cancel processing",
+  "applyRename": "Apply rename",
+  "renamePending": "Rename awaiting approval · {count, plural, one {# reference} other {# references}}"
 }

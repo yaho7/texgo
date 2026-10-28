@@ -144,7 +144,19 @@ fn move_files(root:&Path, files:&mut Vec<FileState>, old:&str,new:&str)->Result<
     files.push(state(old.into(),Some(bytes),None));
     Ok(())
 }
+struct PreparedRename { record: Record, old_id: String, new_id: String, preview: RenamePreview }
+
+pub(crate) fn preview_locked(project:&Project,sources:&BTreeMap<PathBuf,Vec<u8>>,fingerprints:&BTreeMap<String,String>,id:&str,name:&str,expected:&str)->Result<RenamePreview,String> {
+    Ok(prepare_locked(project,sources,fingerprints,id,name,expected)?.preview)
+}
+
 pub(crate) fn rename_locked(project:&Project,sources:&BTreeMap<PathBuf,Vec<u8>>,fingerprints:&BTreeMap<String,String>,id:&str,name:&str,expected:&str)->Result<(String,String),String> {
+    let prepared = prepare_locked(project,sources,fingerprints,id,name,expected)?;
+    commit(Path::new(&project.root), &prepared.record, true)?;
+    Ok((prepared.old_id, prepared.new_id))
+}
+
+fn prepare_locked(project:&Project,sources:&BTreeMap<PathBuf,Vec<u8>>,fingerprints:&BTreeMap<String,String>,id:&str,name:&str,expected:&str)->Result<PreparedRename,String> {
     let root=Path::new(&project.root); valid_name(name)?;
     if expected.is_empty() || expected != project.state_fingerprint || expected != state_fingerprint(project,fingerprints)? { return Err("项目已发生变化，请重新扫描后重试".into()); }
     if optional(root,".texgo/rename-active.json")?.is_some() { return Err("存在未完成的重命名恢复，请重新打开项目".into()); }
@@ -220,6 +232,7 @@ pub(crate) fn rename_locked(project:&Project,sources:&BTreeMap<PathBuf,Vec<u8>>,
     }
     let reference_count=asset.references.len();
     let tex_count=edits.len();
+    let mut review_files = Vec::new();
     for (path,mut changes) in edits {
         let before=sources.get(&path).ok_or("引用文件不在扫描记录中")?;
         let mut after=String::from_utf8(before.clone()).map_err(|_|"TeX 文件不是 UTF-8")?;
@@ -229,6 +242,10 @@ pub(crate) fn rename_locked(project:&Project,sources:&BTreeMap<PathBuf,Vec<u8>>,
             if *start<previous || *end<*start || after.get(*start..*end)!=Some(original.as_str()) { return Err("LaTeX 引用已变化，请重新扫描后重试".into()); }
             previous=*end;
         }
+        review_files.push(FileChanges { path:path.to_string_lossy().into(), fingerprint:digest(before), changes:changes.iter().map(|(start,_,original,replacement)| ReferenceChange {
+            id:digest(format!("{}:{start}:{original}:{replacement}",path.display()).as_bytes()),
+            line:before[..*start].iter().filter(|b| **b == b'\n').count()+1, before:original.clone(), after:replacement.clone()
+        }).collect() });
         for (start,end,_,replacement) in changes.into_iter().rev() { after.replace_range(start..end,&replacement); }
         files.push(state(journal::relative(root,&path)?,Some(before.clone()),Some(after.into_bytes())));
     }
@@ -272,8 +289,8 @@ pub(crate) fn rename_locked(project:&Project,sources:&BTreeMap<PathBuf,Vec<u8>>,
     journal.record_rename(&record_id,created_at,rename,reference_count,tex_count,identity,preferred_outputs);
     files.push(state(".texgo/conversions.json".into(),journal_before,Some(journal.serialized()?)));
     let record=Record{version:1,id:record_id,main_file:project.main_file.clone(),files};
-    commit(root,&record,true)?;
-    Ok((id.into(),digest(new.to_string_lossy().as_bytes())))
+    Ok(PreparedRename { record, old_id:id.into(), new_id:digest(new.to_string_lossy().as_bytes()),
+        preview:RenamePreview { new_relative_path:new_rel, references:ReplacementPlan { files:review_files, reference_count } } })
 }
 fn record_fingerprint(record:&Record)->Result<String,String> {
     let mut protected=record.clone();

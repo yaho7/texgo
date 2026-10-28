@@ -30,5 +30,7 @@
   "reprocessCurrentImage": "重新处理当前图片",
   "reprocessAllImages": "重新处理全部图片",
   "cancelling": "等待取消…",
-  "cancelProcessing": "取消处理"
+  "cancelProcessing": "取消处理",
+  "applyRename": "应用重命名",
+  "renamePending": "重命名待确认 · {count} 处引用"
 }

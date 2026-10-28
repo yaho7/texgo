@@ -38,7 +38,7 @@ import AssetProblems from "./AssetProblems";
 import ReviewDialog from "./ReviewDialog";
 import Splitter from "./Splitter";
 import { readRecents } from "./recents";
-import type { Project, NotificationTarget, ChangePreview, RenameResult, IgnoreMode } from "./types";
+import type { Project, NotificationTarget, ChangePreview, RenamePreview, RenameResult, IgnoreMode } from "./types";
 import { errorMessage, fileName } from "./utils";
 
 import { useOperation } from "./hooks/useOperation";
@@ -58,6 +58,9 @@ export default function App() {
   preferencesRef.current = preferences;
   const [settingsPage, setSettingsPage] = useState(false);
   const [homePage, setHomePage] = useState(false);
+  const [pendingRename, setPendingRename] = useState<{ id:string; name:string; fingerprint:string; mainFile:string; preview:RenamePreview } | null>(null);
+  const [renameReviewOpen, setRenameReviewOpen] = useState(false);
+  const [renameConflict, setRenameConflict] = useState<{path:string;message:string}>();
   const [highlightBatch, setHighlightBatch] = useState<string | null>(null);
   const notificationNavigate = useRef<(payload: { project: Project; target: NotificationTarget }) => Promise<void>>(async () => {});
   const [view, setView] = useState<"assets" | "history">("assets");
@@ -91,6 +94,7 @@ export default function App() {
   });
   const { project, current: projectRef, contextKey, recents, failedRecent, settings, acceptProject, refresh,
     openProject, openRecent, closeProject, updateSettings } = workspace;
+  useEffect(() => { setPendingRename(null); setRenameReviewOpen(false); setRenameConflict(undefined); }, [project?.mainFile]);
   const homeVisible = !project || homePage;
   const homeLanding = homeVisible && !settingsPage;
   const { shellRef, commandRef } = useWorkspaceGeometry(Boolean(project) && !homeVisible && !settingsPage, notice);
@@ -102,7 +106,7 @@ export default function App() {
     pendingIds, convertibleIds, problemIds, ignored, completedIds, activate: setActiveId,
     changeSearch: setSearch, changeFilter: setFilter } = selection;
   const reviewFlow = useReviewFlow({ workspace, selection, execute, currentOperationKind, setError, setNotice, rememberFocus, restoreFocus, setView: showWorkspace,
-    completionVisible: () => conversionRef.current?.completionVisible() ?? false, automaticReviewAllowed: !homeVisible && !settingsPage && windowVisible && !updateOpen && !drawerOpen && !transientOverlayOpen });
+    completionVisible: () => conversionRef.current?.completionVisible() ?? false, automaticReviewAllowed: !homeVisible && !settingsPage && windowVisible && !updateOpen && !drawerOpen && !transientOverlayOpen && !pendingRename });
   const historyDomain = useHistory({
     currentProject: () => projectRef.current, generation: () => workspace.generation.current,
     execute, acceptProject, refresh, discardProject: workspace.discardProject,
@@ -120,7 +124,7 @@ export default function App() {
   const decisionOpen = reviewFlow.decision.kind !== "none";
   const background = useBackgroundAutomation({ workspace, selection, execute, currentOperationKind, setError, setNotice,
     conversion, reviewFlow, historyDomain, operationDomain: { current: currentOperation, acquire: acquireOperation, release: releaseOperation },
-    autoWatch: preferences.autoWatch, held: decisionOpen || completion !== null || updateOpen || homeVisible,
+    autoWatch: preferences.autoWatch, held: decisionOpen || completion !== null || updateOpen || homeVisible || Boolean(pendingRename),
     onNavigate: (payload) => notificationNavigate.current(payload), setRevision });
   useDesktopEvents({ background, onAction: (action) => desktopAction.current(action), onDrop: (paths) => dropFiles.current(paths), setDragging });
   useEffect(() => {
@@ -211,16 +215,36 @@ export default function App() {
   async function renameAsset(imageId: string, newBaseName: string) {
     const current = projectRef.current;
     if (!current || reviewFlow.decisionRef.current.kind !== "none") throw new Error(t("app.aProjectOperationIsRunningTryAgainWhenItFinishes"));
-    const outcome = await runOperation("renaming", "foreground", async () => {
-      setError(null);
-      const result = await invoke<RenameResult>("rename_asset", { imageId, newBaseName, expectedFingerprint: current.stateFingerprint ?? "" });
-      selection.migrateIdentity(result.oldImageId, result.newImageId);
-      await acceptProject(result.project, true);
-      workspace.recordActivity();
-      const entry = result.project.images.find((image) => image.id === result.newImageId);
-      setNotice(t("app.renamedValue", { arg0: entry?.references.length ? t("app.updatedValueLaTeXReferences", { arg0: entry.references.length }) : "" }));
+    const outcome = await runOperation("reviewing", "foreground", async () => {
+      const fingerprint = current.stateFingerprint ?? "";
+      const preview = await invoke<RenamePreview>("preview_rename", {imageId, newBaseName, expectedFingerprint:fingerprint});
+      setPendingRename({id:imageId,name:newBaseName,fingerprint,mainFile:current.mainFile,preview});
+      setRenameConflict(undefined); setError(null); workspace.recordActivity();
     });
     if (!outcome.acquired) throw new Error(t("app.aProjectOperationIsRunningTryAgainWhenItFinishes"));
+  }
+  async function applyRename() {
+    const plan = pendingRename;
+    if (!plan || projectRef.current?.mainFile !== plan.mainFile) return;
+    await execute("renaming", async () => {
+      try {
+        const result = await invoke<RenameResult>("rename_asset", {imageId:plan.id,newBaseName:plan.name,expectedFingerprint:plan.fingerprint});
+        selection.migrateIdentity(result.oldImageId,result.newImageId);
+        await acceptProject(result.project,true); workspace.recordActivity();
+        setPendingRename(null); setRenameReviewOpen(false); setRenameConflict(undefined); setError(null);
+        setNotice(t("app.renamedValue", {arg0:""}));
+      } catch (reason) { setRenameConflict({path:plan.mainFile,message:errorMessage(reason)}); throw reason; }
+    });
+  }
+  async function rescanRename() {
+    const plan = pendingRename;
+    if (!plan) return;
+    await execute("reviewing", async () => {
+      await refresh(); const current = projectRef.current;
+      if (!current || current.mainFile !== plan.mainFile) return;
+      const preview = await invoke<RenamePreview>("preview_rename", {imageId:plan.id,newBaseName:plan.name,expectedFingerprint:current.stateFingerprint ?? ""});
+      setPendingRename({...plan,fingerprint:current.stateFingerprint ?? "",preview}); setRenameConflict(undefined); setError(null);
+    });
   }
 
   function retryAsset(imageId: string) {
@@ -246,10 +270,10 @@ export default function App() {
       } else { setView(target.view === "images" ? "assets" : "history"); if (target.imageId) setActiveId(target.imageId); }
   };
   desktopAction.current = (action) => {
-    if (decisionOpen || updateOpen) return;
+    if (decisionOpen || updateOpen || renameReviewOpen) return;
     if (action === "settings") { setSettingsPage(true); setDrawerOpen(false); return; }
     if (action === "check-updates") { if (!currentOperationKind()) setUpdateOpen(true); return; }
-    if (currentOperationKind() || decisionOpen || updateOpen) return;
+    if (currentOperationKind() || decisionOpen || updateOpen || renameReviewOpen) return;
     if (["convert", "review", "undo-task"].includes(action)) setHomePage(false);
     if (action === "open-project") openProject();
     else if (action === "close-project") closeProject();
@@ -263,15 +287,16 @@ export default function App() {
     }
   };
   dropFiles.current = (paths) => {
-    if (currentOperationKind() || decisionOpen || updateOpen) return;
+    if (currentOperationKind() || decisionOpen || updateOpen || renameReviewOpen) return;
     const tex = paths.filter((path) => /\.tex$/i.test(path));
     if (tex.length !== 1) { setError(t("app.dropOneTexMainFileAtATime")); return; }
     void workspace.openPath(tex[0]);
   };
 
-  useAppShortcuts({ homePage: homeVisible, settingsPage, setSettingsPage, blocked: decisionOpen || updateOpen || drawerOpen,
+  useAppShortcuts({ homePage: homeVisible, settingsPage, setSettingsPage, blocked: decisionOpen || updateOpen || drawerOpen || renameReviewOpen,
     busy, view, setView: showWorkspace, activeAsset, activeId, visibleImages, selection, desktopAction });
   function nextAction() {
+    if (pendingRename) { setRenameReviewOpen(true); return; }
     if (!project || busy || project.status.blockingReason) return;
     if (project.status.nextAction === "reviewReferences") reviewChanges();
     else if (project.status.nextAction === "convertImages") convert();
@@ -289,7 +314,7 @@ export default function App() {
     onRemove={workspace.forgetRecent} />;
 
   return <TooltipProvider delayDuration={350}><div className="app-shell mac-workspace">
-    <div ref={shellRef} className={homeLanding || settingsPage ? "workbench pl-0!" : "workbench"} inert={review !== null || undoEntry !== null || problemId !== null || updateOpen || conversionBlocked}>
+    <div ref={shellRef} className={homeLanding || settingsPage ? "workbench pl-0!" : "workbench"} inert={review !== null || undoEntry !== null || problemId !== null || updateOpen || conversionBlocked || renameReviewOpen}>
       <a href="#main-content" className="skip-link">{t("app.skipToWorkspace")}</a>
       {!homeLanding && !settingsPage && !narrow && <aside className="workspace-sidebar" data-collapsed={!sidebarExpanded} aria-hidden={!sidebarExpanded} inert={!sidebarExpanded}>{sidebar}</aside>}
       <div className={homeLanding || settingsPage ? "workspace-main border-l-0!" : "workspace-main"}>
@@ -313,7 +338,7 @@ export default function App() {
         }}>
           <div className="workspace-grid" hidden={view !== "assets"} data-view={view} style={layoutStyle}>
             <div className="workspace-library"><AssetList showSummary={narrow || !sidebarExpanded} thumbnailContext={{ mainFile: project.mainFile, revision, enabled: !homeVisible && !settingsPage && view === "assets" }} showSearchAndFilters={false} images={visibleImages} allImages={project.images} ignored={ignored} pendingIds={pendingIds} problemIds={problemIds} completedIds={completedIds}
-              onReveal={revealAsset} onRevealPdf={revealPdf} onCopyPath={copyAssetPath} selectionMode={selectionMode} renameRequest={renameRequest} onRename={renameAsset} convertibleIds={convertibleIds} onManualConvert={(id) => convert("reconvert", [id])} onIgnore={(id, value) => { void ignoreAsset(id, value); }} onInspect={inspectProblem} onLocate={locateRepair} total={project.status.totalImages} selected={selected} activeId={activeId} results={results}
+              onReveal={revealAsset} onRevealPdf={revealPdf} onCopyPath={copyAssetPath} selectionMode={selectionMode} renameRequest={renameRequest} onRename={renameAsset} pendingRename={pendingRename ? {id:pendingRename.id,name:pendingRename.name} : undefined} convertibleIds={convertibleIds} onManualConvert={(id) => convert("reconvert", [id])} onIgnore={(id, value) => { void ignoreAsset(id, value); }} onInspect={inspectProblem} onLocate={locateRepair} total={project.status.totalImages} selected={selected} activeId={activeId} results={results}
               busy={busy} previewDisabled={busy && operation !== "converting"} search={search} filter={filter} onSearch={setSearch} onFilter={setFilter} onActivate={setActiveId}
               onSelect={(id) => { if (!busy) selection.toggleSelected(id); }}
               onSelectAll={(ids, select) => { if (!busy) selection.selectMany(ids, select); }} /></div>
@@ -324,7 +349,7 @@ export default function App() {
           </div>
           <HistoryView active={view === "history"} onReturn={() => setView("assets")} highlightId={highlightBatch} entries={history} busy={busy} onUndo={(entry) => { rememberFocus(); setError(null); reviewFlow.requestUndo(entry); }} />
         </main>
-        <div ref={commandRef} hidden={settingsPage || homeVisible}><CommandBar status={project.status} settings={settings} selectionMode={selectionMode} selectedCount={selected.size} busy={busy} converting={operation === "converting"} progress={progress} completion={completion} cancelRequested={cancelRequested}
+        <div ref={commandRef} hidden={settingsPage || homeVisible}><CommandBar pendingRename={pendingRename ? {referenceCount:pendingRename.preview.references.referenceCount} : undefined} status={project.status} settings={settings} selectionMode={selectionMode} selectedCount={selected.size} busy={busy} converting={operation === "converting"} progress={progress} completion={completion} cancelRequested={cancelRequested}
           onAction={nextAction} onConvert={convert} onManualOpen={allowManualConversionPanel} currentImageId={activeId} convertibleIds={[...convertibleIds]} onSettings={updateSettings} onSelectionMode={(enabled) => { setView("assets"); selection.changeSelectionMode(enabled); }} onCancel={() => { void cancelConversion(); }} /></div>
       </>}
       {notice && notice !== t("app.ready") && !notice.startsWith(t("app.found")) && !homeVisible && <footer className="status-bar"><div className="status-text" role="status" aria-live="polite">{operation === "opening" ? <LoaderCircle className="spin" aria-hidden="true" /> : project ? <Check aria-hidden="true" /> : <span className="status-dot" />}<span>{operation && operation !== "converting" ? operationLabels[operation] : nativeText(notice)}</span></div></footer>}
@@ -338,6 +363,7 @@ export default function App() {
       </DialogContent>
     </Dialog>
     {problemId && project && <AssetProblems asset={project.images.find((image) => image.id === problemId) ?? null} projectRoot={project.root} busy={busy} candidates={repairCandidates} candidatesLoading={operation === "reviewing"} error={error} onClose={() => { setProblemId(null); setError(null); restoreFocus(); }} onLocate={locateRepair} onChoose={chooseRepair} onIgnore={(id) => { void ignoreAsset(id); }} />}
+    {renameReviewOpen && pendingRename && project && <ReviewDialog key={JSON.stringify(pendingRename.preview)} preview={pendingRename.preview.references} root={project.root} busy={busy} title={t("app.reviewRename")} description={t("app.renameDescription")} applyLabel={t("app.applyRename")} lockSelection error={error} conflict={renameConflict} onRescan={() => { void rescanRename(); }} onClose={() => { if (!currentOperationKind()) { setRenameReviewOpen(false); setPendingRename(null); setRenameConflict(undefined); setError(null); } }} onApply={() => { void applyRename(); }} />}
     {review && project && <ReviewDialog key={JSON.stringify(review)} preview={review} root={project.root} busy={busy} error={error} conflict={reviewFlow.decision.kind === "review" ? reviewFlow.decision.conflict : undefined} onRescan={reviewFlow.rescanReview} onClose={() => { if (!currentOperationKind()) { setReview(null); setError(null); restoreFocus(); } }} onApply={(selection) => replace(false, selection)} />}
     <Dialog open={conversionBlocked} onOpenChange={setConversionBlocked}>
       <DialogContent onCloseAutoFocus={(event) => { event.preventDefault(); restoreFocus(); }}>

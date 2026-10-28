@@ -60,3 +60,5 @@ html, body { height: 100%; overflow: clip; }
 .mac-workspace .asset-scroll [data-slot="table-container"] { scrollbar-width: none; }
 .mac-workspace .asset-scroll::-webkit-scrollbar,
 .mac-workspace .asset-scroll [data-slot="table-container"]::-webkit-scrollbar { display: none; }
+
+.mac-workspace .asset-panel thead.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }

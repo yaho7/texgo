@@ -56,7 +56,7 @@ const source = `data:image/png;base64,${png.toString("base64")}`;
 const pdf = imagePdf(png);
 const mainFile = "/Users/research/thesis/main.tex";
 const projectRoot = "/Users/research/thesis";
-const preferences = { language: "zh-CN", startup: "home", autoWatch: false, autoUpdate: false, dpi: 300, jpegQuality: 90, outputDir: "texgo-pdf", allowUnreviewed: false, notifySuccess: true, notifyFailure: true, notifyUnchanged: false, shortcutEnabled: true, shortcut: "CommandOrControl+Alt+Enter", closeAction: "background" };
+const preferences = { language: "zh-CN", startup: "home", autoWatch: false, autoUpdate: false, dpi: 300, jpegQuality: 100, outputDir: "texgo-pdf", allowUnreviewed: false, notifySuccess: true, notifyFailure: true, notifyUnchanged: false, shortcutEnabled: true, shortcut: "CommandOrControl+Alt+Enter", closeAction: "background" };
 function reference(name, line = 128) { return { file: `${projectRoot}/chapters/results.tex`, line, original: `figures/${name}`, start: 0, end: name.length }; }
 const assets = Array.from({ length: 18 }, (_, index) => {
   const name = index === 0 ? "response-curve.png" : index === 1 ? "architecture.svg" : `experiment-${String(index + 1).padStart(2, "0")}.png`;
@@ -125,6 +125,18 @@ function installNativeFixture(fixture) {
           const image = fixture.project.images.find((item) => item.id === args.imageId);
           if (!image || !["none", "session", "permanent"].includes(args.mode)) throw new Error("Ignore fixture requires an explicit known asset and mode");
           image.ignoreMode = args.mode; updateClassification(); return structuredClone(fixture.project);
+        }
+        case "preview_rename": {
+          if (args.expectedFingerprint !== fixture.project.stateFingerprint) throw new Error("Unexpected rename fingerprint");
+          const image = fixture.project.images.find(item => item.id === args.imageId);
+          if (!image?.canRename) throw new Error("Asset is not renameable");
+          const name = image.relativePath.replace(/[^/]+$/, args.newBaseName + image.relativePath.slice(image.relativePath.lastIndexOf(".")));
+          const files = new Map();
+          image.references.forEach((reference,index) => {
+            if (!files.has(reference.file)) files.set(reference.file,{path:reference.file,fingerprint:"fixture-review",changes:[]});
+            files.get(reference.file).changes.push({id:`rename-${index}`,line:reference.line,before:reference.original,after:name});
+          });
+          return {newRelativePath:name,references:{referenceCount:image.references.length,files:[...files.values()]}};
         }
         case "rename_asset": {
           if (args.expectedFingerprint !== fixture.project.stateFingerprint) throw new Error("Unexpected rename fingerprint");
@@ -317,6 +329,8 @@ try {
   assert.deepEqual(await renameInput.evaluate((input) => [input.selectionStart, input.selectionEnd]), [0, "response-curve".length]);
   await screenshot(renamed, "15-inline-rename-1440");
   await renameInput.fill("pressure-map"); await renameInput.press("Enter");
+  await renamed.getByRole("button", { name: "应用重命名", exact: true }).click();
+  await renamed.getByRole("dialog", { name: "审核重命名" }).getByRole("button", { name: "应用重命名", exact: true }).click();
   await renamed.getByRole("button", { name: "预览 figures/pressure-map.png", exact: true }).waitFor();
   await renamed.getByRole("img", { name: "原始：figures/pressure-map.png", exact: true }).waitFor();
   assert.equal(await renamed.getByRole("searchbox", { name: "搜索图片" }).inputValue(), "figures", "Rename must retain search context");

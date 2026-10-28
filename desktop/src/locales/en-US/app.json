@@ -42,5 +42,8 @@
   "restoreThisOperationSFilesAndReferencesIncludingOriginalFilenames": "Restore this operation’s files and references, including original filenames for a rename. Undo stops if any affected file has changed externally.",
   "undoOperation": "Undo operation",
   "dropToOpenTheTexMainFile": "Drop to open the .tex main file",
-  "pendingReviewDescription": "{count, plural, one {# reference awaits review} other {# references await review}}. Review before processing more images."
+  "pendingReviewDescription": "{count, plural, one {# reference awaits review} other {# references await review}}. Review before processing more images.",
+  "reviewRename": "Review rename",
+  "applyRename": "Apply rename",
+  "renameDescription": "Rename the original and managed PDFs, and update the references below."
 }
