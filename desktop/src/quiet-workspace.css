@@ -3,7 +3,7 @@
 .mac-workspace .workbench, .mac-workspace .workspace-sidebar, .navigation-drawer[data-slot="dialog-content"] { background: #EEECEE; }
 .mac-workspace .workspace-main { border-left-color: rgba(0,0,0,.07); }
 .mac-workspace .app-toolbar, .mac-workspace .asset-inspector, .mac-workspace .preview-surface, .mac-workspace .command-bar, .mac-workspace .status-bar, .mac-workspace .native-preferences, .mac-workspace .native-preferences > header, .home-workspace, .history-panel { background: #FFFFFF; }
-.mac-workspace .app-toolbar { border-bottom: 0; }
+.mac-workspace .app-toolbar { border-bottom: 1px solid rgba(0,0,0,.05); }
 .mac-workspace .asset-panel table { border-spacing: 0; }
 .mac-workspace .asset-panel tbody td { border: 0; border-radius: 0; }
 .mac-workspace .asset-panel tbody tr:not([data-disabled="true"]):not([data-state="selected"]):hover td { background: rgba(0,0,0,.035); }
