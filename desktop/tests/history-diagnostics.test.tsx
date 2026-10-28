@@ -82,3 +82,30 @@ it.each(["中文图片", "请求图", "无法读取", "已被修改", "不支持
   render(<ErrorNotice message={`Permission denied: /paper/${directory}/main.tex (os error 13)`} />);
   expect(screen.getByText("请检查相关文件是否仍可访问，并查看技术信息了解失败详情。")).toBeInTheDocument();
 });
+
+
+it("selects a history record without expanding details or invoking Undo", () => {
+  const undo = vi.fn(); const second = {...entry,id:"second",rename:null,files:[]};
+  render(<ConversionHistory entries={[entry,second]} busy={false} onUndo={undo} />);
+  const records = screen.getAllByRole("article");
+  fireEvent.click(within(records[0]).getByRole("heading"));
+  expect(records[0]).toHaveAttribute("data-selected","true");
+  expect(records[0].querySelector("details")).not.toHaveAttribute("open");
+  fireEvent.keyDown(records[1], {key:"Enter"});
+  expect(records[1]).toHaveAttribute("data-selected","true");
+  expect(records[0]).not.toHaveAttribute("data-selected"); expect(undo).not.toHaveBeenCalled();
+  fireEvent.click(within(records[1]).getByText("详细信息"));
+  expect(records[1].querySelector("details")).toHaveAttribute("open");
+});
+it("uses one selection for programmatic location and subsequent user selection", () => {
+  const second = {...entry,id:"second",rename:null,files:[]};
+  const props = {entries:[entry,second],busy:false,onUndo:vi.fn()};
+  const view = render(<ConversionHistory {...props} highlightId={entry.id} />);
+  const records = screen.getAllByRole("article");
+  expect(records[0]).toHaveAttribute("data-selected","true");
+  expect(records[0].querySelector("details")).not.toHaveAttribute("open");
+  fireEvent.click(records[1]); expect(records[0]).not.toHaveAttribute("data-selected");
+  expect(records[1]).toHaveAttribute("data-selected","true");
+  view.rerender(<ConversionHistory {...props} entries={[...props.entries]} highlightId={entry.id} />);
+  expect(records[1]).toHaveAttribute("data-selected","true");
+});

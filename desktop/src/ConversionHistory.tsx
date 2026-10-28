@@ -14,13 +14,14 @@ interface Props { highlightId?: string | null; entries: (ConversionHistoryEntry 
 
 export default function ConversionHistory({ entries, busy, onUndo, highlightId }: Props) {
   const [limit, setLimit] = useState(20);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  useEffect(() => { if (highlightId) setSelectedId(highlightId); }, [highlightId]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [fileLimits, setFileLimits] = useState<Record<string, number>>({});
   useEffect(() => {
     if (!highlightId) return;
     const index = entries.findIndex((entry) => entry.id === highlightId);
     if (index >= 0) setLimit((value) => Math.max(value, index + 1));
-    setExpanded((previous) => new Set([...previous, highlightId]));
     requestAnimationFrame(() => document.getElementById(`operation-${highlightId}`)?.scrollIntoView?.({ block: "center" }));
   }, [highlightId, entries]);
   return <section className="history-panel page-transition" aria-label={t("conversionHistory.history")}>
@@ -34,9 +35,13 @@ export default function ConversionHistory({ entries, busy, onUndo, highlightId }
       const summary = entry.rename ? t("conversionHistory.renameImage") : updated > 0 ? t("conversionHistory.updatedValueImages", { arg0: updated }) : entry.referencesChanged ? t("conversionHistory.updatedValueLaTeXReferences", { arg0: entry.referencesChanged }) : completed ? t("conversionHistory.valueImagesAlreadyUpToDate", { arg0: completed }) : failed ? t("conversionHistory.valueImageUpdatesFailed", { arg0: failed }) : t("conversionHistory.noProjectFilesChanged");
       const day = historyCalendarDay(entry.createdAt);
       const startsDay = index === 0 || day !== historyCalendarDay(entries[index - 1].createdAt);
+      const selected = (selectedId ?? highlightId) === entry.id;
       return <li id={`operation-${entry.id}`} key={entry.id} className="history-entry" data-highlighted={highlightId === entry.id}>
         {startsDay && <h3 className="history-day">{day}</h3>}
-        <article className="history-record">
+        <article className="history-record" tabIndex={0} aria-label={summary} data-selected={selected || undefined}
+          onClick={() => setSelectedId(entry.id)} onKeyDown={(event) => {
+            if (event.target === event.currentTarget && ["Enter", " "].includes(event.key)) { event.preventDefault(); setSelectedId(entry.id); }
+          }}>
         <div className="history-record-header">
           <div className="history-record-copy">
             <h4 className="history-result">{summary}</h4>

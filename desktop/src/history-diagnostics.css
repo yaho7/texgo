@@ -1,11 +1,14 @@
 /* Dates separate groups; each operation leads with its result. */
 .history-view .history-panel { width: 100%; max-width: 880px; margin-inline: auto; padding: 28px 32px 40px; overflow-y: auto; scrollbar-gutter: stable; }
 .history-panel .history-title { padding: 0 0 28px; font-size: 20px; line-height: 28px; font-weight: 600; }
-.history-panel .history-list { margin: 0; padding: 0; list-style: none; }
+.history-panel .history-list { display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; list-style: none; }
 .history-panel .history-entry { padding: 0; border: 0; position: relative; }
 .history-panel .history-day { margin: 28px 0 12px; font-size: 12px; line-height: 18px; font-weight: 500; color: var(--muted-foreground); }
 .history-panel .history-entry:first-child .history-day { margin-top: 0; }
-.history-record { padding: 20px 0; border-bottom: 1px solid var(--border); }
+.history-record { padding: 16px 10px; border: 0; border-radius: var(--radius-selection); background: transparent; }
+.history-record:not([data-selected="true"]):hover { background: var(--hover-bg); }
+.history-record[data-selected="true"], .history-record[data-selected="true"]:hover, .history-record[data-selected="true"]:focus-within { background: var(--selection-bg); }
+.history-record:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .history-record-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
 .history-record-copy { flex: 1; min-width: 0; }
 .history-result { margin: 0; font-size: 14px; font-weight: 550; line-height: 22px; overflow-wrap: anywhere; }
@@ -23,7 +26,6 @@
 .history-panel .history-entry ul { margin-top: 16px; }
 .history-panel .history-entry ul > li { padding: 12px 0; gap: 6px; line-height: 1.6; border-top: 1px solid var(--border); }
 .history-panel .history-entry ul > li > span { max-width: 100%; overflow-wrap: anywhere; }
-.history-panel .history-entry[data-highlighted="true"] { padding-inline: 16px; background: var(--muted); border-radius: 8px; }
 @media (max-width: 640px) {
   .history-view .history-panel { padding: 24px 20px 32px; }
   .history-record-header { gap: 16px; }

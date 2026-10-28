@@ -20,12 +20,10 @@
 .mac-workspace .native-preferences > header { border-bottom: 0; }
 .mac-workspace .native-preferences [data-slot="field-group"] { border: 0; border-radius: 0; padding: 8px 0 20px; }
 .mac-workspace .native-preferences [data-slot="field-legend"] { color: var(--muted-foreground); }
-.mac-workspace .history-record { border-bottom: 0; padding-block: 16px; }
 .history-record-copy { display: flex; align-items: baseline; flex-direction: row-reverse; justify-content: flex-end; gap: 16px; }
 .history-meta { flex: none; margin-top: 0; }
 .mac-workspace .history-details-content { background: var(--content-bg); padding: 8px 0; border-radius: 0; }
 .mac-workspace .history-panel .history-entry ul > li { border: 0; }
-.history-panel .history-entry[data-highlighted="true"] { border-radius: 0; background: rgba(0,0,0,.025); }
 .transient-notice, .activity-notice { position: absolute; bottom: 76px; right: 20px; z-index: 10; max-width: min(480px, calc(100% - 40px)); display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--content-bg); color: var(--muted-foreground); font-size: 12px; pointer-events: none; }
 .activity-notice svg { width: 14px; height: 14px; }
 /* Native traffic lights occupy the sidebar's top safe area on macOS. */

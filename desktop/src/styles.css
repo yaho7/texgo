@@ -246,7 +246,6 @@ h1, h2, h3, p { margin: 0; }
 .settings-page > header { margin-bottom: 24px; }
 .settings-page form { padding-bottom: 30px; }
 
-.history-entry[data-highlighted="true"] { background: var(--muted); border-radius: 8px; padding-inline: 12px; }
 
 /* One quiet visual language for the project workflow. */
 .sidebar-project { margin-top: 24px; }
