@@ -31,7 +31,9 @@ export default function WorkspaceSidebar(props: Props) {
   const recentEntries = props.recents.filter((entry) => !props.projectPath || workspaceKey(entry) !== props.activeKey);
   return <nav className="workspace-navigation" aria-label={t("workspaceSidebar.projectNavigation")}>
     {props.view !== "home" && <div className="navigation-brand"><span className="text-[15px] font-semibold" translate="no">Texgo</span><Button variant="ghost" size="icon-sm" className="translate-x-0.5 transition-[background-color,transform] hover:bg-black/8 active:scale-90 active:bg-black/15 motion-reduce:transition-none" aria-label={t("workspaceSidebar.texgoHome")} title={t("workspaceSidebar.home")} disabled={props.busy} onClick={props.onHome}><House aria-hidden="true" /></Button></div>}
-    {props.view !== "home" && <div className="sidebar-actions"><Button variant="ghost" disabled={props.busy} onClick={props.onOpenTex}><Plus aria-hidden="true" />{t("workspaceSidebar.openProject")}</Button></div>}
+    {props.view !== "home" && <div className="sidebar-actions"><Button variant="ghost" disabled={props.busy} onClick={props.onOpenTex}><Plus aria-hidden="true" />{t("workspaceSidebar.openProject")}</Button>
+      {props.projectPath && <Button variant="ghost" aria-current={props.view === "history" ? "page" : undefined} onClick={() => props.onView("history")}><History aria-hidden="true" />{t("workspaceSidebar.history")}</Button>}
+    </div>}
     {props.projectPath && props.view !== "home" && (!props.status || !props.onFilter) && <section className="navigation-section" aria-label={t("workspaceSidebar.currentProject")}>
       <Button variant="ghost" aria-current={props.view === "assets" ? "page" : undefined} onClick={() => props.onView("assets")}><Images aria-hidden="true" />{t("workspaceSidebar.images")}</Button>
     </section>}
@@ -57,7 +59,6 @@ export default function WorkspaceSidebar(props: Props) {
         </li>;
       })}</ul>
     </section>}
-    {props.projectPath && props.view !== "home" && <div className="navigation-history"><Button variant="ghost" aria-current={props.view === "history" ? "page" : undefined} onClick={() => props.onView("history")}><History aria-hidden="true" />{t("workspaceSidebar.history")}</Button></div>}
     <div className="navigation-settings"><Button variant="ghost" aria-current={props.view === "settings" ? "page" : undefined} onClick={props.onSettings}><Settings aria-hidden="true" />{t("common.settings")}</Button></div>
   </nav>;
 }
