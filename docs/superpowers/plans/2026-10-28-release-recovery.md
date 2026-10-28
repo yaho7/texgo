@@ -21,3 +21,9 @@ Action's artifact processing. Linux was cancelled, and nothing was published.
 
 Focused verification: actionlint, 12 release/signature tests, Unix inode regression.
 Actual timing and package success must come from the recovery run, not estimates.
+
+Recovery run 40656747293: Windows and Linux passed. Both macOS builds and Apple
+notarizations succeeded, then collection failed because the matrix requested only
+`dmg`. The bundler explicitly warned that no updater-enabled target was selected.
+Correct both macOS entries to `app,dmg`; retain the successful notarization/signing
+path and reuse the populated Rust caches. No additional test suite is required.
