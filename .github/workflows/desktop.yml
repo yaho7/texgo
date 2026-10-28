@@ -2,18 +2,33 @@ name: Desktop
 
 on:
   push:
+    branches: ['**']
+    tags: ['v*']
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.github/ISSUE_TEMPLATE/**'
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing unpublished version tag to rebuild (optional)
+        type: string
+        default: ''
+      full_tests:
+        description: Run full frontend and native regression suites
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: desktop-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  group: desktop-${{ inputs.release_tag || github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') && inputs.release_tag == '' }}
 
 jobs:
   verify:
-    name: Verify frontend and engine
+    name: Check and prepare frontend
     if: github.event_name != 'push' || !github.event.deleted
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -21,46 +36,66 @@ jobs:
       publish: ${{ steps.version.outputs.publish }}
       prerelease: ${{ steps.version.outputs.prerelease }}
       latest: ${{ steps.version.outputs.latest }}
+      sha: ${{ steps.version.outputs.sha }}
+      ref: ${{ steps.version.outputs.ref }}
     runs-on: ubuntu-22.04
-    timeout-minutes: 25
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: desktop
+    env:
+      TEXGO_BUILD_REF: ${{ inputs.release_tag != '' && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: desktop/package-lock.json
-      - name: Check manifest, lockfile and release-tag versions
+      - name: Check version and source identity
         id: version
-        run: npm run version:check -- --github-output
+        run: |
+          node --input-type=module -e '
+            import { checkVersions, writeGithubOutputs } from "./scripts/release-policy.mjs";
+            const policy = await checkVersions(undefined, process.env.TEXGO_BUILD_REF);
+            await writeGithubOutputs(policy, process.env.GITHUB_OUTPUT);
+          '
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "ref=$TEXGO_BUILD_REF" >> "$GITHUB_OUTPUT"
       - run: npm run test:release
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: desktop/src-tauri
-          cache-on-failure: true
-      - name: Validate desktop dependency lock
-        run: cargo metadata --manifest-path src-tauri/Cargo.toml --locked --format-version 1 > /dev/null
-      - uses: actions/upload-artifact@v4
-        with:
-          name: resolved-cargo-lock
-          path: desktop/src-tauri/Cargo.lock
       - run: npm ci
       - run: npm run check
       - run: npm run check:i18n
-      - run: npm test
-      - run: npm run test:pdf
-      - run: cargo test --no-fail-fast --manifest-path src-tauri/Cargo.toml --locked --no-default-features --features automation
+      - name: Full frontend regression (optional)
+        if: inputs.full_tests == true
+        run: npm test && npm run test:pdf
+      - uses: dtolnay/rust-toolchain@stable
+        if: inputs.full_tests == true
+      - uses: Swatinem/rust-cache@v2
+        if: inputs.full_tests == true
+        with:
+          workspaces: desktop/src-tauri
+      - name: Full headless regression (optional)
+        if: inputs.full_tests == true
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features --features automation
+      - name: Build frontend once
+        if: steps.version.outputs.publish == 'true' || github.event_name == 'workflow_dispatch'
+        run: GITHUB_REF="$TEXGO_BUILD_REF" npm run build
+      - uses: actions/upload-artifact@v4
+        if: steps.version.outputs.publish == 'true' || github.event_name == 'workflow_dispatch'
+        with:
+          name: frontend-dist
+          path: desktop/dist
+          retention-days: 3
 
   package:
     name: Package ${{ matrix.platform }}-${{ matrix.arch }}
     needs: verify
-    if: github.event_name != 'push' || !github.event.deleted
+    if: needs.verify.outputs.publish == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -93,6 +128,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ needs.verify.outputs.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -105,18 +141,18 @@ jobs:
         with:
           workspaces: desktop/src-tauri
           cache-on-failure: true
+          cache-workspace-crates: true
           key: package-${{ matrix.target }}
       - name: Install Linux bundle dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils libfuse2
-      - name: Install frontend dependencies
-        run: npm ci
+      - run: npm ci
       - uses: actions/download-artifact@v4
         with:
-          name: resolved-cargo-lock
-          path: desktop/src-tauri
+          name: frontend-dist
+          path: desktop/dist
       - name: Build bundled engine and prepare icons
         env:
           TARGET: ${{ matrix.target }}
@@ -126,11 +162,11 @@ jobs:
           if [ "$RUNNER_OS" = Windows ]; then extension='.exe'; fi
           mkdir -p src-tauri/binaries
           cp "src-tauri/target/$TARGET/release/texgo-engine$extension" "src-tauri/binaries/texgo-engine-$TARGET$extension"
-          npx tauri icon app-icon.svg
-      - name: Test desktop integration on native platform
-        run: cargo test --no-fail-fast --manifest-path src-tauri/Cargo.toml --locked --features updater-tests --target ${{ matrix.target }}
-      - name: Build desktop installer with bundled engine
-        uses: tauri-apps/tauri-action@v1
+          npm exec -- tauri icon app-icon.svg
+      - name: Native regression (optional)
+        if: inputs.full_tests == true
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --features updater-tests --target ${{ matrix.target }}
+      - name: Build signed installer
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ needs.verify.outputs.publish == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
@@ -140,19 +176,29 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        with:
-          projectPath: desktop
-          tauriScript: npx tauri
-          args: --config '{"bundle":{"createUpdaterArtifacts":${{ needs.verify.outputs.publish }}}}' --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked --bin texgo-desktop
-          uploadWorkflowArtifacts: false
-          uploadUpdaterJson: false
-      - name: Collect installers
-        run: node scripts/collect-installers.mjs '${{ matrix.target }}' '${{ matrix.platform }}' '${{ matrix.arch }}'
+          TARGET: ${{ matrix.target }}
+          BUNDLES: ${{ matrix.bundles }}
+          PUBLISH: ${{ needs.verify.outputs.publish }}
+        run: |
+          rm -rf "src-tauri/target/$TARGET/release/bundle"
+          npm exec -- tauri build --config "{\"build\":{\"beforeBuildCommand\":null},\"bundle\":{\"createUpdaterArtifacts\":$PUBLISH}}" --target "$TARGET" --bundles "$BUNDLES" -- --locked --bin texgo-desktop
+      - name: Verify and collect installers
+        env:
+          TARGET: ${{ matrix.target }}
+          PLATFORM: ${{ matrix.platform }}
+          ARCH: ${{ matrix.arch }}
+          TEXGO_BUILD_REF: ${{ needs.verify.outputs.ref }}
+        run: |
+          node --input-type=module -e '
+            import { collectInstallers } from "./scripts/collect-installers.mjs";
+            await collectInstallers({target:process.env.TARGET,platform:process.env.PLATFORM,arch:process.env.ARCH,ref:process.env.TEXGO_BUILD_REF});
+          '
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-installers-${{ matrix.platform }}-${{ matrix.arch }}
           path: desktop-installers/*
           if-no-files-found: error
+          retention-days: 3
 
   release:
     name: Publish Release
@@ -165,6 +211,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ needs.verify.outputs.sha }}
       - uses: actions/download-artifact@v4
         with:
           pattern: desktop-installers-*
@@ -174,7 +221,13 @@ jobs:
         with:
           node-version: '22'
       - name: Verify signed updater artifacts and assemble feed
-        run: node desktop/scripts/generate-updater-feed.mjs release
+        env:
+          TEXGO_BUILD_REF: ${{ needs.verify.outputs.ref }}
+        run: |
+          node --input-type=module -e '
+            import { generateUpdaterFeed } from "./desktop/scripts/generate-updater-feed.mjs";
+            await generateUpdaterFeed({directory:"release", desktop:"desktop", ref:process.env.TEXGO_BUILD_REF});
+          '
       - name: Generate checksums and publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -183,7 +236,7 @@ jobs:
           TAG: ${{ needs.verify.outputs.tag }}
           PRERELEASE: ${{ needs.verify.outputs.prerelease }}
           LATEST: ${{ needs.verify.outputs.latest }}
-          SHA: ${{ github.sha }}
+          SHA: ${{ needs.verify.outputs.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           (cd release && sha256sum ./* > SHA256SUMS)

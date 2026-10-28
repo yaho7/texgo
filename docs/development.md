@@ -1,6 +1,6 @@
 # Development and local verification
 
-Texgo's frontend requires Node.js 22 and npm. Native tests require Rust/Cargo and the platform's Tauri development prerequisites. On macOS, install Xcode Command Line Tools. This repository supports local tests; GitHub Actions additionally verifies native packaging for Windows, Linux and both macOS architectures.
+Texgo's frontend requires Node.js 22 and npm. Native tests require Rust/Cargo and the platform's Tauri development prerequisites. On macOS, install Xcode Command Line Tools. This repository supports local tests; Tag/manual GitHub Actions builds additionally verify native packaging for Windows, Linux and both macOS architectures.
 
 ```sh
 cd desktop
@@ -65,3 +65,7 @@ serialization, deterministic I/O failure, FIFO rejection and symlink/hardlink
 rejection. Pure notification outcome and close reachability policies are tested
 without requiring a real platform service; native adapter startup failures still
 need runtime checks on each target platform.
+
+Full regression suites are opt-in (`full_tests`) in the Desktop workflow. Normal
+pushes run lightweight checks; default releases compile release binaries and verify
+signed packages without rebuilding debug/test profiles on all four platforms.

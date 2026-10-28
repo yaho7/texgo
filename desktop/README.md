@@ -75,8 +75,8 @@ install action lets the installer quit and relaunch the app. See
 ## Development and integration
 
 See [local setup and checks](../docs/development.md) and
-[contribution guidelines](../CONTRIBUTING.md). Branch builds produce artifacts;
-only an exact `v<manifest version>` tag can publish after all four targets pass.
+[contribution guidelines](../CONTRIBUTING.md). Ordinary pushes run lightweight checks; manual builds produce artifacts.
+Only an exact `v<manifest version>` tag can publish after all four targets pass.
 
 Every installer includes the independent `texgo-engine` CLI/JSON-RPC engine.
 Image processing needs neither TeX nor GraphicsMagick. Existing document compilation

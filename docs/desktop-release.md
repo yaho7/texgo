@@ -2,20 +2,32 @@
 
 ## Workflow
 
-Every push triggers `.github/workflows/desktop.yml`, on every branch and tag.
-Manual dispatch is also available. A newer push cancels the older run on the
-same branch; tag runs are not cancelled automatically. Pull requests do not
-start a second duplicate run.
+Code pushes run lightweight version, TypeScript, localization and release-policy checks.
+Documentation-only pushes are skipped. Ordinary branches do not build four installers.
+Exact `v<manifest version>` tags build and publish; manual dispatch can build artifacts
+or rebuild an existing unpublished version tag without moving it.
 
-There are three stages:
+The default release path is:
 
-1. **Verify** checks all desktop manifest/lock versions and the exact release tag before
-   packaging; runs release-policy, frontend and PDF renderer tests plus headless Rust tests.
-2. **Package** builds four targets, tests native desktop integration, stages `texgo-engine`
-   as a Tauri sidecar and prepares installers. It preserves the verified Cargo lock.
-3. **Publish Release** runs only for an exact `v<manifest version>` tag after every
-   package target succeeds. Branches, manual branch runs and unrelated tags produce artifacts
-   only. Deletion events do not build or publish.
+1. **Check / frontend** validates versions and release policy, then builds the frontend once.
+2. **Package** downloads that frontend on four runners, builds the engine and desktop in
+   release mode with the committed lockfile, and signs/collects installers. Workspaces
+   share a target-specific Rust cache. The CLI builds directly, avoiding an extra artifact
+   transformation layer and stale bundle output.
+3. **Publish** cryptographically verifies all updater packages, generates the feed and
+   checksums, and confirms the tag still points to the exact packaged source commit.
+
+Full frontend/PDF/headless/native suites remain available through the manual `full_tests`
+option and the local development commands. They are off by default for publication:
+recompiling a separate debug/test dependency graph on every platform adds no installer.
+Signature/version checks and native release compilation remain mandatory.
+
+To recover an unpublished release, dispatch Desktop on `main` with `release_tag` set to
+its exact tag, for example `v0.3.0`. The current workflow checks out that tag's original
+source for all jobs and pins the captured commit. It does not move the tag or publish
+main's newer source under an old version. An existing published release is never overwritten.
+Leave `release_tag` empty for a development artifact build. Enable `full_tests` only when
+that additional regression run is needed.
 
 No LaTeX compilation verification is added to this workflow. Lockfiles are committed, and
 installers include the standalone engine; no separate engine archives are produced.

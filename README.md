@@ -53,8 +53,8 @@ compilation commands require a local TeX distribution and `latexmk`.
 - [Development](docs/development.md), [contributing](CONTRIBUTING.md),
   [architecture and delivery status](docs/product-upgrade-report.md)
 
-Built with Tauri 2, Rust, React and Tailwind CSS. Branch builds produce artifacts;
-only an exact `v<manifest version>` tag can publish a release after all four platform
+Built with Tauri 2, Rust, React and Tailwind CSS. Ordinary pushes run lightweight checks; manual builds produce artifacts.
+Only an exact `v<manifest version>` tag can publish a release after all four platform
 builds pass. Windows installers are unsigned; macOS signing and notarization results
 must be checked in the release workflow.
 

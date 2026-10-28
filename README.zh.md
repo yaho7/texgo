@@ -38,7 +38,7 @@
 - [平台要求、引擎安装路径与签名更新](docs/desktop-release.md)
 - [开发](docs/development.md)、[贡献指南](CONTRIBUTING.md)、[架构与交付状态](docs/product-upgrade-report.md)
 
-使用 Tauri 2、Rust、React 与 Tailwind CSS。分支构建仅生成产物；只有与项目版本完全一致的 `v版本号` 标签，在四个平台构建通过后才能发布。Windows 安装包未签名；macOS 签名与公证结果以实际发布工作流为准。
+使用 Tauri 2、Rust、React 与 Tailwind CSS。普通推送只做轻量检查，手动构建生成产物；只有与项目版本完全一致的 `v版本号` 标签，在四个平台构建通过后才能发布。Windows 安装包未签名；macOS 签名与公证结果以实际发布工作流为准。
 
 ## 贡献者
 

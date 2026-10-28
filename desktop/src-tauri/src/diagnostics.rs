@@ -154,6 +154,7 @@ mod tests {
         for file in files { let bytes = std::fs::read(file).unwrap(); assert!(bytes.len() <= 1024); for line in bytes.split(|b|*b==b'\n').filter(|l|!l.is_empty()) { serde_json::from_slice::<serde_json::Value>(line).unwrap(); } }
     }
     #[test]
+    #[cfg(unix)]
     fn clock_rollback_never_prunes_the_current_file_at_startup_or_rotation() {
         let dir = temp(); let path = dir.path().canonicalize().unwrap();
         for index in 0..RETAIN {

@@ -76,9 +76,9 @@ VS Code 示例包含普通构建和后台监听任务；其他编辑器或插件
 
 ## 下载与发布
 
-支持本地类型检查、测试和构建，命令与原生依赖见[开发说明](../docs/development.md)。GitHub Actions 进一步验证 Windows x64、Linux x64、macOS Apple Silicon 和 Intel 的原生集成与安装包。
+支持本地类型检查、测试和构建，命令与原生依赖见[开发说明](../docs/development.md)。正式发布会构建 Windows x64、Linux x64、macOS Apple Silicon 和 Intel 安装包；完整回归测试可在手动运行中选择。
 
-- 分支构建只上传产物；只有与项目版本完全匹配的 `v版本号` 标签才发布，附带 SHA256 校验文件。
+- 普通推送只做轻量检查，手动构建可生成产物；只有与项目版本完全匹配的 `v版本号` 标签才发布，附带 SHA256 校验文件。
 - 稳定版本标记为 Latest；beta 为预发布，不替换稳定更新源。
 - 应用更新需要显式检查、下载与安装；下载和安装都验证签名，安装与重启受项目操作锁保护。
 - Windows 安装包未签名。macOS 使用发布工作流中的 Developer ID 签名和 Apple 公证配置，结果需在实际运行中核实。
