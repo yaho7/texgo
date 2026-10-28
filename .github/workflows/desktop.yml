@@ -226,9 +226,11 @@ jobs:
         run: |
           node --input-type=module -e '
             import { generateUpdaterFeed } from "./desktop/scripts/generate-updater-feed.mjs";
-            await generateUpdaterFeed({directory:"release", desktop:"desktop", ref:process.env.TEXGO_BUILD_REF});
+            import { preparePublicAssets } from "./desktop/scripts/prepare-public-assets.mjs";
+            const feed = await generateUpdaterFeed({directory:"release", desktop:"desktop", ref:process.env.TEXGO_BUILD_REF});
+            await preparePublicAssets({directory:"release", version:feed.version});
           '
-      - name: Generate checksums and publish
+      - name: Publish eight release assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -239,7 +241,6 @@ jobs:
           SHA: ${{ needs.verify.outputs.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          (cd release && sha256sum ./* > SHA256SUMS)
           CURRENT_SHA=$(gh api "repos/$GH_REPO/commits/$TAG" --jq '.sha')
           if [[ "$CURRENT_SHA" != "$SHA" ]]; then
             echo 'Release tag moved after this build; refusing to publish.' >&2
@@ -247,7 +248,7 @@ jobs:
           fi
           flags=()
           if [[ "$PRERELEASE" == true ]]; then flags+=(--prerelease); fi
-          printf 'Commit: %s\n\nBuild: %s\n\nInstallers include Texgo and the independent texgo-engine CLI/JSON-RPC API. macOS requires 13.3+. See the workflow for platform signing results; Windows installers are currently unsigned. SHA256SUMS covers every installer.' "$SHA" "$RUN_URL" > release-notes.md
+          printf 'Commit: %s\n\nBuild: %s\n\nInstallers include Texgo and the independent texgo-engine CLI/JSON-RPC API. macOS requires 13.3+. See the workflow for platform signing results; Windows installers are currently unsigned. Five installers are provided; two macOS update archives and latest.json support signed in-app updates.' "$SHA" "$RUN_URL" > release-notes.md
           gh release create "$TAG" release/* --verify-tag --draft --latest=false \
             --title "Texgo $VERSION" --notes-file release-notes.md "${flags[@]}"
           gh release edit "$TAG" --draft=false --latest="$LATEST"

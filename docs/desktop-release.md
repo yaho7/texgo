@@ -123,15 +123,15 @@ no webview shell permission or HTTP API listener is introduced.
 
 Release filenames are intentionally short:
 
-- `texgo_0.3.0_windows.exe`
-- `texgo_0.3.0_linux.deb` / `texgo_0.3.0_linux.AppImage`
-- `texgo_0.3.0_macos_arm64.dmg` / `texgo_0.3.0_macos_x64.dmg`
+- `texgo_0.3.1_windows.exe`
+- `texgo_0.3.1_linux.deb` / `texgo_0.3.1_linux.AppImage`
+- `texgo_0.3.1_macos_arm64.dmg` / `texgo_0.3.1_macos_x64.dmg`
 
 Only macOS needs an architecture suffix to distinguish its two targets. Original Tauri
 bundle names and the `desktop` prefix are omitted. Collection rejects multiple candidates,
 empty/nonregular installers and existing destination names instead of silently overwriting.
- Compare the SHA-256
-of the download against its matching line in `SHA256SUMS`. Windows packages
+ The release contains exactly eight files: five installers, two macOS updater archives,
+and `latest.json`. Separate signature files and `SHA256SUMS` are not published. Windows packages
 are unsigned. The workflow supports a Developer ID Application certificate and Apple notarization through Tauri’s supported environment variables; successful signing/notarization must be verified in the actual release job. The workflow references the five Apple repository Secrets without printing their values. Both macOS architectures share the same signing step. A configured secret or local test is not an installed-upgrade acceptance result.
 
 
@@ -145,11 +145,11 @@ Tauri's updater signature is separate from Apple code signing and Windows Authen
 
 Exact release tags produce version-bound Tauri updater signatures. Branch builds disable
 updater artifact creation and do not receive the updater signing secret. macOS also publishes
-`texgo_<version>_macos_<arch>.app.tar.gz` and its `.sig`; Windows reuses the `.exe`, Linux the
+`texgo_<version>_macos_<arch>.app.tar.gz`; Windows reuses the `.exe`, Linux the
 `.AppImage`. Debian packages use their normal package-manager update path. The release job
 cryptographically checks all four updater packages against the pinned key, including their signed
-versions, before assembling `latest.json` and calculating checksums. Internal per-target JSON
-parts are removed before upload. Beta feeds stay on their prereleases; installed apps follow
+versions, before assembling `latest.json`. Signatures are embedded in that feed; internal
+per-target JSON parts and `.sig` sidecars are removed before upload. Beta feeds stay on their prereleases; installed apps follow
 the stable Latest feed, and the native comparator rejects prereleases and downgrades.
 
 Checking only reads metadata. Downloading verifies the package and signed version; installation

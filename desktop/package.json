@@ -1,7 +1,7 @@
 {
   "name": "texgo-desktop",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit",
@@ -12,7 +12,7 @@
     "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
     "tauri": "tauri",
     "version:check": "node scripts/check-version.mjs",
-    "test:release": "node --test tests/release-policy.test.mjs tests/updater-feed.test.mjs"
+    "test:release": "node --test tests/release-policy.test.mjs tests/updater-feed.test.mjs tests/public-assets.test.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
