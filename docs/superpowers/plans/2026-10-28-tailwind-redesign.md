@@ -103,3 +103,29 @@ Apple guidance consulted: [macOS](https://developer.apple.com/design/human-inter
 [sidebars](https://developer.apple.com/design/human-interface-guidelines/sidebars). The design
 uses a useful document title, restrained toolbar items, familiar search placement and persistent
 navigation. The user’s no-shadcn direction takes precedence over the initial screenshot.
+
+
+## Follow-up unit: thumbnails and metadata placement
+
+Latest user corrections supersede the initial inspector/list metadata arrangement:
+
+- List names omit their extension; the format column is the only source-format display.
+- Remove every row subtitle. Resolution appears only in the right inspector; do not add a
+  resolution column. The inspector no longer repeats the selected filename or source format.
+- Use 72 px uniform rows with a 56×48 px thumbnail frame. Status badges and the more menu
+  occupy separate columns; both the status header and badges align to the right. Inline rename errors must not change row height.
+- Load real thumbnails for at most the current 40-row page, two requests at a time across
+  project/page changes, with a bounded 64-entry cache. Drop stale queued work and responses.
+- A read-only native command validates the expected main file and known source ID, uses the
+  retained no-follow directory capability and bounded reads, and never enters workspace work()
+  or creates project state. Raster/SVG thumbnails become bounded PNGs; PDF first-page rendering
+  is lazy and its documents are released after rendering. Unsupported/failed thumbnails keep
+  an honest format/file icon without changing native business status.
+
+- [x] Verified: 296 frontend tests; 280 desktop and 289 headless native tests; five
+  targeted native thumbnail tests after source-capture optimization; PDF renderer and build.
+  Main bundle 489.83 kB, shared PDF module 493.35 kB. Browser fixture checked raster/PDF
+  thumbnails, 72 px rows (also during rename validation), no subtitles/resolution column,
+  inspector-only resolution and right-aligned status separated from the menu. The native
+  command captures only a small source capability instead of cloning the whole workspace.
+  Diff reviewed; this follow-up is ready for its atomic commit.

@@ -148,3 +148,11 @@ README 中英文采用定位、截图、下载、五步流程、文档链接。�
 Windows 中文路径/保留名/Explorer/WebView2/通知/托盘，macOS 两种架构/签名/公证/Finder/Dock/Cmd/关闭语义，Linux WebKitGTK/xdg-open/tray 缺失分别需要平台测试；macOS 本机通过不等于三平台通过。
 
 完成报告按 Architecture、UX、Backend、Release、Tests、Files changed、Remaining work 列出实现、证据和边界；真实签名分发、未有设备的系统行为等必须单独标记未验收。
+
+
+### UI metadata refinement (2026-10-28)
+
+用户最新要求：图片列表只显示不含扩展名的名称、格式、大小、状态和独立的更多操作列，状态表头与标签右对齐；
+删除所有列表副标题，不新增分辨率列。分辨率只在右侧详情显示，右侧不重复图片名称和格式。
+列表行高统一 72 px，名称前提供较大的真实缩略图；缩略图按当前页限流加载，不能触发源文件
+变更、转换或引用写入。重命名、错误、加载与缺失状态不能撑开列表行高。

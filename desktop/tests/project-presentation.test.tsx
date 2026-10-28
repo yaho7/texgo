@@ -120,7 +120,7 @@ it("projects backend problems for ready assets even without an error result", ()
   const badge = within(row).getByText("需要处理");
   expect(badge).toHaveAttribute("data-variant", "destructive");
   expect(within(row).queryByText("待转换")).not.toBeInTheDocument();
-  expect(within(row).getByText(blocked.message)).toBeInTheDocument();
+  expect(badge).toHaveAttribute("title", blocked.message);
   expect(within(row).getByRole("button", { name: "更多操作 plot.png" })).toBeInTheDocument();
 });
 

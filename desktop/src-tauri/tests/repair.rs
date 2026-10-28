@@ -1,6 +1,7 @@
 // Import the real private modules without changing the shared library exports.
 #![allow(dead_code)]
 #[path = "../src/conversion.rs"] mod conversion;
+#[path = "../src/thumbnail.rs"] mod thumbnail;
 #[path = "../src/diagnostics.rs"] mod diagnostics;
 #[path = "../src/journal.rs"] mod journal;
 #[path = "../src/ignore.rs"] mod ignore;

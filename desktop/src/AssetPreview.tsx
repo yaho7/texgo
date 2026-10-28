@@ -171,7 +171,7 @@ export default function AssetPreview({ asset, result, revision, busy = false, ig
 
   return <section className="preview-panel" aria-label="图片预览" tabIndex={0} onKeyDown={keydown}>
     <div className="preview-heading">
-      <div className="preview-heading-copy"><h2 title={asset?.relativePath}>{asset?.relativePath.split(/[\\/]/).pop() ?? "未选择图片"}</h2><div className="preview-filename" title={asset?.path ?? ""}>{asset ? `${asset.format.toUpperCase()}${asset.width && asset.height ? ` · ${asset.width} × ${asset.height}` : ""} · ${formatBytes(asset.bytes)}` : "选择图片查看详情"}</div></div>
+      <div className="preview-heading-copy"><h2>预览</h2>{asset?.width && asset.height ? <p className="mt-1 text-xs text-muted-foreground tabular-nums">{asset.width} × {asset.height} px</p> : null}</div>
       {asset && onManualConvert && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="当前图片操作" disabled={busy}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuGroup><DropdownMenuItem disabled={!canConvert} onSelect={() => onManualConvert(asset.id)}>{ignored ? "手动转换一次" : "重新转换此图片"}</DropdownMenuItem></DropdownMenuGroup></DropdownMenuContent></DropdownMenu>}
       <ToggleGroup type="single" value={visibleMode} onValueChange={(value) => { if (value) setMode(value); }} variant="outline" size="sm" aria-label="预览版本">
         <ToggleGroupItem value="original" disabled={!asset}>原图</ToggleGroupItem><ToggleGroupItem value="pdf" disabled={!hasConverted}>PDF</ToggleGroupItem><ToggleGroupItem value="compare" disabled={!hasConverted}>对比</ToggleGroupItem>

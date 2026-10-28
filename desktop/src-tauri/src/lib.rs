@@ -1,4 +1,5 @@
 mod conversion;
+mod thumbnail;
 mod diagnostics;
 mod models;
 mod manifest;

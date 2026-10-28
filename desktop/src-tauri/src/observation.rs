@@ -1,4 +1,4 @@
-use cap_fs_ext::{DirExt, FollowSymlinks, MetadataExt, OpenOptionsFollowExt};
+use cap_fs_ext::{DirExt, FollowSymlinks, MetadataExt, OpenOptionsFollowExt, OpenOptionsSyncExt};
 use cap_std::fs::{Dir, OpenOptions};
 use std::{collections::BTreeMap, fs, io::Read, path::{Component, Path, PathBuf}, sync::Arc, time::SystemTime};
 
@@ -45,6 +45,23 @@ impl ObservationRoot {
         }
         Ok(())
     }
+    pub(crate) fn read_bounded(&self, path: &Path, limit: u64) -> Result<Vec<u8>, String> {
+        self.validate_current_root()?;
+        crate::journal::safe_path(&self.path, path)?;
+        let mut file = self.open_file(path).ok_or("无法安全读取图片")?;
+        let before = file.metadata().map_err(|error| error.to_string())?;
+        if !before.is_file() || before.len() > limit { return Err("图片过大或不是普通文件".into()); }
+        let mut bytes = Vec::new();
+        (&mut file).take(limit + 1).read_to_end(&mut bytes).map_err(|error| error.to_string())?;
+        let after = file.metadata().map_err(|error| error.to_string())?;
+        let current = self.open_file(path).ok_or("图片已变化")?.metadata().map_err(|error| error.to_string())?;
+        if bytes.len() as u64 > limit || before.len() != after.len() || before.modified().ok() != after.modified().ok()
+            || after.dev() != current.dev() || after.ino() != current.ino() || after.len() != current.len()
+            || after.modified().ok() != current.modified().ok() { return Err("图片已变化，请等待重新扫描".into()); }
+        self.validate_current_root()?;
+        crate::journal::safe_path(&self.path, path)?;
+        Ok(bytes)
+    }
     fn open_file(&self, path: &Path) -> Option<cap_std::fs::File> {
         let relative = path.strip_prefix(&self.path).ok()?;
         let mut components = relative.components().peekable();
@@ -52,7 +69,7 @@ impl ObservationRoot {
         while let Some(component) = components.next() {
             let Component::Normal(name) = component else { return None; };
             if components.peek().is_some() { directory = Arc::new(directory.open_dir_nofollow(name).ok()?); }
-            else { return directory.open_with(name, OpenOptions::new().read(true).follow(FollowSymlinks::No)).ok(); }
+            else { return directory.open_with(name, OpenOptions::new().read(true).nonblock(true).follow(FollowSymlinks::No)).ok(); }
         }
         None
     }

@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, CircleCheck, FileImage, FileWarning, RefreshCw, Search, MoreHorizontal } from "lucide-react";
+import AssetThumbnail from "./AssetThumbnail";
+import { useAssetThumbnails } from "./hooks/useAssetThumbnails";
+import type { ThumbnailContext } from "./hooks/useAssetThumbnails";
+import { ChevronLeft, ChevronRight, CircleCheck, RefreshCw, Search, MoreHorizontal } from "lucide-react";
 import { Input } from "@/controls/input";
 import { errorMessage } from "./utils";
 import { Badge } from "@/controls/badge";
@@ -29,6 +32,7 @@ export const statusLabels: Record<AssetStatus, string> = {
 interface Props {
   images: ImageAsset[];
   showSearchAndFilters?: boolean;
+  thumbnailContext?: ThumbnailContext;
   selectionMode: boolean;
   pendingIds: Set<string>;
   problemIds: Set<string>;
@@ -127,6 +131,7 @@ export default function AssetList(props: Props) {
   const pageCount = Math.max(1, Math.ceil(props.images.length / pageSize));
   const page = pagination.key === pageKey ? Math.min(pagination.page, pageCount - 1) : 0;
   const pageImages = props.images.slice(page * pageSize, (page + 1) * pageSize);
+  const thumbnail = useAssetThumbnails(pageImages, props.thumbnailContext);
   const convertible = props.convertibleIds ?? props.pendingIds;
   const readyIds = props.images.filter((image) => convertible.has(image.id)).map((image) => image.id);
   const checkedCount = readyIds.filter((id) => props.selected.has(id)).length;
@@ -234,7 +239,7 @@ export default function AssetList(props: Props) {
       </header>
       {props.showSearchAndFilters !== false && <Separator />}
       <div ref={scrollArea} className="asset-scroll min-h-0 flex-1 overflow-auto">
-        <Table className="table-fixed asset-filter-content" data-filter={props.filter}>
+        <Table className="table-fixed asset-filter-content min-w-[560px]" data-filter={props.filter}>
           <TableCaption className="sr-only">项目图片及转换状态</TableCaption>
           <TableHeader>
             <TableRow>
@@ -244,7 +249,8 @@ export default function AssetList(props: Props) {
               <TableHead>名称</TableHead>
               <TableHead className="w-14">格式</TableHead>
               <TableHead className="w-20 text-right">大小</TableHead>
-              <TableHead className="w-32 pr-2 text-right">状态</TableHead>
+              <TableHead className="w-24 text-right">状态</TableHead>
+              <TableHead className="w-9"><span className="sr-only">图片操作</span></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -261,42 +267,41 @@ export default function AssetList(props: Props) {
               const normalizedPath = asset.relativePath.replaceAll("\\", "/");
               const slash = normalizedPath.lastIndexOf("/");
               const filename = normalizedPath.slice(slash + 1);
-              const folder = slash < 0 ? "." : normalizedPath.slice(0, slash);
+              const dot = filename.lastIndexOf(".");
+              const baseName = dot > 0 ? filename.slice(0, dot) : filename;
               return (
                 <ContextMenu key={rowKeys.current.get(asset.id) ?? asset.id}><ContextMenuTrigger asChild disabled={props.busy || isExiting || Boolean(rename)}><TableRow tabIndex={isExiting ? -1 : 0} aria-selected={props.activeId === asset.id} onKeyDown={(event) => {
                   if ((event.key === "ContextMenu" || event.key === "F10" && event.shiftKey) && !props.busy && !isExiting && !rename) {
                     event.preventDefault(); event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect();
                     event.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: rect.left + 20, clientY: rect.top + rect.height / 2 }));
                   }
-                }} data-state={props.activeId === asset.id ? "selected" : undefined} data-exiting={isExiting || undefined} aria-hidden={isExiting || undefined} data-disabled={Boolean(props.previewDisabled) || isExiting} data-highlight={renamedId === asset.id ? "success" : highlights[asset.id]} className="asset-row h-[54px]">
+                }} data-state={props.activeId === asset.id ? "selected" : undefined} data-exiting={isExiting || undefined} aria-hidden={isExiting || undefined} data-disabled={Boolean(props.previewDisabled) || isExiting} data-highlight={renamedId === asset.id ? "success" : highlights[asset.id]} className="asset-row h-[72px]">
                   {props.selectionMode && <TableCell className="asset-selection-cell">
                     <label className="asset-selection-target"><Checkbox aria-label={`选择 ${asset.relativePath}`} checked={props.selected.has(asset.id)} disabled={props.busy || isExiting || !convertible.has(asset.id)} onCheckedChange={() => props.onSelect(asset.id)} /></label>
                   </TableCell>}
                   <TableCell className="min-w-0 whitespace-normal">
-                    <div className="flex min-w-0 flex-col gap-1">
+                    <div className="flex min-w-0 items-center gap-2.5"><AssetThumbnail source={thumbnail(asset.id)} problem={problem} /><div className="flex min-w-0 flex-1 flex-col gap-1">
                       {rename?.id === asset.id ? <div className="asset-rename" onClick={(event) => event.stopPropagation()}>
                         <div className="asset-rename-field"><Input ref={renameRef} aria-label="图片新名称" value={rename.name} readOnly={rename.saving} aria-invalid={Boolean(rename.error)} aria-describedby={rename.error ? `rename-error-${asset.id}` : undefined} onChange={(event) => setRename({ ...rename, name: event.target.value, error: null })} onBlur={(event) => {
                           if (savingRename.current) return;
                           const target = event.relatedTarget;
                           if (renameHandoff.current && (!target || target instanceof HTMLElement && target.closest('.asset-preview-trigger, .asset-more, [role="menu"]'))) return;
                           renameHandoff.current = false; setRename(null);
-                        }} onKeyDown={(event) => { if (event.nativeEvent.isComposing) return; if (event.key === "Enter") { event.preventDefault(); void submitRename(); } else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (!savingRename.current) setRename(null); } }} /><span>{filename.slice(filename.lastIndexOf("."))}</span></div>
-                        {rename.error && <p role="alert" id={`rename-error-${asset.id}`} className="text-xs text-destructive">{rename.error}</p>}
-                      </div> : <Button variant="ghost" className="asset-preview-trigger h-auto min-w-0 justify-start px-0 py-0" disabled={props.previewDisabled || isExiting} aria-label={`预览 ${asset.relativePath}`} aria-pressed={props.activeId === asset.id} onClick={() => props.onActivate(asset.id)} title={asset.relativePath}>
-                        {problem ? <FileWarning data-icon="inline-start" aria-hidden="true" /> : <FileImage data-icon="inline-start" aria-hidden="true" />}
-                        <span className="truncate asset-filename" onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); beginRename(asset); }}>{filename}</span>
+                        }} onKeyDown={(event) => { if (event.nativeEvent.isComposing) return; if (event.key === "Enter") { event.preventDefault(); void submitRename(); } else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (!savingRename.current) setRename(null); } }} /></div>
+                        {rename.error && <p role="alert" id={`rename-error-${asset.id}`} className="absolute left-2 top-full z-10 max-w-80 rounded border border-destructive/30 bg-background px-2 py-1 text-xs text-destructive shadow-sm">{rename.error}</p>}
+                      </div> : <Button variant="ghost" className="asset-preview-trigger h-auto min-w-0 justify-start px-0 py-0 hover:bg-transparent!" disabled={props.previewDisabled || isExiting} aria-label={`预览 ${asset.relativePath}`} aria-pressed={props.activeId === asset.id} onClick={() => props.onActivate(asset.id)} title={asset.relativePath}>
+                        <span className="truncate asset-filename" onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); beginRename(asset); }}>{baseName}</span>
                       </Button>}
-                      <p className="truncate text-xs text-muted-foreground" title={asset.relativePath}>{folder} · {asset.format.toUpperCase()}{asset.width && asset.height ? ` · ${asset.width} × ${asset.height}` : ""}</p>
-                      {result?.error && !result.cancelled && <p className="break-words text-xs text-destructive">{result.error}</p>}
-                      {asset.message && <p className={problem && !referenceProblem ? "break-words text-xs text-destructive" : "break-words text-xs text-muted-foreground"}>{asset.message}</p>}
-                    </div>
+                    </div></div>
                   </TableCell>
                   <TableCell><span className="text-xs text-muted-foreground">{asset.format.toUpperCase()}</span></TableCell>
                   <TableCell className="text-right"><span className="text-xs tabular-nums text-muted-foreground">{formatBytes(asset.bytes)}</span></TableCell>
-                  <TableCell className="pr-2 text-right">
-                    <Badge key={label} className={updatable && !problem ? "status-badge update-badge" : "status-badge"} variant={ignored ? "secondary" : problem ? referenceProblem ? "warning" : "destructive" : converted ? "success" : "secondary"} title={ignored ? ignoreMode === "permanent" ? "始终忽略" : "仅本次忽略" : updatable ? "源图片或 SVG 依赖已变化，可重新转换" : result?.pdfPath ?? undefined}>
+                  <TableCell className="text-right">
+                    <Badge key={label} className={updatable && !problem ? "status-badge update-badge" : "status-badge"} variant={ignored ? "secondary" : problem ? referenceProblem ? "warning" : "destructive" : converted ? "success" : "secondary"} title={asset.message ?? result?.error ?? (ignored ? ignoreMode === "permanent" ? "始终忽略" : "仅本次忽略" : updatable ? "源图片或 SVG 依赖已变化，可重新转换" : result?.pdfPath ?? undefined)}>
                       {converted && !problem && !ignored && <CircleCheck data-icon="inline-start" aria-hidden="true" />}{updatable && !problem && !ignored && <RefreshCw data-icon="inline-start" aria-hidden="true" />}{label}
                     </Badge>
+                  </TableCell>
+                  <TableCell className="pr-2 text-right">
                     <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" className="asset-more size-6! min-h-6! min-w-6!" aria-label={`更多操作 ${asset.relativePath}`} disabled={props.busy || isExiting || Boolean(rename)}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" onCloseAutoFocus={(event) => { if (renameHandoff.current || renameRef.current) event.preventDefault(); }}>{menuItems(asset, isExiting, false)}</DropdownMenuContent></DropdownMenu>
                   </TableCell>
                 </TableRow></ContextMenuTrigger><ContextMenuContent onCloseAutoFocus={(event) => { if (renameHandoff.current || renameRef.current) event.preventDefault(); }}>{menuItems(asset, isExiting, true)}</ContextMenuContent></ContextMenu>

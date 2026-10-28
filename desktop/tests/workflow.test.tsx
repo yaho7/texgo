@@ -56,6 +56,7 @@ beforeEach(() => {
     close_workspace: () => undefined, set_shortcut_recording: () => undefined, "plugin:dialog|open": () => "/paper/main.tex",
     open_project: () => structuredClone(backend), refresh_workspace: () => structuredClone(backend),
     conversion_history: () => entries, poll_workspace: () => null,
+    asset_thumbnail: () => ({ data: imageData, kind: "image" }),
     asset_preview: ({ converted }) => converted ? { data: "cGRm", kind: "pdf" } : { data: imageData, kind: "image" },
     convert_images: ({ options }) => convertResponse((options as ConversionOptions).imageIds), cancel_conversion: () => undefined,
     preview_changes: () => structuredClone(changes),
@@ -447,7 +448,7 @@ describe("explicit asset control", () => {
     };
     const user = await openProject();
     await user.type(screen.getByRole("searchbox"), "figures");
-    await user.dblClick(within(screen.getByRole("button", { name: "预览 figures/alpha.png" })).getByText("alpha.png"));
+    await user.dblClick(within(screen.getByRole("button", { name: "预览 figures/alpha.png" })).getByText("alpha"));
     const input = await screen.findByRole("textbox", { name: "图片新名称" });
     await user.clear(input); await user.type(input, "pressure-map{Enter}");
     expect(await screen.findByRole("button", { name: "预览 figures/pressure-map.png" })).toHaveAttribute("aria-pressed", "true");

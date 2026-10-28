@@ -673,6 +673,16 @@ impl Workspace {
         Ok(result)
     }
 
+    pub fn thumbnail(&self, image_id: &str, expected_main_file: &str) -> Result<AssetPreview, String> {
+        self.thumbnail_source(image_id, expected_main_file)?.render()
+    }
+
+    pub(crate) fn thumbnail_source(&self, image_id: &str, expected_main_file: &str) -> Result<crate::thumbnail::Source, String> {
+        let path = self.asset_path(image_id, expected_main_file)?;
+        let asset = self.scan.project.images.iter().find(|asset| asset.id == image_id).ok_or("找不到图片")?;
+        Ok(crate::thumbnail::Source { root: self.observation_root.clone(), path, format: asset.format.clone() })
+    }
+
     pub fn preview(&self, image_id: &str, converted: bool) -> Result<AssetPreview, String> {
         let asset = self.scan.project.images.iter().find(|asset| asset.id == image_id).ok_or("找不到图片")?;
         let path = if converted {

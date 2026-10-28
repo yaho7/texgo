@@ -368,3 +368,12 @@ it("groups references by full file path without losing line locations or inventi
   expect(within(references).getByText("第 9 行")).toBeInTheDocument();
   expect(screen.queryByText("PDF 输出")).not.toBeInTheDocument();
 });
+
+
+it("shows resolution only in inspector details without repeating the list filename or format", () => {
+  render(<AssetPreview asset={{ ...asset, width: 2400, height: 1600 }} revision={1} />);
+  expect(screen.getByText("2400 × 1600 px")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "预览" })).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "a.png" })).not.toBeInTheDocument();
+  expect(screen.queryByText("PNG")).not.toBeInTheDocument();
+});

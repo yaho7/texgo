@@ -296,6 +296,20 @@ fn cancel_conversion(state: State<'_, AppState>) {
 }
 
 #[tauri::command]
+async fn asset_thumbnail(image_id: String, expected_main_file: String, state: State<'_, AppState>) -> Result<AssetPreview, String> {
+    let preview = state.preview.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        // Capture only the source capability, not a copy of every TeX file in
+        // a large workspace; decoding must not hold the observation mutex.
+        let source = {
+            let workspace = preview.lock().map_err(|_| "预览状态不可用")?;
+            workspace.as_ref().ok_or("请先打开项目")?.thumbnail_source(&image_id, &expected_main_file)?
+        };
+        source.render()
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 async fn asset_preview(image_id: String, converted: bool, state: State<'_, AppState>) -> Result<AssetPreview, String> {
     let preview = state.preview.clone();
     let completed = state.completed_previews.clone();
@@ -404,7 +418,7 @@ pub fn run() {
             install_background(app);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![observation_identity, desktop_status, set_shortcut_recording, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, asset_file_action, rename_asset, retry_asset, open_project, refresh_workspace, poll_workspace, open_log_directory, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, preview_changes, apply_replacements, undo_replacements])
+        .invoke_handler(tauri::generate_handler![observation_identity, desktop_status, set_shortcut_recording, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, asset_file_action, rename_asset, retry_asset, open_project, refresh_workspace, poll_workspace, open_log_directory, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, asset_thumbnail, preview_changes, apply_replacements, undo_replacements])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let background = window.state::<AppState>().preferences.lock().is_ok_and(|p| p.close_action == "background");
