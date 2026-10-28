@@ -1,0 +1,13 @@
+{
+  "speedUpLaTeXCompilation": "加快 LaTeX 编译",
+  "scanning": "正在扫描…",
+  "openOrDropATexFile": "打开或拖入 .tex 文件",
+  "howItWorksAndPermissions": "工作原理与权限",
+  "whyItIsFaster": "为什么更快",
+  "prepareReusablePDFsBeforeCompilationAfterYouApproveTheReferences": "提前完成图片处理，生成可直接引用的 PDF。确认引用后，后续编译复用处理结果，减少图片处理开销。",
+  "filesAndSystemPermissions": "文件与系统权限",
+  "readTheSelectedProjectAndWriteProcessedImagesFileMonitoring": "读取所选项目并写入处理结果。自动检测只刷新状态，自动处理不修改 .tex 引用；引用修改须由你确认。",
+  "systemNotificationsReportResultsAGlobalShortcutStartsQuickProcessing": "系统通知用于完成提醒，全局快捷键用于快速处理；均可在设置中关闭。",
+  "recentProjects": "最近项目",
+  "removeRecentProjectValue": "移除最近记录 {arg0}"
+}

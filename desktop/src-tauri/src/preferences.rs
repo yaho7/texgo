@@ -5,6 +5,7 @@ use crate::ConversionOptions;
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Preferences {
+    pub language: String,
     pub startup: String,
     pub auto_watch: bool,
     pub auto_update: bool,
@@ -24,7 +25,7 @@ pub struct Preferences {
 
 impl Default for Preferences {
     fn default() -> Self {
-        Self { startup: "home".into(), auto_watch: true, auto_update: true,
+        Self { language: "zh-CN".into(), startup: "home".into(), auto_watch: true, auto_update: true,
             dpi: 300, jpeg_quality: 90, output_dir: "texgo-pdf".into(),
             allow_unreviewed: false, notify_success: true, notify_failure: true, notify_unchanged: false,
             shortcut_enabled: true, shortcut: "CommandOrControl+Alt+Enter".into(), close_action: "background".into(), debug_logging: false }
@@ -38,7 +39,7 @@ impl Preferences {
     pub fn validate(&self) -> Result<(), String> {
         crate::conversion::validate(&self.options(vec![]))?;
         // The same path policy as a real conversion, without touching a workspace.
-        if !matches!(self.startup.as_str(), "home" | "lastWorkspace")
+        if !matches!(self.language.as_str(), "zh-CN" | "en-US") || !matches!(self.startup.as_str(), "home" | "lastWorkspace")
             || !matches!(self.close_action.as_str(), "background" | "quit") { return Err("无效的设置选项".into()); }
         if self.shortcut_enabled && (self.shortcut.trim().is_empty() || self.shortcut.len() > 100) { return Err("请输入全局快捷键".into()); }
         Ok(())
@@ -73,15 +74,23 @@ mod tests {
         let path = dir.path().join("preferences.json");
         let mut prefs = Preferences::load(&path).unwrap();
         assert_eq!(prefs.jpeg_quality, 90);
+        assert_eq!(prefs.language, "zh-CN");
         assert!(!prefs.debug_logging);
         assert!(!prefs.allow_unreviewed && prefs.notify_success && prefs.notify_failure && !prefs.notify_unchanged);
-        prefs.auto_watch = false; prefs.shortcut_enabled = false; prefs.debug_logging = true;
+        prefs.language = "en-US".into(); prefs.auto_watch = false; prefs.shortcut_enabled = false; prefs.debug_logging = true;
         prefs.save(&path).unwrap();
         assert_eq!(Preferences::load(&path).unwrap(), prefs);
         fs::write(&path, r#"{"autoWatch":false,"recursive":false,"afterConversion":"history"}"#).unwrap();
         assert_eq!(Preferences::load(&path).unwrap().jpeg_quality, 90);
         assert!(!Preferences::load(&path).unwrap().auto_watch);
         assert!(!Preferences::load(&path).unwrap().debug_logging);
+    }
+    #[test]
+    fn invalid_language_does_not_replace_saved_preferences() {
+        let dir = tempfile::tempdir().unwrap(); let path = dir.path().join("preferences.json");
+        let mut prefs = Preferences::default(); prefs.language = "en-US".into(); prefs.save(&path).unwrap();
+        prefs.language = "unsupported".into(); assert!(prefs.save(&path).is_err());
+        assert_eq!(Preferences::load(&path).unwrap().language, "en-US");
     }
     #[test]
     fn invalid_values_never_replace_valid_preferences() {

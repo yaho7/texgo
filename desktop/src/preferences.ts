@@ -1,4 +1,6 @@
+import { t } from "./i18n";
 export interface Preferences {
+  language: "zh-CN" | "en-US";
   startup: "home" | "lastWorkspace";
   autoWatch: boolean;
   autoUpdate: boolean;
@@ -15,16 +17,16 @@ export interface Preferences {
   closeAction: "background" | "quit";
 }
 export const defaultPreferences: Preferences = {
-  startup: "home", autoWatch: true, autoUpdate: true,
+  language: "zh-CN", startup: "home", autoWatch: true, autoUpdate: true,
   dpi: 300, jpegQuality: 90, outputDir: "texgo-pdf", allowUnreviewed: false,
   notifySuccess: true, notifyFailure: true, notifyUnchanged: false,
   shortcutEnabled: true, shortcut: "CommandOrControl+Alt+Enter", closeAction: "background", debugLogging: false,
 };
 
 export const conversionPresets = [
-  { id: "balanced", label: "平衡", dpi: 300, jpegQuality: 90 },
-  { id: "high", label: "高质量", dpi: 300, jpegQuality: 100 },
-  { id: "small", label: "小体积", dpi: 150, jpegQuality: 75 },
+  { id: "balanced", get label() { return t("presets.balanced"); }, dpi: 300, jpegQuality: 90 },
+  { id: "high", get label() { return t("presets.highQuality"); }, dpi: 300, jpegQuality: 100 },
+  { id: "small", get label() { return t("presets.smallFileSize"); }, dpi: 150, jpegQuality: 75 },
 ] as const;
 
 export function conversionPreset(dpi: number, jpegQuality: number) {

@@ -1,3 +1,4 @@
+import { setLocale } from "../src/i18n";
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { clearMocks } from "@tauri-apps/api/mocks";
@@ -18,8 +19,9 @@ if (typeof ResizeObserver === "undefined") {
   };
 }
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  await setLocale("zh-CN");
   clearMocks();
 });
 

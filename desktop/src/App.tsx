@@ -1,3 +1,4 @@
+import { setLocale, useLocale } from "./i18n";
 import { useAssetFileActions } from "./hooks/useAssetFileActions";
 import { useTransientOverlay } from "./hooks/useTransientOverlay";
 import { useWorkspaceGuard } from "./hooks/useWorkspaceGuard";
@@ -45,6 +46,7 @@ import type { Operation } from "./state/operationMachine";
 const operationLabels: Record<Operation, string> = { opening: "正在扫描…", converting: "正在更新图片…", reviewing: "正在读取引用变更…", applying: "正在替换引用…", undoing: "正在撤销…", updating: "正在更新项目状态…", renaming: "正在重命名图片…" };
 
 export default function App() {
+  useLocale();
   const transientOverlayOpen = useTransientOverlay();
   const captureAppLifetime = useWorkspaceGuard(() => 0);
   const conversionRef = useRef<ReturnType<typeof useConversion> | null>(null);
@@ -137,6 +139,7 @@ export default function App() {
       if (disposed || !value) return;
       preferencesRef.current = value;
       setPreferences(value);
+      void setLocale(value.language ?? "zh-CN");
       if (value.startup === "lastWorkspace") { const last = readRecents()[0]; if (last) openRecent(last); }
       const current = import.meta.env.VITE_RELEASE_TAG;
       if (value.autoUpdate && current && current !== "development") {
@@ -296,7 +299,7 @@ export default function App() {
       {error && !review && !undoEntry && !problemId && <ErrorNotice message={error} className="workbench-alert" onClose={() => setError(null)} />}
       {project?.status.blockingReason && !homeVisible && !settingsPage && <Alert variant="destructive" role="alert" className="workbench-alert"><TriangleAlert aria-hidden="true" /><AlertTitle>需要先解决安全问题</AlertTitle><AlertDescription>{project.status.blockingReason}</AlertDescription></Alert>}
       <div className="page-enter settings-view" hidden={!settingsPage} inert={!settingsPage}><SettingsView active={settingsPage} value={preferences} onSaved={(next) => { preferencesRef.current = next; setPreferences(next); }} onClose={() => setSettingsPage(false)} /></div>
-      {homeVisible && !settingsPage && <Home busy={busy} onOpenTex={openProject} recents={recents} failedRecent={failedRecent} onRecent={openRecentEntry} onRemove={workspace.forgetRecent} />}
+      {homeVisible && !settingsPage && <Home onSettings={() => setSettingsPage(true)} busy={busy} onOpenTex={openProject} recents={recents} failedRecent={failedRecent} onRecent={openRecentEntry} onRemove={workspace.forgetRecent} />}
       {project && <>
         <main id={settingsPage || homeVisible ? undefined : "main-content"} tabIndex={-1} className="workspace-content" hidden={settingsPage || homeVisible} data-view={view} onKeyDownCapture={(event) => {
           if (selectionMode && event.key === "Escape" && !busy && view === "assets" && !(event.target as HTMLElement).closest(".asset-rename")) {

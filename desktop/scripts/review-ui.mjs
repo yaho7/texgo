@@ -56,7 +56,7 @@ const source = `data:image/png;base64,${png.toString("base64")}`;
 const pdf = imagePdf(png);
 const mainFile = "/Users/research/thesis/main.tex";
 const projectRoot = "/Users/research/thesis";
-const preferences = { startup: "home", autoWatch: false, autoUpdate: false, dpi: 300, jpegQuality: 90, outputDir: "texgo-pdf", allowUnreviewed: false, notifySuccess: true, notifyFailure: true, notifyUnchanged: false, shortcutEnabled: true, shortcut: "CommandOrControl+Alt+Enter", closeAction: "background" };
+const preferences = { language: "zh-CN", startup: "home", autoWatch: false, autoUpdate: false, dpi: 300, jpegQuality: 90, outputDir: "texgo-pdf", allowUnreviewed: false, notifySuccess: true, notifyFailure: true, notifyUnchanged: false, shortcutEnabled: true, shortcut: "CommandOrControl+Alt+Enter", closeAction: "background" };
 function reference(name, line = 128) { return { file: `${projectRoot}/chapters/results.tex`, line, original: `figures/${name}`, start: 0, end: name.length }; }
 const assets = Array.from({ length: 18 }, (_, index) => {
   const name = index === 0 ? "response-curve.png" : index === 1 ? "architecture.svg" : `experiment-${String(index + 1).padStart(2, "0")}.png`;

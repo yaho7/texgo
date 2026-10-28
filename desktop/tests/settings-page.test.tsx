@@ -93,3 +93,15 @@ it("places closing behavior in General and explains manual reference review", ()
   expect(screen.getByText(/检测仅刷新状态/)).toHaveTextContent("引用修改仍需确认");
   expect(screen.getByText(/允许继续处理图片/)).toHaveTextContent("不会跳过引用审核");
 });
+
+it("persists a selected language only after saving and updates the interface", async () => {
+  const user = userEvent.setup(); const saved = vi.fn();
+  ipc.invoke.mockImplementation((_command, args) => Promise.resolve(args?.preferences));
+  render(<SettingsPage value={defaultPreferences} onSaved={saved} onClose={vi.fn()} />);
+  await user.selectOptions(screen.getByLabelText("语言"), "en-US");
+  expect(ipc.invoke).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button", {name:"保存设置"}));
+  expect(await screen.findByRole("heading", {name:"Settings"})).toBeVisible();
+  expect(saved).toHaveBeenCalledWith({...defaultPreferences,language:"en-US"});
+  expect(screen.getByRole("radiogroup", {name:"Default processing preset"})).toHaveTextContent("Balanced");
+});

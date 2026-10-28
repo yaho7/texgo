@@ -1,0 +1,13 @@
+{
+  "speedUpLaTeXCompilation": "Speed up LaTeX compilation",
+  "scanning": "Scanning…",
+  "openOrDropATexFile": "Open or drop a .tex file",
+  "howItWorksAndPermissions": "How it works and permissions",
+  "whyItIsFaster": "Why it is faster",
+  "prepareReusablePDFsBeforeCompilationAfterYouApproveTheReferences": "Prepare reusable PDFs before compilation. After you approve the references, LaTeX reuses them and spends less time processing images.",
+  "filesAndSystemPermissions": "Files and system permissions",
+  "readTheSelectedProjectAndWriteProcessedImagesFileMonitoring": "Read the selected project and write processed images. File monitoring only refreshes status. Automatic processing never edits .tex references; changes need your approval.",
+  "systemNotificationsReportResultsAGlobalShortcutStartsQuickProcessing": "System notifications report results. A global shortcut starts quick processing. Both can be disabled in Settings.",
+  "recentProjects": "Recent projects",
+  "removeRecentProjectValue": "Remove recent project {arg0}"
+}

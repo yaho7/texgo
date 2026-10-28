@@ -1,0 +1,13 @@
+{
+  "couldNotRestoreTheGlobalShortcutReopenTexgo": "未能恢复全局快捷键，请重新打开 Texgo。",
+  "couldNotStartRecordingTryAgainYourExistingShortcutIs": "暂时无法开始录制，请重试。现有快捷键保持不变。",
+  "globalQuickProcessingShortcut": "全局快速处理快捷键",
+  "holdCtrlAndAltOptionThenPressAKey": "请同时按住 ⌘ / Ctrl 和 Alt / Option，再按一个按键",
+  "preparingToRecord": "正在准备录制…",
+  "waitingForAKey": "正在等待按键…",
+  "preparing": "正在准备…",
+  "cancelRecording": "取消录制",
+  "recordShortcut": "重新录制",
+  "pressTheNewShortcutEscCancels": "请按下新的快捷键，按 Esc 取消",
+  "holdCtrlAndAltOptionToRecordUseTheShortcut": "按住 ⌘ / Ctrl 和 Alt / Option 录制。在其他应用中也可快速更新当前项目。"
+}

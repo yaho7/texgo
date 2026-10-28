@@ -1,0 +1,13 @@
+{
+  "couldNotRestoreTheGlobalShortcutReopenTexgo": "Could not restore the global shortcut. Reopen Texgo.",
+  "couldNotStartRecordingTryAgainYourExistingShortcutIs": "Could not start recording. Try again; your existing shortcut is unchanged.",
+  "globalQuickProcessingShortcut": "Global quick processing shortcut",
+  "holdCtrlAndAltOptionThenPressAKey": "Hold ⌘ / Ctrl and Alt / Option, then press a key",
+  "preparingToRecord": "Preparing to record…",
+  "waitingForAKey": "Waiting for a key…",
+  "preparing": "Preparing…",
+  "cancelRecording": "Cancel recording",
+  "recordShortcut": "Record shortcut",
+  "pressTheNewShortcutEscCancels": "Press the new shortcut; Esc cancels",
+  "holdCtrlAndAltOptionToRecordUseTheShortcut": "Hold ⌘ / Ctrl and Alt / Option to record. Use the shortcut from another app to update the current project."
+}
