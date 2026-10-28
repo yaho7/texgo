@@ -273,6 +273,7 @@ export default function AssetList(props: Props) {
               const ignored = ignoreMode !== "none";
               const missingPdf = asset.message === getLoadedCatalog("zh-CN")?.native.managedPdfMissing;
               const pendingRename = props.pendingRename?.id === asset.id;
+              const rowSelected = props.selectionMode ? props.selected.has(asset.id) : props.activeId === asset.id;
               const label = pendingRename ? t("assetList.pendingRename") : ignored ? t("assetList.ignored") : problem ? referenceProblem ? statusLabels[asset.status] : t("assetList.needsAttention") : result?.cancelled ? t("assetList.cancelled") : missingPdf ? t("assetList.missingPDF") : converted || asset.status === "pdf" ? "" : updatable ? t("assetList.updatedSource") : statusLabels[asset.status];
               const normalizedPath = asset.relativePath.replaceAll("\\", "/");
               const slash = normalizedPath.lastIndexOf("/");
@@ -280,12 +281,12 @@ export default function AssetList(props: Props) {
               const dot = filename.lastIndexOf(".");
               const baseName = props.pendingRename?.id === asset.id ? props.pendingRename.name : dot > 0 ? filename.slice(0, dot) : filename;
               return (
-                <ContextMenu key={rowKeys.current.get(asset.id) ?? asset.id}><ContextMenuTrigger asChild disabled={props.busy || isExiting || Boolean(rename)}><TableRow tabIndex={isExiting ? -1 : 0} aria-selected={props.activeId === asset.id} onKeyDown={(event) => {
+                <ContextMenu key={rowKeys.current.get(asset.id) ?? asset.id}><ContextMenuTrigger asChild disabled={props.busy || isExiting || Boolean(rename)}><TableRow tabIndex={isExiting ? -1 : 0} aria-selected={rowSelected} onKeyDown={(event) => {
                   if ((event.key === "ContextMenu" || event.key === "F10" && event.shiftKey) && !props.busy && !isExiting && !rename) {
                     event.preventDefault(); event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect();
                     event.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: rect.left + 20, clientY: rect.top + rect.height / 2 }));
                   }
-                }} data-state={props.activeId === asset.id ? "selected" : undefined} data-exiting={isExiting || undefined} aria-hidden={isExiting || undefined} data-disabled={Boolean(props.previewDisabled) || isExiting} data-highlight={renamedId === asset.id ? "success" : highlights[asset.id]} className="asset-row h-[72px]">
+                }} data-state={rowSelected ? "selected" : undefined} data-exiting={isExiting || undefined} aria-hidden={isExiting || undefined} data-disabled={Boolean(props.previewDisabled) || isExiting} data-highlight={renamedId === asset.id ? "success" : highlights[asset.id]} className="asset-row h-[72px]">
                   {props.selectionMode && <TableCell className="asset-selection-cell">
                     <label className="asset-selection-target"><Checkbox aria-label={t("assetList.selectValue", { arg0: asset.relativePath })} checked={props.selected.has(asset.id)} disabled={props.busy || isExiting || !convertible.has(asset.id)} onCheckedChange={() => props.onSelect(asset.id)} /></label>
                   </TableCell>}

@@ -114,3 +114,15 @@ it("confirms inline rename with the adjacent check button without cancelling on 
   expect(p.onRename).toHaveBeenCalledExactlyOnceWith("plot","renamed");
   expect(screen.queryByRole("textbox", {name:"图片新名称"})).not.toBeInTheDocument();
 });
+
+
+it("shows adjacent checked rows as selected independently of the preview focus", () => {
+  const second = {...image,id:"second",relativePath:"second.png",path:"/paper/second.png"};
+  const p = {...props(),images:[image,second],allImages:[image,second],selectionMode:true,selected:new Set([image.id,second.id])};
+  const view = render(<AssetList {...p} />);
+  const firstRow = screen.getByRole("button",{name:`预览 ${image.relativePath}`}).closest("tr");
+  const secondRow = screen.getByRole("button",{name:"预览 second.png"}).closest("tr");
+  expect(firstRow).toHaveAttribute("aria-selected","true"); expect(secondRow).toHaveAttribute("aria-selected","true");
+  view.rerender(<AssetList {...p} selected={new Set([second.id])} />);
+  expect(firstRow).toHaveAttribute("aria-selected","false"); expect(secondRow).toHaveAttribute("aria-selected","true");
+});

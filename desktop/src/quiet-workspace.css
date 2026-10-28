@@ -1,12 +1,10 @@
 @import "./view-motion.css";
 /* Two surfaces: sidebar and document workspace. */
-.mac-workspace .workbench, .mac-workspace .workspace-sidebar, .navigation-drawer[data-slot="dialog-content"] { background: #EEECEE; }
+.mac-workspace .workbench, .mac-workspace .workspace-sidebar, .navigation-drawer[data-slot="dialog-content"] { background: var(--sidebar-bg); }
 .mac-workspace .workspace-main { border-left-color: rgba(0,0,0,.07); }
-.mac-workspace .app-toolbar, .mac-workspace .asset-inspector, .mac-workspace .preview-surface, .mac-workspace .command-bar, .mac-workspace .status-bar, .mac-workspace .native-preferences, .mac-workspace .native-preferences > header, .home-workspace, .history-panel { background: #FFFFFF; }
+.mac-workspace .app-toolbar, .mac-workspace .asset-inspector, .mac-workspace .preview-surface, .mac-workspace .command-bar, .mac-workspace .status-bar, .mac-workspace .native-preferences, .mac-workspace .native-preferences > header, .home-workspace, .history-panel { background: var(--content-bg); }
 .mac-workspace .app-toolbar { border-bottom: 1px solid rgba(0,0,0,.05); }
-.mac-workspace .asset-panel table { border-spacing: 0; }
-.mac-workspace .asset-panel tbody td { border: 0; border-radius: 0; }
-.mac-workspace .asset-panel tbody tr:not([data-disabled="true"]):not([data-state="selected"]):hover td { background: rgba(0,0,0,.035); }
+.mac-workspace .asset-panel tbody td { border: 0; }
 .mac-workspace .preview-surface { border: 0; border-radius: 0; }
 .mac-workspace .workspace-grid { grid-template-columns: minmax(300px, min(var(--assets-width, 42%), 60%)) 0 minmax(0, 1fr); }
 .splitter::before { background: rgba(0,0,0,.04); }
@@ -25,10 +23,10 @@
 .mac-workspace .history-record { border-bottom: 0; padding-block: 16px; }
 .history-record-copy { display: flex; align-items: baseline; flex-direction: row-reverse; justify-content: flex-end; gap: 16px; }
 .history-meta { flex: none; margin-top: 0; }
-.mac-workspace .history-details-content { background: #FFFFFF; padding: 8px 0; border-radius: 0; }
+.mac-workspace .history-details-content { background: var(--content-bg); padding: 8px 0; border-radius: 0; }
 .mac-workspace .history-panel .history-entry ul > li { border: 0; }
 .history-panel .history-entry[data-highlighted="true"] { border-radius: 0; background: rgba(0,0,0,.025); }
-.transient-notice, .activity-notice { position: absolute; bottom: 76px; right: 20px; z-index: 10; max-width: min(480px, calc(100% - 40px)); display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: #FFFFFF; color: var(--muted-foreground); font-size: 12px; pointer-events: none; }
+.transient-notice, .activity-notice { position: absolute; bottom: 76px; right: 20px; z-index: 10; max-width: min(480px, calc(100% - 40px)); display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--content-bg); color: var(--muted-foreground); font-size: 12px; pointer-events: none; }
 .activity-notice svg { width: 14px; height: 14px; }
 /* Native traffic lights occupy the sidebar's top safe area on macOS. */
 .native-macos .workspace-navigation { padding-top: 44px; }
@@ -37,15 +35,13 @@
 .native-macos .window-drag-region { display: block; position: absolute; top: 0; left: 0; right: 0; height: 28px; z-index: 20; }
 .native-macos .native-preferences > header { padding-top: 28px; min-height: 100px; }
 
-.mac-workspace .asset-panel tbody td:first-child, .mac-workspace .asset-panel tbody td:last-child { border-radius: 0; }
 
 .mac-workspace .preview-heading > [data-slot="toggle-group"] { background: transparent; }
 .mac-workspace .preview-panel [data-slot="toggle-group-item"] { color: var(--foreground); }
-.workspace-navigation [data-state="on"] > svg { color: var(--primary); }
 .update-badge { background: #fff7ed; color: #c2410c; border-color: #ffedd5; }
 
 .navigation-window-actions { display: flex; align-items: center; gap: 4px; }
-.workspace-navigation-rail { display: flex; flex: 0 0 44px; justify-content: center; padding-top: 16px; background: #EEECEE; }
+.workspace-navigation-rail { display: flex; flex: 0 0 44px; justify-content: center; padding-top: 16px; background: var(--sidebar-bg); }
 .native-macos .workspace-navigation-rail { padding-top: 44px; }
 
 /* Collapsing retains the navigation destinations as a compact icon rail. */

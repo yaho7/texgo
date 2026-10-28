@@ -12,5 +12,8 @@
 .navigation-recents .recent-list { display: flex; flex-direction: column; gap: 4px; }
 .navigation-recents .recent-item { margin: 0; }
 .navigation-recents .recent-open { min-height: 56px; padding: 8px; }
-.workspace-navigation [aria-current="page"] { background: var(--accent); font-weight: 550; }
+.workspace-navigation :is([aria-current="page"], [data-state="on"], .recent-item[data-active="true"]) { background: var(--selection-bg); border-radius: var(--radius-selection); font-weight: 550; box-shadow: none; }
+.workspace-navigation :is([aria-current="page"], [data-state="on"]):is(:hover, :focus-within) { background: var(--selection-bg); }
+.workspace-navigation button:not([aria-current="page"]):not([data-state="on"]):hover { background: var(--hover-bg); }
+.workspace-navigation .recent-item[data-active="true"] > button:hover { background: transparent; }
 .navigation-settings { display: flex; align-items: flex-start; min-height: var(--workspace-footer-height, 64px); margin: auto -12px 0; padding: 13px 12px 14px; border-top: 1px solid var(--border); flex-shrink: 0; }

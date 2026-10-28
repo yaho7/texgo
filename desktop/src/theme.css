@@ -21,12 +21,26 @@
   --color-ring: var(--ring);
   --color-success: #15803d;
   --color-warning: #a16207;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
+}
+
+@theme {
+  --radius-xs: 5px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
 }
 
 :root {
+  --sidebar-bg: #EEECEE;
+  --content-bg: #FFFFFF;
+  --selection-bg: #DCDCDC;
+  --preview-bg: #E6E6E6;
+  --hover-bg: rgba(0,0,0,.035);
+  --radius-selection: var(--radius-sm);
+  --radius-control: var(--radius-md);
+  --radius-surface: var(--radius-lg);
+  --radius-dialog: var(--radius-xl);
   --background: #ffffff;
   --foreground: #20252c;
   --card: #ffffff;
@@ -45,7 +59,7 @@
   --border: #dfe3e8;
   --input: #dfe3e8;
   --ring: #147bf5;
-  --radius: 0.5rem;
+  --radius: var(--radius-control);
   --motion-fast: 150ms;
   --motion-normal: 180ms;
   --motion-slow: 220ms;
