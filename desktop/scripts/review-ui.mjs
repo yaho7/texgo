@@ -14,7 +14,7 @@ if (process.env.GITHUB_ACTIONS !== "true") throw new Error("UI review runs on Gi
 const desktop = fileURLToPath(new URL("../", import.meta.url));
 const output = new URL("../ui-review/", import.meta.url);
 const origin = "http://127.0.0.1:4173";
-const png = await readFile(new URL("../tests/fixtures/preview.png", import.meta.url));
+const png = await readFile(new URL("../tests/fixtures/review-chart.png", import.meta.url));
 
 // Embed the existing RGB PNG's IDAT stream into a minimal valid PDF. PNG and PDF
 // both support this lossless predictor, so no image/PDF generator dependency is needed.
@@ -60,7 +60,7 @@ const preferences = { startup: "home", autoWatch: false, autoUpdate: false, dpi:
 function reference(name, line = 128) { return { file: `${projectRoot}/chapters/results.tex`, line, original: `figures/${name}`, start: 0, end: name.length }; }
 const assets = Array.from({ length: 18 }, (_, index) => {
   const name = index === 0 ? "response-curve.png" : index === 1 ? "architecture.svg" : `experiment-${String(index + 1).padStart(2, "0")}.png`;
-  return { id: `image-${index + 1}`, path: `${projectRoot}/figures/${name}`, relativePath: `figures/${name}`, format: name.endsWith("svg") ? "svg" : "png", width: 1024, height: 1024, bytes: png.length, status: "ready", canRename: true, ignoreMode: "none", updateAvailable: index > 1 && index < 6, message: null, references: [reference(name, 128 + index), ...(index === 0 ? [reference(name, 231)] : [])] };
+  return { id: `image-${index + 1}`, path: `${projectRoot}/figures/${name}`, relativePath: `figures/${name}`, format: name.endsWith("svg") ? "svg" : "png", width: png.readUInt32BE(16), height: png.readUInt32BE(20), bytes: png.length, status: "ready", canRename: true, ignoreMode: "none", updateAvailable: index > 1 && index < 6, message: null, references: [reference(name, 128 + index), ...(index === 0 ? [reference(name, 231)] : [])] };
 });
 const problems = [
   { id: "missing", path: null, relativePath: "figures/missing-result.png", format: "png", width: null, height: null, bytes: null, status: "missing", canRename: false, ignoreMode: "none", updateAvailable: false, message: "项目中找不到 LaTeX 引用的图片。", references: [reference("missing-result.png", 46)] },
@@ -151,6 +151,10 @@ function installNativeFixture(fixture) {
         }
         case "conversion_history": return structuredClone(fixture.history);
         case "preview_changes": return structuredClone(fixture.preview);
+        case "asset_thumbnail": {
+          if (args.expectedMainFile !== fixture.project.mainFile || !fixture.project.images.some(image => image.id === args.imageId)) throw new Error("Invalid thumbnail identity");
+          return { kind: "image", data: fixture.source };
+        }
         case "asset_preview": return args.converted ? { kind: "pdf", data: fixture.pdf } : { kind: "image", data: fixture.source };
         default: unexpectedCommands.push(command); throw new Error(`UI review has no native fixture for ${command}`);
       }
@@ -191,11 +195,11 @@ async function pageFor(scenario = "pending", viewport = { width: 1440, height: 9
   page.on("pageerror", (error) => report.unexpected.push({ kind: "pageerror", message: error.message }));
   page.on("console", (message) => { if (["error", "warning"].includes(message.type())) report.unexpected.push({ kind: message.type(), message: message.text() }); });
   await page.goto(origin, { waitUntil: "networkidle" });
-  await page.getByRole("heading", { name: "Texgo", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "加快 LaTeX 编译", exact: true }).waitFor();
   return page;
 }
-async function openProject(page, action = "转换 12 张图片") {
-  await page.getByRole("button", { name: "打开 LaTeX 项目", exact: true }).click();
+async function openProject(page, action = "处理 12 张图片") {
+  await page.getByRole("button", { name: "打开或拖入 .tex 文件", exact: true }).click();
   if (action) await page.getByRole("button", { name: action, exact: true }).waitFor();
   else await page.getByText("项目已是最新状态", { exact: true }).waitFor();
   await page.locator('.preview-content-frame[data-ready="true"] img').first().waitFor({ state: "visible" });
@@ -214,11 +218,11 @@ try {
   await openProject(page);
   assert.equal(await page.getByRole("checkbox").count(), 0, "Checkboxes must be hidden by default");
   await screenshot(page, "02-pending-1440");
-  await page.getByRole("button", { name: "更多转换操作", exact: true }).click();
-  await page.getByRole("menuitem", { name: "选择图片转换…", exact: true }).click();
+  await page.getByRole("button", { name: "更多处理操作", exact: true }).click();
+  await page.getByRole("menuitem", { name: "选择图片…", exact: true }).click();
   await page.getByRole("checkbox", { name: "选择 figures/response-curve.png", exact: true }).check();
   await page.getByRole("checkbox", { name: "选择 figures/architecture.svg", exact: true }).check();
-  await page.getByRole("button", { name: "转换 2 张图片", exact: true }).waitFor();
+  await page.getByRole("button", { name: "处理 2 张图片", exact: true }).waitFor();
   await screenshot(page, "03-selection-1440");
   await page.keyboard.press("Escape");
   await page.getByRole("radio", { name: "问题 2", exact: true }).click();
@@ -268,11 +272,11 @@ try {
   const manual = await pageFor("completed");
   await openProject(manual, null);
   assert.equal(await manual.locator(".command-action").count(), 0, "Up-to-date projects must not gain another primary action");
-  await manual.getByRole("button", { name: "转换…", exact: true }).click();
-  assert.equal(await manual.getByRole("radio", { name: "当前图片", exact: true }).isEnabled(), true, "Completed sources remain manually convertible");
+  await manual.getByRole("button", { name: "处理图片…", exact: true }).click();
+  assert.equal(await manual.getByRole("menuitem", { name: "重新处理当前图片", exact: true }).isEnabled(), true, "Completed sources remain manually convertible");
   await screenshot(manual, "13-up-to-date-manual-conversion-1440");
-  await manual.getByRole("button", { name: "开始转换", exact: true }).click();
-  await manual.getByRole("button", { name: "转换…", exact: true }).waitFor();
+  await manual.getByRole("menuitem", { name: "重新处理当前图片", exact: true }).click();
+  await manual.getByRole("button", { name: "处理图片…", exact: true }).waitFor();
   const manualCalls = await manual.evaluate(() => window.__TEXGO_UI_REVIEW__.commands.filter((item) => item.command === "convert_images"));
   assert.equal(manualCalls.length, 1); assert.equal(manualCalls[0].args.intent, "reconvert"); assert.deepEqual(manualCalls[0].args.options.imageIds, ["image-1"]);
   assert.equal(await manual.getByRole("dialog").count(), 0, "Same-path manual regeneration must not open reference review");
@@ -281,13 +285,12 @@ try {
   await openProject(ignored, null);
   await ignored.getByRole("button", { name: "更多操作 figures/response-curve.png", exact: true }).click();
   await ignored.getByRole("menuitem", { name: "始终忽略", exact: true }).click();
-  await ignored.getByRole("button", { name: "更多筛选", exact: true }).click();
-  await ignored.getByRole("menuitem", { name: "已忽略 1", exact: true }).click();
+  await ignored.getByRole("radio", { name: "已忽略 1", exact: true }).click();
   await ignored.locator('[title="始终忽略"]').first().waitFor();
   await screenshot(ignored, "14-permanent-ignore-1440");
   await ignored.getByRole("button", { name: "更多操作 figures/response-curve.png", exact: true }).click();
-  await ignored.getByRole("menuitem", { name: "手动转换一次", exact: true }).click();
-  await ignored.getByRole("button", { name: "转换…", exact: true }).waitFor();
+  await ignored.getByRole("menuitem", { name: "手动处理一次", exact: true }).click();
+  await ignored.getByRole("button", { name: "处理图片…", exact: true }).waitFor();
   assert.equal(await ignored.evaluate(() => window.__TEXGO_UI_REVIEW__.snapshot().images.find((image) => image.id === "image-1").ignoreMode), "permanent", "Manual conversion must preserve permanent ignore");
   await ignored.getByRole("button", { name: "更多操作 figures/response-curve.png", exact: true }).click();
   await ignored.getByRole("menuitem", { name: "恢复处理", exact: true }).click();
@@ -302,7 +305,7 @@ try {
   await renamed.getByRole("radio", { name: "对比", exact: true }).click();
   const divider = renamed.getByRole("slider", { name: "原图与 PDF 分隔线" });
   await divider.focus(); await renamed.keyboard.press("Shift+ArrowRight");
-  const filename = renamed.getByText("response-curve.png", { exact: true });
+  const filename = renamed.getByText("response-curve", { exact: true });
   assert.equal(await filename.evaluate((element) => {
     const bounds = element.getBoundingClientRect();
     return document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2)?.closest(".asset-filename") === element;
@@ -315,7 +318,7 @@ try {
   await screenshot(renamed, "15-inline-rename-1440");
   await renameInput.fill("pressure-map"); await renameInput.press("Enter");
   await renamed.getByRole("button", { name: "预览 figures/pressure-map.png", exact: true }).waitFor();
-  await renamed.locator(".preview-filename", { hasText: "figures/pressure-map.png" }).waitFor();
+  await renamed.getByRole("img", { name: "原始：figures/pressure-map.png", exact: true }).waitFor();
   assert.equal(await renamed.getByRole("searchbox", { name: "搜索图片" }).inputValue(), "figures", "Rename must retain search context");
   assert.equal(await renamed.getByRole("radio", { name: "对比", exact: true }).getAttribute("aria-checked"), "true", "Rename must retain preview mode");
   assert.equal(await renamed.getByRole("slider").getAttribute("aria-valuenow"), "60", "Rename must retain comparison position");
@@ -327,7 +330,7 @@ try {
 
   const blocked = await pageFor("review");
   await openProject(blocked, "检查 18 处引用");
-  await blocked.getByRole("button", { name: "转换…", exact: true }).click();
+  await blocked.getByRole("button", { name: "处理图片…", exact: true }).click();
   await blocked.getByRole("dialog", { name: "请先审核引用" }).waitFor();
   await blocked.getByText("当前有 18 处引用尚未审核。建议先完成引用审核，再开始新的转换。", { exact: true }).waitFor();
   assert.equal(await blocked.evaluate(() => window.__TEXGO_UI_REVIEW__.commands.filter((item) => item.command === "convert_images").length), 0, "Unreviewed references must block manual conversion before native invocation");
