@@ -129,3 +129,9 @@ Latest user corrections supersede the initial inspector/list metadata arrangemen
   inspector-only resolution and right-aligned status separated from the menu. The native
   command captures only a small source capability instead of cloning the whole workspace.
   Diff reviewed; this follow-up is ready for its atomic commit.
+
+
+Latest alignment correction: keep the Name header left-aligned; center every other column
+header and the status badge content. The more menu remains a distinct final column.
+Browser computed styles confirmed each header and badge alignment; 72 px rows and thumbnail
+geometry remain unchanged. This supersedes the earlier right-aligned status presentation.

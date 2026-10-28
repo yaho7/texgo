@@ -75,3 +75,9 @@ alignment for both status header and badges, and 72 px height for all 18 fixture
 while a rename validation error is visible. Native reads/decoding occur outside the preview
 mutex after capturing only a validated source capability; no TeX source text is cloned for
 individual thumbnail requests.
+
+
+Final alignment adjustment: Name header left; Format, Size, Status and Actions headers
+centered. Status badges are centered as well, following the user's latest clarification.
+Browser computed-style checks confirmed these values. This supersedes earlier right-alignment
+measurements; no other row metadata or sizing changed.

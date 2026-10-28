@@ -247,10 +247,10 @@ export default function AssetList(props: Props) {
                 <label className="asset-selection-target"><Checkbox aria-label="选择当前列表" checked={allChecked ? true : checkedCount > 0 ? "indeterminate" : false} disabled={props.busy || readyIds.length === 0} onCheckedChange={() => props.onSelectAll(readyIds, !allChecked)} /></label>
               </TableHead>}
               <TableHead>名称</TableHead>
-              <TableHead className="w-14">格式</TableHead>
-              <TableHead className="w-20 text-right">大小</TableHead>
-              <TableHead className="w-24 text-right">状态</TableHead>
-              <TableHead className="w-9"><span className="sr-only">图片操作</span></TableHead>
+              <TableHead className="w-14 text-center">格式</TableHead>
+              <TableHead className="w-20 text-center">大小</TableHead>
+              <TableHead className="w-24 text-center">状态</TableHead>
+              <TableHead className="w-9 text-center"><span className="sr-only">图片操作</span></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -296,7 +296,7 @@ export default function AssetList(props: Props) {
                   </TableCell>
                   <TableCell><span className="text-xs text-muted-foreground">{asset.format.toUpperCase()}</span></TableCell>
                   <TableCell className="text-right"><span className="text-xs tabular-nums text-muted-foreground">{formatBytes(asset.bytes)}</span></TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-center">
                     <Badge key={label} className={updatable && !problem ? "status-badge update-badge" : "status-badge"} variant={ignored ? "secondary" : problem ? referenceProblem ? "warning" : "destructive" : converted ? "success" : "secondary"} title={asset.message ?? result?.error ?? (ignored ? ignoreMode === "permanent" ? "始终忽略" : "仅本次忽略" : updatable ? "源图片或 SVG 依赖已变化，可重新转换" : result?.pdfPath ?? undefined)}>
                       {converted && !problem && !ignored && <CircleCheck data-icon="inline-start" aria-hidden="true" />}{updatable && !problem && !ignored && <RefreshCw data-icon="inline-start" aria-hidden="true" />}{label}
                     </Badge>
