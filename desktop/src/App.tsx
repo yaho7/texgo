@@ -355,7 +355,7 @@ export default function App() {
           </div>
           <HistoryView active={view === "history"} onReturn={() => setView("assets")} highlightId={highlightBatch} entries={history} busy={busy} onUndo={(entry) => { rememberFocus(); setError(null); reviewFlow.requestUndo(entry); }} />
         </main>
-        <div ref={commandRef} hidden={settingsPage || homeVisible}><CommandBar pendingRename={pendingRename ? {referenceCount:pendingRename.preview.references.referenceCount} : undefined} status={project.status} settings={settings} selectionMode={selectionMode} selectedCount={selected.size} busy={busy} converting={operation === "converting"} progress={progress} completion={completion} cancelRequested={cancelRequested}
+        <div ref={commandRef} className="workspace-command" hidden={settingsPage || homeVisible}><CommandBar pendingRename={pendingRename ? {referenceCount:pendingRename.preview.references.referenceCount} : undefined} status={project.status} settings={settings} selectionMode={selectionMode} selectedCount={selected.size} busy={busy} converting={operation === "converting"} progress={progress} completion={completion} cancelRequested={cancelRequested}
           onAction={nextAction} onConvert={convert} onManualOpen={allowManualConversionPanel} currentImageId={activeId} convertibleIds={[...convertibleIds]} onSettings={updateSettings} onSelectionMode={(enabled) => { setView("assets"); selection.changeSelectionMode(enabled); }} onCancel={() => { void cancelConversion(); }} /></div>
       </>}
       {operation && operation !== "converting" && !homeVisible && !settingsPage && <div className="activity-notice" role="status"><LoaderCircle className="spin" aria-hidden="true" />{operationLabels[operation]}</div>}

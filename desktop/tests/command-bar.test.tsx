@@ -52,8 +52,8 @@ it("keeps manual conversion available without a redundant primary button when up
   render(<CommandBar {...defaults} status={{ ...status, pendingImages: 0, pendingImageIds: [], completedImageIds: ["a", "b"], completedImages: 2, nextAction: "upToDate" }} />);
   expect(screen.getByRole("status")).toBeEmptyDOMElement();
   expect(document.querySelector(".command-action")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "处理图片…" })).toBeEnabled();
-  expect(screen.getByRole("button", { name: "处理图片…" })).toHaveAttribute("data-variant", "default");
+  expect(screen.getByRole("button", { name: "处理图片" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "处理图片" })).toHaveAttribute("data-variant", "default");
 });
 
 
@@ -68,7 +68,7 @@ it("exposes pending, selected, current, and all conversion intents in the split 
 it.each(["reviewReferences", "resolveProblems", "upToDate"] as const)("keeps manual conversion available when recommendation is %s", async (nextAction) => {
   const user = userEvent.setup(); const convert = vi.fn();
   render(<CommandBar {...defaults} status={{ ...status, pendingImages: 0, pendingImageIds: [], nextAction }} currentImageId="completed" convertibleIds={["completed"]} onConvert={convert} />);
-  await user.click(screen.getByRole("button", { name: "处理图片…" }));
+  await user.click(screen.getByRole("button", { name: "处理图片" }));
   expect(screen.getByRole("menuitem", { name: "重新处理当前图片" })).toBeEnabled();
   await user.click(screen.getByRole("menuitem", { name: "重新处理当前图片" })); expect(convert).toHaveBeenCalledWith("reconvert", ["completed"]);
   expect(document.querySelectorAll(".command-action").length).toBeLessThanOrEqual(1);
@@ -84,15 +84,15 @@ it("converts a temporary selection even when the project is otherwise up to date
 it("checks the manual conversion guard before opening its dropdown", async () => {
   const user = userEvent.setup(); const guard = vi.fn(() => false);
   render(<CommandBar {...defaults} status={{ ...status, nextAction: "reviewReferences", pendingReferences: 18 }} onManualOpen={guard} />);
-  await user.click(screen.getByRole("button", { name: "处理图片…" }));
+  await user.click(screen.getByRole("button", { name: "处理图片" }));
   expect(guard).toHaveBeenCalledOnce(); expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "处理图片…" })).toBeEnabled();
-  expect(screen.getByRole("button", { name: "处理图片…" })).toHaveAttribute("data-variant", "default");
+  expect(screen.getByRole("button", { name: "处理图片" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "处理图片" })).toHaveAttribute("data-variant", "default");
 });
 it("explains a safety block in the status and disables all conversion choices", async () => {
   const user = userEvent.setup(); const convert = vi.fn();
   render(<CommandBar {...defaults} status={{ ...status, blockingReason: "输出文件已被外部修改" }} convertibleIds={["a"]} currentImageId="a" onConvert={convert} />);
-  await user.click(screen.getByRole("button", { name: "处理图片…" }));
+  await user.click(screen.getByRole("button", { name: "处理图片" }));
   expect(screen.getByRole("status")).toHaveTextContent("操作已暂停");
   expect(screen.getByText("操作已暂停")).toHaveAttribute("title", "输出文件已被外部修改");
   for (const item of screen.getAllByRole("menuitem")) expect(item).toHaveAttribute("aria-disabled", "true"); expect(convert).not.toHaveBeenCalled();
@@ -103,7 +103,7 @@ it.each(["convertImages", "reviewReferences", "resolveProblems", "upToDate"] as 
   const user = userEvent.setup();
   render(<CommandBar {...defaults} status={{ ...status, nextAction }} currentImageId="a" convertibleIds={["a"]} />);
   expect(screen.getAllByRole("button", { name: /输出参数：/ })).toHaveLength(1);
-  await user.click(screen.getByRole("button", { name: nextAction === "convertImages" ? "更多处理操作" : "处理图片…" }));
+  await user.click(screen.getByRole("button", { name: nextAction === "convertImages" ? "更多处理操作" : "处理图片" }));
   expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(conversionChoices);
   expect(screen.queryByRole("radiogroup", { name: "转换范围" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "开始转换" })).not.toBeInTheDocument();
@@ -141,7 +141,7 @@ it.each(["converting", "completion", "busy", "selection"] as const)("closes the 
   expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   expect(guard).toHaveBeenCalledOnce();
   guard.mockReturnValue(false);
-  await user.click(screen.getByRole("button", { name: "处理图片…" }));
+  await user.click(screen.getByRole("button", { name: "处理图片" }));
   expect(guard).toHaveBeenCalledTimes(2);
   expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 });

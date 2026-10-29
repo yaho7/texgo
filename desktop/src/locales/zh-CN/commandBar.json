@@ -23,7 +23,7 @@
   "outputDirectory": "输出目录",
   "cancelSelection": "取消选择",
   "moreProcessingActions": "更多处理操作",
-  "processImages": "处理图片…",
+  "processImages": "处理图片",
   "processPendingImages": "处理待更新图片",
   "selectImages": "选择图片…",
   "reprocessCurrentImage": "重新处理当前图片",

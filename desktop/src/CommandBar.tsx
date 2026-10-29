@@ -143,7 +143,7 @@ export default function CommandBar(props: Props) {
           {recommendedConvert && !blocked && <Button className="command-action" disabled={working || count === 0} onClick={submit}><span className="command-action-label-stage">{departingLabel && <span className="command-action-label-exit" aria-hidden="true">{departingLabel}</span>}<span key={transitionKey} className="command-action-label-enter">{label}</span></span></Button>}
           <DropdownMenuTrigger asChild>{recommendedConvert && !blocked
             ? <Button aria-label={t("commandBar.moreProcessingActions")} className="command-split-menu" size="icon" disabled={working}><ChevronDown aria-hidden="true" /></Button>
-            : <Button disabled={working}>{t("commandBar.processImages")}</Button>}
+            : <Button disabled={working}>{t("commandBar.processImages")}<ChevronDown data-icon="inline-end" aria-hidden="true" /></Button>}
           </DropdownMenuTrigger>
         </div>
         <DropdownMenuContent align="end" side="top"><DropdownMenuGroup>

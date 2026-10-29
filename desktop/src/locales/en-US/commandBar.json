@@ -23,7 +23,7 @@
   "outputDirectory": "Output directory",
   "cancelSelection": "Cancel selection",
   "moreProcessingActions": "More processing actions",
-  "processImages": "Process images…",
+  "processImages": "Process images",
   "processPendingImages": "Process pending images",
   "selectImages": "Select images…",
   "reprocessCurrentImage": "Reprocess current image",
