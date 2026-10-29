@@ -14,13 +14,12 @@ The default release path is:
    release mode with the committed lockfile, and signs/collects installers. Workspaces
    share a target-specific Rust cache. The CLI builds directly, avoiding an extra artifact
    transformation layer and stale bundle output.
-3. **Publish** cryptographically verifies all updater packages, generates the feed and
-   checksums, and confirms the tag still points to the exact packaged source commit.
+3. **Publish** checks the five installers and confirms the tag still points to the exact packaged source commit.
 
 Full frontend/PDF/headless/native suites remain available through the manual `full_tests`
 option and the local development commands. They are off by default for publication:
 recompiling a separate debug/test dependency graph on every platform adds no installer.
-Signature/version checks and native release compilation remain mandatory.
+Version checks and native release compilation remain mandatory.
 
 To recover an unpublished release, dispatch Desktop on `main` with `release_tag` set to
 its exact tag, for example `v0.3.0`. The current workflow checks out that tag's original
@@ -61,7 +60,7 @@ npm run check
 npm test
 npm run test:pdf
 npm run build
-cargo test --manifest-path src-tauri/Cargo.toml --locked --features updater-tests
+cargo test --manifest-path src-tauri/Cargo.toml --locked
 cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features --features automation
 ```
 
@@ -71,7 +70,7 @@ publish a release. Packaging/installation and native behavior need platform-spec
 
 ## Release policy
 
-The current upgrade version is `0.3.0`. `version:check` compares `package.json`, both npm lock
+The current desktop version is `0.3.2`. `version:check` compares `package.json`, both npm lock
 version fields, the Cargo manifest and desktop package in its lockfile, and `tauri.conf.json`.
 Supported release versions are `X.Y.Z` and `X.Y.Z-beta.N`, without numeric leading zeroes.
 
@@ -123,48 +122,23 @@ no webview shell permission or HTTP API listener is introduced.
 
 Release filenames are intentionally short:
 
-- `texgo_0.3.1_windows.exe`
-- `texgo_0.3.1_linux.deb` / `texgo_0.3.1_linux.AppImage`
-- `texgo_0.3.1_macos_arm64.dmg` / `texgo_0.3.1_macos_x64.dmg`
+- `texgo_0.3.2_windows.exe`
+- `texgo_0.3.2_linux.deb` / `texgo_0.3.2_linux.AppImage`
+- `texgo_0.3.2_macos_arm64.dmg` / `texgo_0.3.2_macos_x64.dmg`
 
 Only macOS needs an architecture suffix to distinguish its two targets. Original Tauri
 bundle names and the `desktop` prefix are omitted. Collection rejects multiple candidates,
 empty/nonregular installers and existing destination names instead of silently overwriting.
- The release contains exactly eight files: five installers, two macOS updater archives,
-and `latest.json`. Separate signature files and `SHA256SUMS` are not published. Windows packages
+The release contains exactly five platform installers. Update archives, `latest.json`,
+signature sidecars and `SHA256SUMS` are not published. Windows packages
 are unsigned. The workflow supports a Developer ID Application certificate and Apple notarization through Tauri’s supported environment variables; successful signing/notarization must be verified in the actual release job. The workflow references the five Apple repository Secrets without printing their values. Both macOS architectures share the same signing step. A configured secret or local test is not an installed-upgrade acceptance result.
 
 
-## Signed application updates
+## Application updates
 
-The application pins a real updater public key in `src-tauri/tauri.conf.json`. Its private key
-belongs only in the repository Actions secret `TAURI_SIGNING_PRIVATE_KEY`, with an empty
-password for this generated key. Neither key generation output nor the private key is committed.
-Keep the same signing key across releases; replacing it requires a planned key migration.
-Tauri's updater signature is separate from Apple code signing and Windows Authenticode.
-
-Exact release tags produce version-bound Tauri updater signatures. Branch builds disable
-updater artifact creation and do not receive the updater signing secret. macOS also publishes
-`texgo_<version>_macos_<arch>.app.tar.gz`; Windows reuses the `.exe`, Linux the
-`.AppImage`. Debian packages use their normal package-manager update path. The release job
-cryptographically checks all four updater packages against the pinned key, including their signed
-versions, before assembling `latest.json`. Signatures are embedded in that feed; internal
-per-target JSON parts and `.sig` sidecars are removed before upload. Beta feeds stay on their prereleases; installed apps follow
-the stable Latest feed, and the native comparator rejects prereleases and downgrades.
-
-Checking only reads metadata. Downloading verifies the package and signed version; installation
-verifies them again. Failed signatures, invalid HTTPS origins, missing feeds and network failures
-remain visible errors. There is no unsigned execution fallback. Update bytes stay in native
-memory behind an opaque token and are discarded when replaced or the application exits.
-
-Installation and restart each require an explicit action. A native guard holds the conversion
-flag and workspace mutex through installation or restart; conflicts fail immediately and can be
-retried. The update dialog cannot replace an active reference review, and background UI decisions
-queue while it owns the window. On Windows, the official installer exits and relaunches the app
-as part of the explicit install action. macOS/Linux offer a separate Restart action after install.
-
-Local acceptance verifies a real CLI-generated signature through both the official plugin and
-the release verifier, rejects tampered bytes and forged versions, and exercises native operation
-locks and explicit UI actions. It does not install the fixture payload. Actual signed release
-packaging, notarization and an installed upgrade on Windows, macOS and AppImage remain checks
-for CI and the corresponding devices. No release has been published by this local task.
+The update menu opens the fixed GitHub latest-release page in the default browser.
+Users download the installer for their platform and install it themselves.
+Automatic checks read stable-release metadata from the GitHub API and only show a notice
+when a newer version is available. They never download or install a package.
+The application no longer uses a Tauri updater feed or updater signing keys.
+Apple code signing and notarization remain part of the macOS packaging process.

@@ -222,7 +222,7 @@ async fn open_log_directory(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 async fn open_release_page(url: String) -> Result<(), String> {
-    if !url.starts_with("https://github.com/yaho7/texgo/releases/tag/") || url.chars().any(|c| c.is_control() || c == '"') {
+    if url != "https://github.com/yaho7/texgo/releases/latest" && !url.starts_with("https://github.com/yaho7/texgo/releases/tag/") || url.chars().any(|c| c.is_control() || c == '"') {
         return Err("无效的发行版地址".into());
     }
     tauri::async_runtime::spawn_blocking(move || {
@@ -249,15 +249,6 @@ async fn undo_conversion(entry_id: String, state: State<'_, AppState>) -> Result
 struct ConversionGuard(Arc<AtomicBool>);
 impl Drop for ConversionGuard {
     fn drop(&mut self) { self.0.store(false, Ordering::Relaxed); }
-}
-
-// Keep the same conversion flag and workspace lock through install/restart. Never use
-// work(): update checks must not clear completed preview ownership or alter the project.
-pub(crate) fn with_update_workspace<T>(state: &AppState, action: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
-    if state.converting.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() { return Err("项目操作正在运行，请稍后安装或重启".into()); }
-    let _operation = ConversionGuard(state.converting.clone());
-    let _workspace = state.workspace.try_lock().map_err(|_| "项目文件正在使用中，请稍后重试")?;
-    action()
 }
 
 #[tauri::command]
@@ -415,8 +406,6 @@ async fn undo_replacements(state: State<'_, AppState>) -> Result<MutationResult,
 
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_updater::Builder::new().default_version_comparator(|current, release| release.version > current && release.version.pre.is_empty()).build())
-        .manage(crate::app_update::UpdateState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -438,7 +427,7 @@ pub fn run() {
             install_background(app);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![crate::app_update::check_application_update, crate::app_update::download_application_update, crate::app_update::install_application_update, crate::app_update::restart_after_update, observation_identity, desktop_status, set_shortcut_recording, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, asset_file_action, preview_rename, rename_asset, retry_asset, open_project, refresh_workspace, poll_workspace, open_log_directory, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, asset_thumbnail, preview_changes, apply_replacements, undo_replacements])
+        .invoke_handler(tauri::generate_handler![observation_identity, desktop_status, set_shortcut_recording, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, asset_file_action, preview_rename, rename_asset, retry_asset, open_project, refresh_workspace, poll_workspace, open_log_directory, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, asset_thumbnail, preview_changes, apply_replacements, undo_replacements])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let background = window.state::<AppState>().preferences.lock().is_ok_and(|p| p.close_action == "background");
@@ -774,29 +763,5 @@ mod observation_publication_tests {
         assert!(!overtook, "foreground P2 must wait until older watcher P1 has been published");
         assert_eq!(*publications.lock().unwrap(), ["observation P1", "foreground P2"]);
         assert_eq!(state.workspace.lock().unwrap().as_ref().unwrap().project().status.ignored_count, 1);
-    }
-}
-
-#[cfg(test)]
-mod update_workspace_tests {
-    use super::*;
-    #[test]
-    fn install_refuses_active_work_and_never_clears_preview_ownership() {
-        let state = AppState::default();
-        state.completed_previews.lock().unwrap().insert("image".into(), "result.pdf".into());
-        state.converting.store(true, Ordering::SeqCst);
-        assert!(with_update_workspace(&state, || Ok(())).is_err());
-        assert!(state.converting.load(Ordering::SeqCst));
-        state.converting.store(false, Ordering::SeqCst);
-        let lock = state.workspace.lock().unwrap();
-        assert!(with_update_workspace(&state, || Ok(())).is_err());
-        assert!(!state.converting.load(Ordering::SeqCst)); drop(lock);
-        assert!(with_update_workspace(&state, || Err::<(),_>("install failed".into())).is_err());
-        assert!(!state.converting.load(Ordering::SeqCst));
-        with_update_workspace(&state, || {
-            assert!(state.workspace.try_lock().is_err());
-            assert!(state.converting.load(Ordering::SeqCst)); Ok(())
-        }).unwrap();
-        assert_eq!(state.completed_previews.lock().unwrap().get("image").unwrap(), "result.pdf");
     }
 }

@@ -21,7 +21,7 @@ cargo build --locked --manifest-path src-tauri/Cargo.toml --no-default-features 
 mkdir -p src-tauri/binaries
 cp src-tauri/target/debug/texgo-engine src-tauri/binaries/texgo-engine-aarch64-apple-darwin
 npm exec tauri icon app-icon.svg
-cargo test --locked --manifest-path src-tauri/Cargo.toml --features updater-tests
+cargo test --locked --manifest-path src-tauri/Cargo.toml
 ```
 
 Use the host triple reported by `rustc -vV` for the sidecar filename on other platforms; Windows additionally uses `.exe`. CI's package job shows platform-specific staging. Generated binaries, icons, target files and frontend distributions remain ignored. Do not commit fake sidecars or bypass resource checks to get tests running.
@@ -32,7 +32,7 @@ Native observation tests include a real filesystem-event smoke test. On macOS a 
 
 The October 28 local verification passed 308 frontend tests, one PDF renderer test,
 12 release/signature/feed tests, 293 headless Rust tests and 288 desktop Rust tests
-with `updater-tests`. The Rust feature sets deliberately discover different tests.
+with the then-current updater test feature. The Rust feature sets deliberately discover different tests.
 These counts describe the recorded run; rerun the relevant checks after changes.
 Language maintenance is documented in [the locale guide](../desktop/src/locales/README.md).
 

@@ -14,7 +14,7 @@ npm run test:pdf
 npm run test:release
 cargo test --locked --manifest-path src-tauri/Cargo.toml --no-default-features --features automation
 # After preparing native resources:
-cargo test --locked --manifest-path src-tauri/Cargo.toml --features updater-tests
+cargo test --locked --manifest-path src-tauri/Cargo.toml
 ```
 
 Keep changes focused. Use existing formatting and typed frontend models; keep Rust

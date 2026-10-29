@@ -53,18 +53,6 @@
         "displayLanguageSelector": true
       }
     },
-    "createUpdaterArtifacts": true
-  },
-  "plugins": {
-    "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM0QUFDNDZDRjY5Q0Q2QkIKUldTNzFwejJiTVNxeEhHbEdCN2p4aENDTDF2WWZUM0d3d20xNElsVXg0OEVEZEZxRXJEckdLNFEK",
-      "requireSignedVersion": true,
-      "endpoints": [
-        "https://github.com/yaho7/texgo/releases/latest/download/latest.json"
-      ],
-      "windows": {
-        "installMode": "passive"
-      }
-    }
+    "createUpdaterArtifacts": false
   }
 }

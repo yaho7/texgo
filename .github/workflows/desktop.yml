@@ -165,11 +165,9 @@ jobs:
           npm exec -- tauri icon app-icon.svg
       - name: Native regression (optional)
         if: inputs.full_tests == true
-        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --features updater-tests --target ${{ matrix.target }}
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --target ${{ matrix.target }}
       - name: Build signed installer
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ needs.verify.outputs.publish == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
           APPIMAGE_EXTRACT_AND_RUN: '1'
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -178,10 +176,9 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           TARGET: ${{ matrix.target }}
           BUNDLES: ${{ matrix.bundles }}
-          PUBLISH: ${{ needs.verify.outputs.publish }}
         run: |
           rm -rf "src-tauri/target/$TARGET/release/bundle"
-          npm exec -- tauri build --config "{\"build\":{\"beforeBuildCommand\":null},\"bundle\":{\"createUpdaterArtifacts\":$PUBLISH}}" --target "$TARGET" --bundles "$BUNDLES" -- --locked --bin texgo-desktop
+          npm exec -- tauri build --config "{\"build\":{\"beforeBuildCommand\":null},\"bundle\":{\"createUpdaterArtifacts\":false}}" --target "$TARGET" --bundles "$BUNDLES" -- --locked --bin texgo-desktop
       - name: Verify and collect installers
         env:
           TARGET: ${{ matrix.target }}
@@ -220,17 +217,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Verify signed updater artifacts and assemble feed
+      - name: Verify the five platform installers
         env:
           TEXGO_BUILD_REF: ${{ needs.verify.outputs.ref }}
         run: |
           node --input-type=module -e '
-            import { generateUpdaterFeed } from "./desktop/scripts/generate-updater-feed.mjs";
             import { preparePublicAssets } from "./desktop/scripts/prepare-public-assets.mjs";
-            const feed = await generateUpdaterFeed({directory:"release", desktop:"desktop", ref:process.env.TEXGO_BUILD_REF});
-            await preparePublicAssets({directory:"release", version:feed.version});
+            import { checkVersions } from "./desktop/scripts/release-policy.mjs";
+            const policy = await checkVersions("desktop", process.env.TEXGO_BUILD_REF);
+            await preparePublicAssets({directory:"release", version:policy.version});
           '
-      - name: Publish eight release assets
+      - name: Publish five installers
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -248,7 +245,7 @@ jobs:
           fi
           flags=()
           if [[ "$PRERELEASE" == true ]]; then flags+=(--prerelease); fi
-          printf 'Commit: %s\n\nBuild: %s\n\nInstallers include Texgo and the independent texgo-engine CLI/JSON-RPC API. macOS requires 13.3+. See the workflow for platform signing results; Windows installers are currently unsigned. Five installers are provided; two macOS update archives and latest.json support signed in-app updates.' "$SHA" "$RUN_URL" > release-notes.md
+          printf 'Commit: %s\n\nBuild: %s\n\nInstallers include Texgo and the independent texgo-engine CLI/JSON-RPC API. macOS requires 13.3+. See the workflow for platform signing results; Windows installers are currently unsigned. Five platform installers are provided. App updates open the GitHub release page for manual installation.' "$SHA" "$RUN_URL" > release-notes.md
           gh release create "$TAG" release/* --verify-tag --draft --latest=false \
             --title "Texgo $VERSION" --notes-file release-notes.md "${flags[@]}"
           gh release edit "$TAG" --draft=false --latest="$LATEST"

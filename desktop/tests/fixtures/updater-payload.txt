@@ -1,1 +1,0 @@
-Texgo updater signature verification fixture.

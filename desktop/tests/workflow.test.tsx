@@ -604,12 +604,20 @@ it("keeps settings accelerators behind an open review decision", async () => {
   expect(screen.getByRole("button", { name: "预览 figures/alpha.png" })).toBeVisible();
 });
 
+it("opens GitHub directly from the native update action without a modal", async () => {
+  await openProject();
+  handlers.open_release_page = () => undefined;
+  await act(async () => { await emit("menu-action", "check-updates"); });
+  expect(calls.find(call => call.command === "open_release_page")?.args).toEqual({url:"https://github.com/yaho7/texgo/releases/latest"});
+  expect(screen.queryByRole("dialog", {name:"应用更新"})).not.toBeInTheDocument();
+});
+
 it("keeps application update actions behind an open reference review", async () => {
   const user = await openProject();
   const review = await convertAndReview(user);
   await act(async () => { await emit("menu-action", "check-updates"); });
   expect(review).toBeVisible();
-  expect(calls.some(call => call.command === "check_application_update")).toBe(false);
+  expect(calls.some(call => call.command === "open_release_page")).toBe(false);
 });
 
 it("preserves the checked review snapshot across native workspace and completion events", async () => {

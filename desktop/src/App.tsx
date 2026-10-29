@@ -1,3 +1,4 @@
+import { checkApplicationUpdate, openReleasePage } from "./applicationUpdates";
 import { viewTransition } from "./motion";
 import { useWorkspaceGeometry } from "./hooks/useWorkspaceGeometry";
 import { nativeText } from "./nativeText";
@@ -32,7 +33,7 @@ import "./workspace-native.css";
 import "./overview.css";
 import "./quiet-workspace.css";
 import WorkspaceSidebar from "./WorkspaceSidebar";
-import { SettingsView, HistoryView, UpdateView } from "./SecondaryViews";
+import { SettingsView, HistoryView } from "./SecondaryViews";
 import { defaultPreferences } from "./preferences";
 import type { Preferences } from "./preferences";
 import WorkbenchMenu from "./WorkbenchMenu";
@@ -75,7 +76,6 @@ export default function App() {
   const [assetsWidth, setAssetsWidth] = useState(600);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [updateOpen, setUpdateOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
   const desktopAction = useRef<(action: string) => void>(() => {});
   const dropFiles = useRef<(paths: string[]) => void>(() => {});
@@ -108,7 +108,7 @@ export default function App() {
     pendingIds, convertibleIds, problemIds, ignored, completedIds, activate: setActiveId,
     changeSearch: setSearch, changeFilter: setFilter } = selection;
   const reviewFlow = useReviewFlow({ workspace, selection, execute, currentOperationKind, setError, setNotice, rememberFocus, restoreFocus, setView: showWorkspace,
-    completionVisible: () => conversionRef.current?.completionVisible() ?? false, automaticReviewAllowed: !homeVisible && !settingsPage && windowVisible && !updateOpen && !drawerOpen && !transientOverlayOpen && !pendingRename });
+    completionVisible: () => conversionRef.current?.completionVisible() ?? false, automaticReviewAllowed: !homeVisible && !settingsPage && windowVisible && !drawerOpen && !transientOverlayOpen && !pendingRename });
   const historyDomain = useHistory({
     currentProject: () => projectRef.current, generation: () => workspace.generation.current,
     execute, acceptProject, refresh, discardProject: workspace.discardProject,
@@ -126,7 +126,7 @@ export default function App() {
   const decisionOpen = reviewFlow.decision.kind !== "none";
   const background = useBackgroundAutomation({ workspace, selection, execute, currentOperationKind, setError, setNotice,
     conversion, reviewFlow, historyDomain, operationDomain: { current: currentOperation, acquire: acquireOperation, release: releaseOperation },
-    autoWatch: preferences.autoWatch, held: decisionOpen || completion !== null || updateOpen || homeVisible || Boolean(pendingRename),
+    autoWatch: preferences.autoWatch, held: decisionOpen || completion !== null || homeVisible || Boolean(pendingRename),
     onNavigate: (payload) => notificationNavigate.current(payload), setRevision });
   useDesktopEvents({ background, onAction: (action) => desktopAction.current(action), onDrop: (paths) => dropFiles.current(paths), setDragging });
   useEffect(() => {
@@ -153,7 +153,7 @@ export default function App() {
       if (value.startup === "lastWorkspace") { const last = readRecents()[0]; if (last) openRecent(last); }
       const current = import.meta.env.VITE_RELEASE_TAG;
       if (value.autoUpdate && current && current !== "development") {
-        void invoke<import("./ApplicationUpdate").ApplicationUpdateInfo>("check_application_update")
+        void checkApplicationUpdate()
           .then(info => { if (!disposed && info.stage === "available") setNotice(t("app.versionValueIsAvailableCheckForUpdatesInTheMenu", { arg0: info.version })); }).catch(() => {});
       }
     }).catch((reason) => { if (!disposed) setError(errorMessage(reason)); });
@@ -161,11 +161,11 @@ export default function App() {
   }, []);
 
   function showHome() {
-    if (currentOperationKind() || reviewFlow.decisionRef.current.kind !== "none" || updateOpen) return;
+    if (currentOperationKind() || reviewFlow.decisionRef.current.kind !== "none") return;
     setHomePage(true); setSettingsPage(false); setDrawerOpen(false); setNotice("");
   }
   function openRecentEntry(entry: Parameters<typeof openRecent>[0]) {
-    if (currentOperationKind() || reviewFlow.decisionRef.current.kind !== "none" || updateOpen) return;
+    if (currentOperationKind() || reviewFlow.decisionRef.current.kind !== "none") return;
     if (projectRef.current?.mainFile === entry.path) { showWorkspace("assets"); setSettingsPage(false); }
     else openRecent(entry);
   }
@@ -256,7 +256,7 @@ export default function App() {
 
   notificationNavigate.current = async ({ project: next, target }) => {
       setHomePage(false);
-      setReview(null); reviewFlow.clearQueue(); setCompletion(null); setProblemId(null); reviewFlow.dismissUndo(); setUpdateOpen(false); setSettingsPage(false);
+      setReview(null); reviewFlow.clearQueue(); setCompletion(null); setProblemId(null); reviewFlow.dismissUndo(); setSettingsPage(false);
       const same = project?.root === next.root && project?.mainFile === next.mainFile;
       await acceptProject(next, same);
       const isCurrent = captureWorkspace();
@@ -272,10 +272,10 @@ export default function App() {
       } else { setView(target.view === "images" ? "assets" : "history"); if (target.imageId) setActiveId(target.imageId); }
   };
   desktopAction.current = (action) => {
-    if (decisionOpen || updateOpen || renameReviewOpen) return;
+    if (decisionOpen || renameReviewOpen) return;
     if (action === "settings") { setSettingsPage(true); setDrawerOpen(false); return; }
-    if (action === "check-updates") { if (!currentOperationKind()) setUpdateOpen(true); return; }
-    if (currentOperationKind() || decisionOpen || updateOpen || renameReviewOpen) return;
+    if (action === "check-updates") { if (!currentOperationKind()) void openReleasePage().catch(reason => setError(errorMessage(reason))); return; }
+    if (currentOperationKind() || decisionOpen || renameReviewOpen) return;
     if (["convert", "review", "undo-task"].includes(action)) setHomePage(false);
     if (action === "open-project") openProject();
     else if (action === "close-project") closeProject();
@@ -289,13 +289,13 @@ export default function App() {
     }
   };
   dropFiles.current = (paths) => {
-    if (currentOperationKind() || decisionOpen || updateOpen || renameReviewOpen) return;
+    if (currentOperationKind() || decisionOpen || renameReviewOpen) return;
     const tex = paths.filter((path) => /\.tex$/i.test(path));
     if (tex.length !== 1) { setError(t("app.dropOneTexMainFileAtATime")); return; }
     void workspace.openPath(tex[0]);
   };
 
-  useAppShortcuts({ homePage: homeVisible, settingsPage, setSettingsPage, blocked: decisionOpen || updateOpen || drawerOpen || renameReviewOpen,
+  useAppShortcuts({ homePage: homeVisible, settingsPage, setSettingsPage, blocked: decisionOpen || drawerOpen || renameReviewOpen,
     busy, view, setView: showWorkspace, activeAsset, activeId, visibleImages, selection, desktopAction });
   function nextAction() {
     if (pendingRename) { setRenameReviewOpen(true); return; }
@@ -320,7 +320,7 @@ export default function App() {
     onRemove={workspace.forgetRecent} />;
 
   return <TooltipProvider delayDuration={350}><div className={`app-shell mac-workspace${isTauri() && /Mac/.test(navigator.platform) ? " native-macos" : ""}`}><div className="window-drag-region" data-tauri-drag-region aria-hidden="true" />
-    <div ref={shellRef} className={homeLanding || settingsPage ? "workbench pl-0!" : "workbench"} inert={review !== null || undoEntry !== null || problemId !== null || updateOpen || conversionBlocked || renameReviewOpen}>
+    <div ref={shellRef} className={homeLanding || settingsPage ? "workbench pl-0!" : "workbench"} inert={review !== null || undoEntry !== null || problemId !== null || conversionBlocked || renameReviewOpen}>
       <a href="#main-content" className="skip-link">{t("app.skipToWorkspace")}</a>
       {!homeLanding && !settingsPage && !narrow && <aside className="workspace-sidebar" data-compact={!sidebarExpanded}>{sidebar}</aside>}
       {!homeLanding && !settingsPage && narrow && <aside className="workspace-navigation-rail"><IconButton id="sidebar-toggle" label={narrow ? t("app.openProjectNavigation") : t("app.showSidebar")} aria-expanded={narrow ? drawerOpen : false} onClick={() => narrow ? setDrawerOpen(true) : toggleSidebar()}><PanelLeft aria-hidden="true" /></IconButton></aside>}
@@ -328,7 +328,7 @@ export default function App() {
       {!homeLanding && !settingsPage && <header className="app-toolbar">
         <div className="project-title">{project && !homeVisible && !settingsPage ? <><h1 title={project.mainFile}>{fileName(project.mainFile)}</h1><p title={project.root}>{project.root}</p></> : null}</div>
         {project && !homeVisible && !settingsPage && view === "assets" && <WorkspaceSearch value={search} onChange={setSearch} />}
-        <div className="toolbar-actions"><WorkbenchMenu busy={busy} hasProject={Boolean(project)} canUndo={history.some((entry) => entry.canUndo) || Boolean(project?.undoAvailable)} onOpen={openProject} onClose={closeProject} onRefresh={() => { void execute("opening", () => refresh()); }} onUpdate={() => { if (!currentOperationKind() && reviewFlow.decisionRef.current.kind === "none") setUpdateOpen(true); }} onUndo={() => {
+        <div className="toolbar-actions"><WorkbenchMenu busy={busy} hasProject={Boolean(project)} canUndo={history.some((entry) => entry.canUndo) || Boolean(project?.undoAvailable)} onOpen={openProject} onClose={closeProject} onRefresh={() => { void execute("opening", () => refresh()); }} onUpdate={() => { if (!currentOperationKind() && reviewFlow.decisionRef.current.kind === "none") void openReleasePage().catch(reason => setError(errorMessage(reason))); }} onUndo={() => {
           const entry = history.find((item) => item.canUndo); if (entry) { rememberFocus(); reviewFlow.requestUndo(entry); } else if (project?.undoAvailable) replace(true);
         }} /></div>
       </header>}
@@ -385,7 +385,6 @@ export default function App() {
         <DialogFooter><Button variant="outline" disabled={busy} onClick={() => { reviewFlow.dismissUndo(); setError(null); }}>{t("app.cancel")}</Button><Button variant="destructive" disabled={busy} onClick={undoConversion}>{busy ? <LoaderCircle data-icon="inline-start" className="animate-spin" aria-hidden="true" /> : <RotateCcw data-icon="inline-start" aria-hidden="true" />}{t("app.undoOperation")}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
-    {updateOpen && <UpdateView onClose={() => setUpdateOpen(false)} />}
     {dragging && <div className="drop-overlay" role="status">{t("app.dropToOpenTheTexMainFile")}</div>}
   </div></TooltipProvider>;
 }

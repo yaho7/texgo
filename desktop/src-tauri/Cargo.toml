@@ -23,9 +23,8 @@ required-features = ["automation"]
 
 [features]
 default = ["desktop"]
-desktop = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-dialog", "dep:tauri-plugin-global-shortcut", "dep:tauri-plugin-notification", "dep:tauri-plugin-opener", "dep:tauri-plugin-clipboard-manager", "dep:tauri-plugin-updater"]
+desktop = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-dialog", "dep:tauri-plugin-global-shortcut", "dep:tauri-plugin-notification", "dep:tauri-plugin-opener", "dep:tauri-plugin-clipboard-manager"]
 automation = []
-updater-tests = ["desktop", "tauri/test"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [], optional = true }
@@ -55,4 +54,3 @@ tauri-plugin-notification = { version = "2.7.0", optional = true }
 notify = "8.2.0"
 cap-std = "3"
 cap-fs-ext = "3"
-tauri-plugin-updater = { version = "2", optional = true }
