@@ -125,7 +125,17 @@ impl Workspace {
         refreshed.expected_writes = self.expected_writes.clone();
         refreshed.session_ignored = self.session_ignored.clone();
         refreshed.session_ignored.retain(|id| refreshed.scan.project.images.iter().any(|asset| &asset.id == id));
-        refreshed.invalidated.extend(self.invalidated.iter().cloned());
+        // A cancelled/empty attempt must not keep an already referenced, fully
+        // verified PDF pending forever. Keep failures and retries invalidated;
+        // PNG-to-PDF reference changes still require their original confirmation.
+        let settled: HashSet<_> = self.invalidated.iter().filter(|id| {
+            if self.failures.contains_key(*id) || self.retrying.contains(*id) || !refreshed.converted.contains_key(*id) { return false; }
+            let mut project = refreshed.review_project();
+            project.images.retain(|asset| &asset.id == *id);
+            transaction::prepare(&project, &refreshed.scan.sources, &refreshed.converted)
+                .is_ok_and(|prepared| prepared.plan.reference_count == 0)
+        }).cloned().collect();
+        refreshed.invalidated.extend(self.invalidated.iter().filter(|id| !settled.contains(*id)).cloned());
         refreshed.retrying = self.retrying.iter().filter(|id| refreshed.scan.project.images.iter().any(|asset| &asset.id == *id)).cloned().collect();
         refreshed.invalidated.extend(refreshed.retrying.iter().cloned());
         refreshed.failures.extend(self.failures.iter().filter(|(id, (_, fingerprint))| {
@@ -934,4 +944,34 @@ mod native_observation_tests {
         assert_eq!(fs::read(pending).unwrap(), b"{}");
     }
 
+}
+
+#[cfg(test)]
+mod settled_pdf_tests {
+    use super::*;
+    #[test]
+    fn refresh_reconciles_stale_session_state_only_for_valid_already_referenced_pdfs() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().canonicalize().unwrap();
+        image::RgbImage::new(20, 10).save(root.join("a.png")).unwrap();
+        fs::write(root.join("main.tex"), r"\includegraphics{a.png}").unwrap();
+        let mut ws = Workspace::open(&root.join("main.tex")).unwrap();
+        let options = crate::preferences::Preferences::default().options(vec![]);
+        ws.update_pending_with_results(&options, &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+        let id = ws.project().images[0].id.clone();
+        ws.invalidated.insert(id.clone());
+        assert_eq!(ws.refresh().unwrap().status.pending_images, 1, "an unconfirmed reference must remain pending");
+        ws.invalidated.clear(); ws.refresh().unwrap();
+        ws.apply().unwrap();
+        let tex = fs::read(root.join("main.tex")).unwrap();
+        ws.invalidated.insert(id.clone()); ws.converted.clear(); ws.update_status();
+        assert_eq!(ws.project().status.pending_images, 1);
+        let project = ws.refresh().unwrap();
+        assert_eq!(project.status.pending_images, 0);
+        assert_eq!(project.status.completed_images, 1);
+        assert_eq!(project.status.pending_references, 0);
+        assert_eq!(fs::read(root.join("main.tex")).unwrap(), tex);
+        fs::remove_file(root.join("texgo-pdf/a.pdf")).unwrap();
+        assert_eq!(ws.refresh().unwrap().status.pending_images, 1, "a deleted PDF must still need conversion");
+    }
 }
