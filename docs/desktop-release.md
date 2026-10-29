@@ -70,7 +70,7 @@ publish a release. Packaging/installation and native behavior need platform-spec
 
 ## Release policy
 
-The current desktop version is `0.3.2`. `version:check` compares `package.json`, both npm lock
+The current desktop version is `0.3.3`. `version:check` compares `package.json`, both npm lock
 version fields, the Cargo manifest and desktop package in its lockfile, and `tauri.conf.json`.
 Supported release versions are `X.Y.Z` and `X.Y.Z-beta.N`, without numeric leading zeroes.
 
@@ -122,9 +122,9 @@ no webview shell permission or HTTP API listener is introduced.
 
 Release filenames are intentionally short:
 
-- `texgo_0.3.2_windows.exe`
-- `texgo_0.3.2_linux.deb` / `texgo_0.3.2_linux.AppImage`
-- `texgo_0.3.2_macos_arm64.dmg` / `texgo_0.3.2_macos_x64.dmg`
+- `texgo_0.3.3_windows.exe`
+- `texgo_0.3.3_linux.deb` / `texgo_0.3.3_linux.AppImage`
+- `texgo_0.3.3_macos_arm64.dmg` / `texgo_0.3.3_macos_x64.dmg`
 
 Only macOS needs an architecture suffix to distinguish its two targets. Original Tauri
 bundle names and the `desktop` prefix are omitted. Collection rejects multiple candidates,
