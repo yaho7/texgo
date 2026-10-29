@@ -380,13 +380,13 @@ async fn retry_asset(image_id: String, app: tauri::AppHandle, state: State<'_, A
 }
 
 #[tauri::command]
-async fn preview_changes(state: State<'_, AppState>) -> Result<ReplacementPlan, String> {
-    work(state.inner().clone(), |workspace| current(workspace)?.plan()).await
+async fn preview_changes(restore_originals: Option<bool>, state: State<'_, AppState>) -> Result<ReplacementPlan, String> {
+    work(state.inner().clone(), move |workspace| current(workspace)?.plan_target(restore_originals.unwrap_or(false))).await
 }
 
 #[tauri::command]
-async fn apply_replacements(selection: Vec<String>, expected: ReplacementPlan, repair: Option<bool>, state: State<'_, AppState>) -> Result<MutationResult, ReviewApplyError> {
-    work_checked(state.inner().clone(), move |workspace| current(workspace)?.apply_reviewed_checked(selection.into_iter().collect(), &expected, repair.unwrap_or(false))).await
+async fn apply_replacements(selection: Vec<String>, expected: ReplacementPlan, repair: Option<bool>, restore_originals: Option<bool>, state: State<'_, AppState>) -> Result<MutationResult, ReviewApplyError> {
+    work_checked(state.inner().clone(), move |workspace| current(workspace)?.apply_reviewed_target_checked(selection.into_iter().collect(), &expected, repair.unwrap_or(false), restore_originals.unwrap_or(false))).await
 }
 
 #[tauri::command]

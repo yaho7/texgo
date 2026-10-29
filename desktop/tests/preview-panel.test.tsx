@@ -213,10 +213,10 @@ it("retains permanent ignore while explicitly requesting one manual conversion",
   const convert = vi.fn(); const ignore = vi.fn();
   render(<AssetPreview asset={{ ...asset, ignoreMode: "permanent" }} revision={1} onIgnore={ignore} onManualConvert={convert} canConvert />);
   await userEvent.click(screen.getByRole("button", { name: "当前图片操作" }));
-  await userEvent.click(screen.getByRole("menuitem", { name: "手动处理一次" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "手动转换一次" }));
   expect(convert).toHaveBeenCalledWith("a"); expect(ignore).not.toHaveBeenCalled();
   await userEvent.click(screen.getByRole("button", { name: "当前图片操作" }));
-  expect(screen.getByRole("menuitem", { name: "恢复处理" })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "恢复转换" })).toBeInTheDocument();
   expect(screen.queryByRole("menuitem", { name: "始终忽略" })).not.toBeInTheDocument();
 });
 

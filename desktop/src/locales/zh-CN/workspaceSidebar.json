@@ -10,7 +10,7 @@
   "library": "资料库",
   "imageStatusFilters": "图片状态摘要",
   "allImages": "全部",
-  "pending": "待处理",
+  "pending": "待转换",
   "problems": "问题",
   "completed": "已完成",
   "ignored": "已忽略",

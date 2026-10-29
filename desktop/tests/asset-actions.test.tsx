@@ -43,8 +43,8 @@ it("offers distinct session/permanent ignore and keeps explicit conversion avail
   expect(screen.getByText("已忽略").closest("span")).toHaveAttribute("title", "始终忽略");
   await user.click(screen.getByRole("button", { name: "更多操作 figures/plot.png" }));
   expect(screen.queryByRole("menuitem", { name: "忽略本次" })).not.toBeInTheDocument();
-  await user.click(screen.getByRole("menuitem", { name: "手动处理一次" })); expect(p.onManualConvert).toHaveBeenCalledWith("plot"); expect(p.onIgnore).toHaveBeenCalledTimes(1);
-  await user.click(screen.getByRole("button", { name: "更多操作 figures/plot.png" })); await user.click(screen.getByRole("menuitem", { name: "恢复处理" })); expect(p.onIgnore).toHaveBeenLastCalledWith("plot", "none");
+  await user.click(screen.getByRole("menuitem", { name: "手动转换一次" })); expect(p.onManualConvert).toHaveBeenCalledWith("plot"); expect(p.onIgnore).toHaveBeenCalledTimes(1);
+  await user.click(screen.getByRole("button", { name: "更多操作 figures/plot.png" })); await user.click(screen.getByRole("menuitem", { name: "恢复转换" })); expect(p.onIgnore).toHaveBeenLastCalledWith("plot", "none");
 });
 it("allows selecting completed and ignored convertible images without selecting unsafe rows", async () => {
   const user = userEvent.setup(); const p = props({ ...image, ignoreMode: "permanent" }); render(<AssetList {...p} ignored={new Set(["plot"])} selectionMode />);
@@ -76,7 +76,7 @@ it("uses the same current actions for right click and the more menu", async () =
   await user.click(screen.getByRole("menuitem", { name: "复制路径" })); expect(p.onCopyPath).toHaveBeenCalledWith("plot");
   await user.click(screen.getByRole("button", { name: "更多操作 figures/plot.png" }));
   expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(contextLabels);
-  await user.click(screen.getByRole("menuitem", { name: "重新处理此图片" })); expect(p.onManualConvert).toHaveBeenCalledWith("plot");
+  await user.click(screen.getByRole("menuitem", { name: "重新转换此图片" })); expect(p.onManualConvert).toHaveBeenCalledWith("plot");
 });
 it.each(["ContextMenu", "ShiftF10"])("opens %s from the focused row and hands rename focus to the editor", async (key) => {
   const user = userEvent.setup(); render(<AssetList {...props()} />);

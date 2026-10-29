@@ -34,28 +34,43 @@ pub(crate) fn prepare(project: &Project, sources: &BTreeMap<PathBuf, Vec<u8>>, c
 }
 
 pub(crate) fn prepare_selected(project: &Project, sources: &BTreeMap<PathBuf, Vec<u8>>, converted: &BTreeMap<String, StoredConversion>, selection: Option<&HashSet<String>>) -> Result<Prepared, String> {
+    prepare_target_selected(project, sources, converted, selection, false)
+}
+
+pub(crate) fn prepare_target_selected(project: &Project, sources: &BTreeMap<PathBuf, Vec<u8>>, converted: &BTreeMap<String, StoredConversion>, selection: Option<&HashSet<String>>, originals: bool) -> Result<Prepared, String> {
     let root = Path::new(&project.root);
     let mut found = HashSet::new();
     let mut edits: BTreeMap<PathBuf, Vec<(usize, usize, usize, String, String)>> = BTreeMap::new();
     for asset in &project.images {
         if asset.references.is_empty() { continue; }
-        let Some(output) = converted.get(&asset.id) else { continue; };
-        let original = asset.path.as_ref().ok_or("找不到原图片")?;
-        if digest(&fs::read(original).map_err(|e| e.to_string())?) != output.source_hash {
-            return Err(format!("图片已被修改，请重新转换：{}", asset.relative_path));
-        }
-        for (path, hash) in &output.dependencies {
-            if digest(&fs::read(path).map_err(|e| e.to_string())?) != *hash { return Err("SVG 的引用资源已修改，请重新转换".into()); }
-        }
-        let real = output.path.canonicalize().map_err(|e| format!("转换文件已丢失：{e}"))?;
-        if !real.starts_with(root) || digest(&fs::read(&real).map_err(|e| e.to_string())?) != output.pdf_hash {
-            return Err("转换文件已被修改，请重新转换".into());
-        }
-        // TeX resolves includegraphics relative to the main compilation directory.
-        let relative = pathdiff::diff_paths(&real, root).ok_or("无法生成相对图片路径")?.to_string_lossy().replace('\\', "/");
-        if relative.contains(['{', '}', '%', '#', '$', '&', '^', '~', '\n', '\r']) { return Err("输出目录含有 TeX 特殊字符，请调整图片目录名称".into()); }
+        let relative = if originals {
+            if asset.status != "ready" { continue; }
+            let original = Path::new(asset.path.as_deref().ok_or("找不到原图片")?);
+            crate::journal::safe_path(root, original)?;
+            let real = original.canonicalize().map_err(|error| error.to_string())?;
+            if !real.starts_with(root) || !real.is_file() { return Err("原图片位于项目之外".into()); }
+            asset.relative_path.clone()
+        } else {
+            let Some(output) = converted.get(&asset.id) else { continue; };
+            let original = asset.path.as_ref().ok_or("找不到原图片")?;
+            if digest(&fs::read(original).map_err(|e| e.to_string())?) != output.source_hash {
+                return Err(format!("图片已被修改，请重新转换：{}", asset.relative_path));
+            }
+            for (path, hash) in &output.dependencies {
+                if digest(&fs::read(path).map_err(|e| e.to_string())?) != *hash { return Err("SVG 的引用资源已修改，请重新转换".into()); }
+            }
+            let real = output.path.canonicalize().map_err(|e| format!("转换文件已丢失：{e}"))?;
+            if !real.starts_with(root) || digest(&fs::read(&real).map_err(|e| e.to_string())?) != output.pdf_hash {
+                return Err("转换文件已被修改，请重新转换".into());
+            }
+            // TeX resolves includegraphics relative to the main compilation directory.
+            let relative = pathdiff::diff_paths(&real, root).ok_or("无法生成相对图片路径")?.to_string_lossy().replace('\\', "/");
+            if relative.contains(['{', '}', '%', '#', '$', '&', '^', '~', '\n', '\r']) { return Err("输出目录含有 TeX 特殊字符，请调整图片目录名称".into()); }
+            relative
+        };
+        if relative.contains(['{', '}', '%', '#', '$', '&', '^', '~', '\n', '\r']) { return Err("图片路径含有 TeX 特殊字符，请先重命名".into()); }
         for reference in &asset.references {
-            if reference.original == relative { continue; }
+            if reference.original == relative || (originals && !reference.original.to_lowercase().ends_with(".pdf")) { continue; }
             let id = reference_id(&reference.file, reference.start);
             if selection.is_some_and(|ids| !ids.contains(&id)) { continue; }
             found.insert(id);

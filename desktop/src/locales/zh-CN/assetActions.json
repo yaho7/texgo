@@ -7,10 +7,10 @@
   "reviewAndRepair": "查看并修复",
   "viewDetails2": "查看详情",
   "locateFile": "定位文件",
-  "processOnce": "手动处理一次",
-  "reprocessThisImage": "重新处理此图片",
+  "processOnce": "手动转换一次",
+  "reprocessThisImage": "重新转换此图片",
   "copyPath": "复制路径",
-  "resumeProcessing": "恢复处理",
+  "resumeProcessing": "恢复转换",
   "ignoreThisSession": "忽略本次",
   "alwaysIgnore": "始终忽略",
   "originalImage": "原图"

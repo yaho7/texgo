@@ -18,7 +18,7 @@ it("loads only the forty visible rows and uses a separate status cell and basena
   expect(within(row).getAllByText("PNG")).toHaveLength(1); expect(within(row).queryByText(/2400|1600/)).not.toBeInTheDocument();
   const headers=screen.getAllByRole("columnheader"); const cells=within(row).getAllByRole("cell");
   const statusIndex=headers.findIndex(header=>header.textContent==="状态");
-  expect(cells[statusIndex]).toHaveTextContent("待处理"); expect(within(cells[statusIndex]).queryByRole("button")).not.toBeInTheDocument();
+  expect(cells[statusIndex]).toHaveTextContent("待转换"); expect(within(cells[statusIndex]).queryByRole("button")).not.toBeInTheDocument();
   expect(row.querySelector("img")).toHaveAttribute("src",source);
   expect(screen.queryByRole("columnheader",{name:"分辨率"})).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole("button",{name:"下一页图片"}));

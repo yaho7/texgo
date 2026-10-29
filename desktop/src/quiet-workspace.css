@@ -82,3 +82,14 @@
 
 .mac-workspace :is(.status-bar, .asset-inspector) { border-color: var(--pane-separator); }
 .mac-workspace .asset-panel [data-slot="separator"] { background: var(--pane-separator); }
+
+/* Conversion and explicit reference writes are different recommended steps. */
+.mac-workspace :is(.command-action, .command-split-menu)[data-step="references"] { background: #b45309; color: white; border-color: transparent; }
+.mac-workspace :is(.command-action, .command-split-menu)[data-step="references"]:hover { background: #92400e; }
+.pending-references { flex: none; margin: 16px var(--workspace-inset) 0; padding-bottom: 12px; border-bottom: 1px solid var(--pane-separator); font-size: 12px; }
+.pending-references h3 { font-size: 12px; font-weight: 600; }
+.pending-references ul { margin: 8px 0; padding: 0; list-style: none; overflow-wrap: anywhere; }
+.pending-references p { color: var(--muted-foreground); line-height: 1.6; }
+
+.command-complete { display: inline-flex; align-items: center; gap: 6px; color: var(--color-success); font-size: 12px; }
+.command-complete svg { width: 14px; height: 14px; }

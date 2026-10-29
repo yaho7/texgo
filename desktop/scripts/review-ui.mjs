@@ -74,7 +74,7 @@ function projectFixture(scenario) {
   return { stateFingerprint: `visual-fixture-${scenario}`, mainFile, root: projectRoot, texFiles: [mainFile, `${projectRoot}/chapters/results.tex`, `${projectRoot}/appendix.tex`], images, convertedImages: images.filter((image) => completedImageIds.includes(image.id)).map((image) => ({ id: image.id, pdfPath: `${projectRoot}/texgo-pdf/${image.id}.pdf`, bytes: Math.round(png.length * .8), cached: false, error: null })), warnings: [], undoAvailable: true, status: { convertibleImageIds: assets.map((image) => image.id), pendingImages: pendingImageIds.length, pendingReferences: scenario === "review" ? 18 : 0, problemCount: completed ? 0 : problems.length, ignoredCount: 0, completedImages: completedImageIds.length, totalImages: images.length, pendingImageIds, completedImageIds, problemIds: completed ? [] : problems.map((image) => image.id), ignoredImageIds: [], nextAction: scenario === "review" ? "reviewReferences" : completed ? "upToDate" : "convertImages", blockingReason: null } };
 }
 const history = [
-  { id: "images-and-references", createdAt: new Date("2026-10-20T10:42:00Z").getTime(), outputDir: "texgo-pdf", dpi: 300, jpegQuality: 90, files: assets.slice(0, 12).map((image) => ({ source: image.relativePath, output: `texgo-pdf/${image.id}.pdf`, cached: false, error: null })), referencesChanged: 18, filesChanged: 2, undone: false, canUndo: true },
+  { id: "images-and-references", createdAt: new Date("2026-10-20T10:42:00Z").getTime(), outputDir: "texgo-pdf", dpi: 300, jpegQuality: 100, files: assets.slice(0, 12).map((image) => ({ source: image.relativePath, output: `texgo-pdf/${image.id}.pdf`, cached: false, error: null })), referencesChanged: 18, filesChanged: 2, undone: false, canUndo: true },
   { id: "references-only", createdAt: new Date("2026-10-20T09:10:00Z").getTime(), outputDir: "texgo-pdf", dpi: 300, jpegQuality: 90, files: [], referencesChanged: 4, filesChanged: 1, undone: false, canUndo: true },
 ];
 const preview = { referenceCount: 18, files: [{ path: `${projectRoot}/chapters/results.tex`, changes: Array.from({ length: 18 }, (_, index) => ({ id: `reference-${index}`, line: 128 + index, before: `\\includegraphics{figures/experiment-${index + 1}.png}`, after: `\\includegraphics{texgo-pdf/image-${index + 1}.pdf}` })) }] };
@@ -210,7 +210,7 @@ async function pageFor(scenario = "pending", viewport = { width: 1440, height: 9
   await page.getByRole("heading", { name: "加快 LaTeX 编译", exact: true }).waitFor();
   return page;
 }
-async function openProject(page, action = "处理 12 张图片") {
+async function openProject(page, action = "转换 12 张图片") {
   await page.getByRole("button", { name: "打开或拖入 .tex 文件", exact: true }).click();
   if (action) await page.getByRole("button", { name: action, exact: true }).waitFor();
   else await page.getByRole("button", { name: "输出参数：高质量 · 300 DPI", exact: true }).waitFor();
@@ -230,11 +230,11 @@ try {
   await openProject(page);
   assert.equal(await page.getByRole("checkbox").count(), 0, "Checkboxes must be hidden by default");
   await screenshot(page, "02-pending-1440");
-  await page.getByRole("button", { name: "更多处理操作", exact: true }).click();
+  await page.getByRole("button", { name: "更多转换操作", exact: true }).click();
   await page.getByRole("menuitem", { name: "选择图片…", exact: true }).click();
   await page.getByRole("checkbox", { name: "选择 figures/response-curve.png", exact: true }).check();
   await page.getByRole("checkbox", { name: "选择 figures/architecture.svg", exact: true }).check();
-  await page.getByRole("button", { name: "处理 2 张图片", exact: true }).waitFor();
+  await page.getByRole("button", { name: "转换 2 张图片", exact: true }).waitFor();
   await screenshot(page, "03-selection-1440");
   await page.keyboard.press("Escape");
   await page.getByRole("radio", { name: "问题 2", exact: true }).click();
@@ -266,8 +266,8 @@ try {
   await screenshot(completed, "04-comparison-original-left-1440");
 
   const review = await pageFor("review");
-  await openProject(review, "检查 18 处引用");
-  await review.getByRole("button", { name: "检查 18 处引用", exact: true }).click();
+  await openProject(review, "更新 18 处引用");
+  await review.getByRole("button", { name: "查看变更", exact: true }).click();
   await review.getByRole("dialog").waitFor();
   await screenshot(review, "10-reference-review-1440");
 
@@ -284,11 +284,11 @@ try {
   const manual = await pageFor("completed");
   await openProject(manual, null);
   assert.equal(await manual.locator(".command-action").count(), 0, "Up-to-date projects must not gain another primary action");
-  await manual.getByRole("button", { name: "处理图片…", exact: true }).click();
-  assert.equal(await manual.getByRole("menuitem", { name: "重新处理当前图片", exact: true }).isEnabled(), true, "Completed sources remain manually convertible");
+  await manual.getByRole("button", { name: "更多转换操作", exact: true }).click();
+  assert.equal(await manual.getByRole("menuitem", { name: "重新转换当前图片", exact: true }).isEnabled(), true, "Completed sources remain manually convertible");
   await screenshot(manual, "13-up-to-date-manual-conversion-1440");
-  await manual.getByRole("menuitem", { name: "重新处理当前图片", exact: true }).click();
-  await manual.getByRole("button", { name: "处理图片…", exact: true }).waitFor();
+  await manual.getByRole("menuitem", { name: "重新转换当前图片", exact: true }).click();
+  await manual.getByRole("button", { name: "更多转换操作", exact: true }).waitFor();
   const manualCalls = await manual.evaluate(() => window.__TEXGO_UI_REVIEW__.commands.filter((item) => item.command === "convert_images"));
   assert.equal(manualCalls.length, 1); assert.equal(manualCalls[0].args.intent, "reconvert"); assert.deepEqual(manualCalls[0].args.options.imageIds, ["image-1"]);
   assert.equal(await manual.getByRole("dialog").count(), 0, "Same-path manual regeneration must not open reference review");
@@ -301,11 +301,11 @@ try {
   await ignored.locator('[title="始终忽略"]').first().waitFor();
   await screenshot(ignored, "14-permanent-ignore-1440");
   await ignored.getByRole("button", { name: "更多操作 figures/response-curve.png", exact: true }).click();
-  await ignored.getByRole("menuitem", { name: "手动处理一次", exact: true }).click();
-  await ignored.getByRole("button", { name: "处理图片…", exact: true }).waitFor();
+  await ignored.getByRole("menuitem", { name: "手动转换一次", exact: true }).click();
+  await ignored.getByRole("button", { name: "更多转换操作", exact: true }).waitFor();
   assert.equal(await ignored.evaluate(() => window.__TEXGO_UI_REVIEW__.snapshot().images.find((image) => image.id === "image-1").ignoreMode), "permanent", "Manual conversion must preserve permanent ignore");
   await ignored.getByRole("button", { name: "更多操作 figures/response-curve.png", exact: true }).click();
-  await ignored.getByRole("menuitem", { name: "恢复处理", exact: true }).click();
+  await ignored.getByRole("menuitem", { name: "恢复转换", exact: true }).click();
   await ignored.getByRole("radio", { name: "已完成 18", exact: true }).waitFor();
   assert.equal(await ignored.evaluate(() => window.__TEXGO_UI_REVIEW__.snapshot().images.find((image) => image.id === "image-1").ignoreMode), "none");
   const ignoreCalls = await ignored.evaluate(() => window.__TEXGO_UI_REVIEW__.commands.filter((item) => item.command === "ignore_asset").map((item) => item.args.mode));
@@ -343,8 +343,9 @@ try {
   await screenshot(renamed, "17-rename-history-1440");
 
   const blocked = await pageFor("review");
-  await openProject(blocked, "检查 18 处引用");
-  await blocked.getByRole("button", { name: "处理图片…", exact: true }).click();
+  await openProject(blocked, "更新 18 处引用");
+  await blocked.getByRole("button", { name: "更多转换操作", exact: true }).click();
+  await blocked.getByRole("menuitem", { name: "重新转换当前图片", exact: true }).click();
   await blocked.getByRole("dialog", { name: "请先审核引用" }).waitFor();
   await blocked.getByText("当前有 18 处引用尚未审核。建议先完成引用审核，再开始新的转换。", { exact: true }).waitFor();
   assert.equal(await blocked.evaluate(() => window.__TEXGO_UI_REVIEW__.commands.filter((item) => item.command === "convert_images").length), 0, "Unreviewed references must block manual conversion before native invocation");

@@ -7,10 +7,10 @@
   "reviewAndRepair": "Review and repair",
   "viewDetails2": "View details",
   "locateFile": "Locate file",
-  "processOnce": "Process once",
-  "reprocessThisImage": "Reprocess this image",
+  "processOnce": "Convert once",
+  "reprocessThisImage": "Reconvert this image",
   "copyPath": "Copy path",
-  "resumeProcessing": "Resume processing",
+  "resumeProcessing": "Resume conversion",
   "ignoreThisSession": "Ignore this session",
   "alwaysIgnore": "Always ignore",
   "originalImage": "original image"

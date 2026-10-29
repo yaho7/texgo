@@ -1,5 +1,4 @@
 import { t } from "./../i18n";
-import { hasTransientOverlay } from "./useTransientOverlay";
 import { useWorkspaceGuard } from "./useWorkspaceGuard";
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -19,6 +18,7 @@ export function useReviewFlow(ports: Ports) {
   const { project, refresh } = workspace;
   const capture = useWorkspaceGuard(() => workspace.generation.current);
   const { activate: setActiveId } = selection;
+  const [directReview, setDirectReview] = useState(false);
   const [decision, updateDecision] = useState<BusinessDecision>({ kind: "none" });
   const decisionRef = useRef(decision);
   function decide(next: BusinessDecision) { decisionRef.current = next; updateDecision(next); }
@@ -28,23 +28,52 @@ export function useReviewFlow(ports: Ports) {
   const undoEntry = decision.kind === "undo" ? decision.entry : null;
   const conversionBlocked = decision.kind === "manual-block";
   const [repairCandidates, setRepairCandidates] = useState<RepairCandidate[]>([]);
-  const [queuedReview, setQueuedReview] = useState<{ generation: number; preview: ChangePreview } | null>(null);
+  const [queuedReview, setQueuedReview] = useState<{ generation: number; preview: ChangePreview; originals?: boolean } | null>(null);
+  const reviewOriginals = useRef(false);
   function setReview(preview: ChangePreview | null) { if (preview) showReview(preview); else if (decisionRef.current.kind === "review") decide({ kind: "none" }); }
-  function showReview(preview: ChangePreview, kind: "conversion" | "repair" = "conversion", repairContext?: { imageId: string; target: string }) { decide({ kind: "review", preview, repair: kind === "repair", repairContext }); }
+  function showReview(preview: ChangePreview, kind: "conversion" | "repair" = "conversion", repairContext?: { imageId: string; target: string }, originals = false) { reviewOriginals.current = originals; setDirectReview(false); decide({ kind: "review", preview, repair: kind === "repair", repairContext }); }
   function setProblemId(imageId: string | null) { if (imageId) decide({ kind: "problem", imageId }); else if (decisionRef.current.kind === "problem") decide({ kind: "none" }); }
   function setConversionBlocked(blocked: boolean) { if (blocked) decide({ kind: "manual-block" }); else if (decisionRef.current.kind === "manual-block") decide({ kind: "none" }); }
   function requestUndo(entry: ConversionHistoryEntry) { if (!currentOperationKind() && decisionRef.current.kind === "none") decide({ kind: "undo", entry }); }
   function dismissUndo() { if (decisionRef.current.kind === "undo") decide({ kind: "none" }); }
-  function queueReview(preview: ChangePreview) { setQueuedReview({ generation: workspace.generation.current, preview }); }
+  function queueReview(preview: ChangePreview, originals = false, explicit = false) { setQueuedReview(previous => previous?.originals && !originals && !explicit && previous.generation === workspace.generation.current ? previous : { generation: workspace.generation.current, preview, originals }); }
   function reset() { decide({ kind: "none" }); setQueuedReview(null); setRepairCandidates([]); }
+  const pendingPreview = queuedReview?.generation === workspace.generation.current ? queuedReview.preview : null;
+  const pendingRestore = Boolean(pendingPreview && queuedReview?.originals);
+  const preparingPreview = useRef(false);
   useEffect(() => {
-    if (!queuedReview) return;
-    if (queuedReview.generation !== workspace.generation.current) { setQueuedReview(null); return; }
-    if (currentOperationKind() || ports.completionVisible() || !ports.automaticReviewAllowed || hasTransientOverlay() || decision.kind !== "none") return;
-    rememberFocus(); showReview(queuedReview.preview); setQueuedReview(null);
-  });
+    if (queuedReview && queuedReview.generation !== workspace.generation.current) { setQueuedReview(null); return; }
+    if (pendingRestore) return;
+    if (!project?.status.pendingReferences) { if (queuedReview) setQueuedReview(null); return; }
+    if (pendingPreview || preparingPreview.current || currentOperationKind() || decision.kind !== "none") return;
+    const isCurrent = capture();
+    preparingPreview.current = true;
+    void invoke<ChangePreview>("preview_changes").then(preview => {
+      if (isCurrent() && preview.referenceCount) queueReview(preview);
+    }).catch(reason => { if (isCurrent()) ports.setError(errorMessage(reason)); })
+      .finally(() => { preparingPreview.current = false; });
+  }, [project?.stateFingerprint, project?.status.pendingReferences, pendingPreview, decision.kind, currentOperationKind()]);
+  function updateReferences() {
+    if (currentOperationKind() || decisionRef.current.kind !== "none") return;
+    if (!pendingPreview) { prepareReferences(false); return; }
+    const ids = pendingPreview.files.flatMap(file => file.changes.map(change => change.id)).filter(Boolean);
+    if (!ids.length) return;
+    rememberFocus(); showReview(pendingPreview, "conversion", undefined, pendingRestore); setDirectReview(true);
+    replace(false, ids, pendingPreview);
+  }
+  function prepareReferences(originals: boolean) {
+    if (!project || currentOperationKind() || decisionRef.current.kind !== "none") return;
+    const isCurrent = capture();
+    void execute("reviewing", async () => {
+      const preview = await invoke<ChangePreview>("preview_changes", originals ? {restoreOriginals:true} : undefined);
+      if (!isCurrent()) return;
+      if (preview.referenceCount) queueReview(preview, originals, true);
+      else { setQueuedReview(null); setNotice(t("reviewDialog.noReferenceChangesAvailable")); }
+    });
+  }
   function reviewChanges() {
     if (!project || currentOperationKind() || decisionRef.current.kind !== "none") return;
+    if (pendingPreview) { rememberFocus(); showReview(pendingPreview, "conversion", undefined, pendingRestore); return; }
     rememberFocus(); setQueuedReview(null);
 
     const isCurrent = capture();
@@ -82,20 +111,22 @@ export function useReviewFlow(ports: Ports) {
     }, "repair");
   }
 
-  function replace(undo: boolean, selection: string[] = []) {
-    if (!project || (!undo && (!review || (decisionRef.current.kind === "review" && decisionRef.current.conflict)))) return;
+  function replace(undo: boolean, selection: string[] = [], approved?: ChangePreview) {
+    const expected = approved ?? review;
+    if (!project || (!undo && (!expected || (decisionRef.current.kind === "review" && decisionRef.current.conflict)))) return;
     const isCurrent = capture();
     void execute(undo ? "undoing" : "applying", async () => {
       let result: ReplacementResult;
-      try { result = await invoke<ReplacementResult>(undo ? "undo_replacements" : "apply_replacements", undo ? undefined : { selection, expected: review, repair: reviewKind === "repair" }); }
+      try { result = await invoke<ReplacementResult>(undo ? "undo_replacements" : "apply_replacements", undo ? undefined : { selection, expected, repair: approved ? false : reviewKind === "repair", ...(reviewOriginals.current ? {restoreOriginals:true} : {}) }); }
       catch (reason) {
         if (!isCurrent()) return;
         if (!undo && isReviewConflict(reason) && decisionRef.current.kind === "review") {
+          setQueuedReview(null);
           decide({ ...decisionRef.current, conflict: { path: reason.path, message: reason.message } });
           return;
         }
         // A failed write may still have created an undo record or changed some files.
-        setReview(null);
+        setReview(null); setQueuedReview(null);
         try { await refresh(t("reviewFlow.operationInterruptedWorkspaceHasBeenReloaded")); }
         catch (refreshError) {
           if (!isCurrent()) return;
@@ -106,7 +137,7 @@ export function useReviewFlow(ports: Ports) {
         throw new Error(reviewErrorMessage(reason));
       }
       if (!isCurrent()) return;
-      setReview(null);
+      setReview(null); setQueuedReview(null);
       const message = t("reviewFlow.valueValueReferencesInValueFiles", { arg0: undo ? t("reviewFlow.restored") : t("reviewFlow.replaced"), arg1: result.filesChanged, arg2: result.referencesChanged });
       setNotice(message);
       try { await refresh(message); }
@@ -138,13 +169,13 @@ export function useReviewFlow(ports: Ports) {
           throw new Error(t("reviewFlow.repairPreviewExpiredLocateTheFileAgainValue", { arg0: errorMessage(reason) }));
         }
       } else {
-        const preview = await invoke<ChangePreview>("preview_changes");
-        if (isCurrent()) showReview(preview);
+        const preview = await invoke<ChangePreview>("preview_changes", reviewOriginals.current ? {restoreOriginals:true} : undefined);
+        if (isCurrent()) showReview(preview, "conversion", undefined, reviewOriginals.current);
       }
     }, "rescan-review");
   }
 
-  return { decision, decisionRef, review, reviewKind, problemId, undoEntry, conversionBlocked, repairCandidates,
+  return { prepareReferences, restoreReferences: () => prepareReferences(true), pendingRestore, directReview, pendingPreview, updateReferences, decision, decisionRef, review, reviewKind, problemId, undoEntry, conversionBlocked, repairCandidates,
     setReview, showReview, setProblemId, setConversionBlocked, requestUndo, dismissUndo, queueReview, reset,
     clearQueue: () => setQueuedReview(null), reviewChanges, inspectProblem, chooseRepair, locateRepair, replace, rescanReview };
 }

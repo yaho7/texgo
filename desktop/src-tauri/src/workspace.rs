@@ -634,9 +634,11 @@ impl Workspace {
         })
     }
 
-    pub fn plan(&self) -> Result<ReplacementPlan, String> {
+    pub fn plan(&self) -> Result<ReplacementPlan, String> { self.plan_target(false) }
+
+    pub(crate) fn plan_target(&self, originals: bool) -> Result<ReplacementPlan, String> {
         Journal::load(Path::new(&self.scan.project.root))?.ensure_settled()?;
-        Ok(transaction::prepare(&self.review_project(), &self.scan.sources, &self.converted)?.plan)
+        Ok(transaction::prepare_target_selected(&self.review_project(), &self.scan.sources, &self.converted, None, originals)?.plan)
     }
 
     pub(crate) fn repair_candidates(&self, image_id: &str) -> Result<Vec<crate::repair::Candidate>, String> {
@@ -654,6 +656,10 @@ impl Workspace {
     }
 
     pub fn apply_reviewed_checked(&mut self, selection: HashSet<String>, expected: &ReplacementPlan, repair: bool) -> Result<MutationResult, ReviewApplyError> {
+        self.apply_reviewed_target_checked(selection, expected, repair, false)
+    }
+
+    pub(crate) fn apply_reviewed_target_checked(&mut self, selection: HashSet<String>, expected: &ReplacementPlan, repair: bool, originals: bool) -> Result<MutationResult, ReviewApplyError> {
         // Reject a replaced root before creating a lock at its pathname. Target
         // validation follows fingerprint checks so missing/rebound reviewed files
         // retain the pre-write conflict outcome and explicit rescan path.
@@ -670,6 +676,11 @@ impl Workspace {
                 let (id, target, reviewed) = self.pending_repair.as_ref().ok_or_else(|| "修复预览已失效，请重新定位文件".to_string())?;
                 transaction::verify_review(reviewed, expected)?;
                 crate::repair::prepare_reviewed(&self.scan, id, target, expected, &selection)?
+            } else if originals {
+                let project = self.review_project();
+                let fresh = transaction::prepare_target_selected(&project, &self.scan.sources, &self.converted, None, true)?;
+                transaction::verify_review(&fresh.plan, expected)?;
+                transaction::prepare_target_selected(&project, &self.scan.sources, &self.converted, Some(&selection), true)?
             } else { transaction::prepare_reviewed(&self.review_project(), &self.scan.sources, &self.converted, &selection, expected)? };
             let candidate = journal.latest_batch_id().map(str::to_owned).filter(|id|
                 journal.history(root).iter().any(|entry| entry.id == *id && entry.references_changed == 0
@@ -973,5 +984,39 @@ mod settled_pdf_tests {
         assert_eq!(fs::read(root.join("main.tex")).unwrap(), tex);
         fs::remove_file(root.join("texgo-pdf/a.pdf")).unwrap();
         assert_eq!(ws.refresh().unwrap().status.pending_images, 1, "a deleted PDF must still need conversion");
+    }
+}
+
+#[cfg(test)]
+mod original_reference_tests {
+    use super::*;
+    #[test]
+    fn originals_are_an_explicit_reversible_fingerprinted_reference_edit() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().canonicalize().unwrap();
+        image::RgbImage::new(20, 10).save(root.join("a.png")).unwrap();
+        fs::write(root.join("main.tex"), r"\includegraphics{a.png}").unwrap();
+        let mut ws = Workspace::open(&root.join("main.tex")).unwrap();
+        ws.update_pending_with_results(&crate::preferences::Preferences::default().options(vec![]), &AtomicBool::new(false), |_| {}, |_| {}).unwrap();
+        let forward = ws.plan().unwrap();
+        let ids = forward.files.iter().flat_map(|file| file.changes.iter().map(|change|change.id.clone())).collect();
+        ws.apply_reviewed_target_checked(ids, &forward, false, false).unwrap();
+        let pdf = fs::read(root.join("texgo-pdf/a.pdf")).unwrap();
+        let expected = ws.plan_target(true).unwrap();
+        assert_eq!(expected.reference_count, 1);
+        assert_eq!(expected.files[0].changes[0].after, "a.png");
+        let ids = expected.files.iter().flat_map(|file| file.changes.iter().map(|change|change.id.clone())).collect();
+        ws.apply_reviewed_target_checked(ids, &expected, false, true).unwrap();
+        assert_eq!(fs::read_to_string(root.join("main.tex")).unwrap(), r"\includegraphics{a.png}");
+        assert_eq!(fs::read(root.join("texgo-pdf/a.pdf")).unwrap(), pdf);
+        let undo = ws.conversion_history().unwrap().into_iter().find(|entry| entry.can_undo).unwrap();
+        ws.undo_conversion(&undo.id).unwrap();
+        assert!(fs::read_to_string(root.join("main.tex")).unwrap().contains("texgo-pdf/a.pdf"));
+        let expected = ws.plan_target(true).unwrap();
+        let external = "\\includegraphics{texgo-pdf/a.pdf}\n% external edit";
+        fs::write(root.join("main.tex"), external).unwrap();
+        let ids = expected.files.iter().flat_map(|file| file.changes.iter().map(|change|change.id.clone())).collect();
+        assert!(matches!(ws.apply_reviewed_target_checked(ids, &expected, false, true), Err(ReviewApplyError::ReviewConflict {..})));
+        assert_eq!(fs::read_to_string(root.join("main.tex")).unwrap(), external);
     }
 }

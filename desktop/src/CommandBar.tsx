@@ -6,7 +6,7 @@ import { Button } from "@/controls/button";
 import { Field, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/controls/field";
 import { Input } from "@/controls/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/controls/popover";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "@/controls/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/controls/dropdown-menu";
 import { Progress } from "@/controls/progress";
 import { Separator } from "@/controls/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/controls/toggle-group";
@@ -28,6 +28,13 @@ interface Props {
   cancelRequested: boolean;
   pendingRename?: { referenceCount: number };
   onAction: () => void;
+  onUpdateReferences?: () => void;
+  referencesReady?: boolean;
+  reconvertIds?: string[];
+  onRestoreReferences?: () => void;
+  onUndo?: () => void;
+  canUndo?: boolean;
+  restoringReferences?: boolean;
   onManualOpen?: () => boolean;
   onConvert?: (intent: "pending" | "selected" | "reconvert", imageIds?: string[]) => void;
   currentImageId?: string | null;
@@ -44,7 +51,8 @@ export default function CommandBar(props: Props) {
   const [manualOpen, setManualOpen] = useState(false);
   const convertibleIds = props.convertibleIds ?? status.pendingImageIds;
   const currentConvertible = Boolean(props.currentImageId && convertibleIds.includes(props.currentImageId));
-  const recommendedConvert = props.selectionMode || status.nextAction === "convertImages";
+  const qualityReconvert = Boolean(props.reconvertIds?.length) && status.pendingReferences === 0;
+  const recommendedConvert = props.selectionMode || status.nextAction === "convertImages" || qualityReconvert;
   const working = props.busy || props.completion !== null;
   const manualUnavailable = working || props.converting || props.selectionMode;
   useEffect(() => {
@@ -58,21 +66,21 @@ export default function CommandBar(props: Props) {
   }
   const preset = conversionPreset(Number(settings.dpi), Number(settings.jpegQuality));
   const presetLabel = preset?.label ?? t("commandBar.custom");
-  const count = props.selectionMode ? props.selectedCount : status.pendingImages;
+  const count = props.selectionMode ? props.selectedCount : qualityReconvert ? props.reconvertIds!.length : status.pendingImages;
   const issues = settingsIssues(settings);
   const blocked = Boolean(status.blockingReason);
   const label = props.converting ? t("commandBar.processingValueValue", { arg0: props.progress?.current ?? 0, arg1: props.progress?.total ?? count })
     : props.completion !== null ? t("commandBar.processedValueImages", { arg0: props.completion })
     : blocked ? t("commandBar.resolveTheSafetyIssueFirst")
     : props.selectionMode ? t("commandBar.processValueImages", { arg0: count })
-    : status.nextAction === "reviewReferences" ? t("commandBar.reviewValueReferences", { arg0: status.pendingReferences })
-    : recommendedConvert ? t("commandBar.processValueImages", { arg0: count })
+    : status.nextAction === "reviewReferences" ? t(props.restoringReferences ? "commandBar.restoreValueReferences" : "commandBar.reviewValueReferences", { arg0: status.pendingReferences })
+    : recommendedConvert ? t(qualityReconvert ? "commandBar.reconvertValueImages" : "commandBar.processValueImages", { arg0: count })
     : status.nextAction === "resolveProblems" ? t("commandBar.resolveProblems") : "";
   const message = props.converting ? `${label} · ${props.progress?.name || t("commandBar.preparingImageUpdates")}`
     : props.completion !== null ? t("commandBar.processedValueImages2", { arg0: props.completion })
     : blocked ? t("commandBar.operationPaused")
     : props.selectionMode ? t("commandBar.selectImagesToProcess")
-    : status.nextAction === "reviewReferences" ? t("commandBar.processedImagesAreReady")
+    : status.nextAction === "reviewReferences" ? ""
     : status.nextAction === "convertImages" ? ""
     : status.nextAction === "resolveProblems" ? t("commandBar.locateOrRepairTheAffectedImages") : "";
   const transitionKey = props.converting ? "converting" : props.completion !== null ? "complete" : blocked ? "blocked" : props.selectionMode ? "selection" : status.nextAction;
@@ -97,10 +105,13 @@ export default function CommandBar(props: Props) {
       requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[aria-invalid="true"]')?.focus());
       return;
     }
-    if (recommendedConvert) convert(props.selectionMode ? "selected" : "pending"); else props.onAction();
+    if (recommendedConvert) convert(props.selectionMode ? "selected" : qualityReconvert ? "reconvert" : "pending", qualityReconvert && !props.selectionMode ? props.reconvertIds : undefined); else props.onAction();
   }
-  const idle = status.nextAction === "upToDate" && !props.selectionMode && !props.busy && props.completion === null && !blocked;
+  const idle = status.nextAction === "upToDate" && !recommendedConvert && !props.selectionMode && !props.busy && props.completion === null && !blocked;
   const progress = props.progress && props.progress.total > 0 ? props.progress.current / props.progress.total * 100 : 0;
+  const primaryAction = <Button className="command-action" data-step={status.nextAction === "reviewReferences" ? "references" : "conversion"} disabled={props.busy || props.completion !== null || blocked || (recommendedConvert && count === 0)} onClick={submit}>
+        {status.nextAction === "reviewReferences" ? <FileCheck2 data-icon="inline-start" aria-hidden="true" /> : null}<span className="command-action-label-stage">{departingLabel && <span className="command-action-label-exit" aria-hidden="true">{departingLabel}</span>}<span key={transitionKey} className="command-action-label-enter">{label}</span></span>
+      </Button>;
   if (props.pendingRename) return <section className="command-bar" aria-label={t("commandBar.nextProjectAction")}>
     <span className="command-message">{t("commandBar.renamePending", {count:props.pendingRename.referenceCount})}</span>
     <Button className="command-action" disabled={props.busy} onClick={props.onAction}>{t("commandBar.applyRename")}</Button>
@@ -134,29 +145,25 @@ export default function CommandBar(props: Props) {
         </Popover>
     )}
     <div className="command-actions">
+      {idle && <span className="command-complete"><Check aria-hidden="true" />{t("commandBar.conversionComplete")}</span>}
       {!props.converting && props.completion === null && props.selectionMode && <Button variant="ghost" size="sm" disabled={props.busy} onClick={() => props.onSelectionMode(false)}>{t("commandBar.cancelSelection")}</Button>}
       {!props.converting && props.completion === null && !props.selectionMode && <DropdownMenu open={manualOpen && !manualUnavailable} onOpenChange={(open) => {
         if (open && (manualUnavailable || props.onManualOpen?.() === false)) return;
         setManualOpen(open);
       }}>
-        <div className={recommendedConvert && !blocked ? "command-split" : undefined}>
-          {recommendedConvert && !blocked && <Button className="command-action" disabled={working || count === 0} onClick={submit}><span className="command-action-label-stage">{departingLabel && <span className="command-action-label-exit" aria-hidden="true">{departingLabel}</span>}<span key={transitionKey} className="command-action-label-enter">{label}</span></span></Button>}
-          <DropdownMenuTrigger asChild>{recommendedConvert && !blocked
-            ? <Button aria-label={t("commandBar.moreProcessingActions")} className="command-split-menu" size="icon" disabled={working}><ChevronDown aria-hidden="true" /></Button>
-            : <Button disabled={working}>{t("commandBar.processImages")}<ChevronDown data-icon="inline-end" aria-hidden="true" /></Button>}
-          </DropdownMenuTrigger>
+        <div className="command-split">
+          {!idle && primaryAction}
+          <DropdownMenuTrigger asChild><Button variant={idle || blocked ? "outline" : "default"} data-step={status.nextAction === "reviewReferences" ? "references" : "conversion"} aria-label={t("commandBar.moreProcessingActions")} className={idle ? undefined : "command-split-menu"} size="icon" disabled={working}><ChevronDown aria-hidden="true" /></Button></DropdownMenuTrigger>
         </div>
         <DropdownMenuContent align="end" side="top"><DropdownMenuGroup>
           <DropdownMenuItem disabled={blocked || !status.pendingImages} onSelect={() => convert("pending")}>{t("commandBar.processPendingImages")}</DropdownMenuItem>
           <DropdownMenuItem disabled={blocked || !convertibleIds.length} onSelect={() => props.onSelectionMode(true)}>{t("commandBar.selectImages")}</DropdownMenuItem>
           <DropdownMenuItem disabled={blocked || !currentConvertible} onSelect={() => convert("reconvert", [props.currentImageId!])}>{t("commandBar.reprocessCurrentImage")}</DropdownMenuItem>
           <DropdownMenuItem disabled={blocked || !convertibleIds.length} onSelect={() => convert("reconvert", convertibleIds)}>{t("commandBar.reprocessAllImages")}</DropdownMenuItem>
-        </DropdownMenuGroup></DropdownMenuContent>
+        </DropdownMenuGroup><DropdownMenuSeparator /><DropdownMenuItem disabled={working || blocked || !status.pendingReferences} onSelect={props.onUpdateReferences ?? props.onAction}><FileCheck2 aria-hidden="true" />{t("commandBar.updateReferences")}</DropdownMenuItem><DropdownMenuItem disabled={working || blocked || !convertibleIds.length} onSelect={props.onRestoreReferences}>{t("commandBar.restoreReferences")}</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem disabled={working || !props.canUndo} onSelect={props.onUndo}>{t("workbenchMenu.undoLastOperation")}</DropdownMenuItem></DropdownMenuContent>
       </DropdownMenu>}
       {props.converting && <Button variant="outline" size="sm" disabled={props.cancelRequested} onClick={props.onCancel}><Square data-icon="inline-start" aria-hidden="true" />{props.cancelRequested ? t("commandBar.cancelling") : t("commandBar.cancelProcessing")}</Button>}
-      {(!props.converting && props.completion === null && !idle && (!recommendedConvert || blocked || props.selectionMode)) && <Button className="command-action" disabled={props.busy || props.completion !== null || blocked || (recommendedConvert && count === 0)} onClick={submit}>
-        {status.nextAction === "reviewReferences" ? <FileCheck2 data-icon="inline-start" aria-hidden="true" /> : null}<span className="command-action-label-stage">{departingLabel && <span className="command-action-label-exit" aria-hidden="true">{departingLabel}</span>}<span key={transitionKey} className="command-action-label-enter">{label}</span></span>
-      </Button>}
+      {(!props.converting && props.completion === null && props.selectionMode) && primaryAction}
     </div>
   </section>;
 }

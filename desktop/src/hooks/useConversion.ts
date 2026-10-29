@@ -36,7 +36,6 @@ export function useConversion(ports: Ports) {
   function reset() { setResults({}); setCompletion(null); setProgress(null); }
   function allowManualConversionPanel() {
     if (currentOperationKind() || reviewFlow.decisionRef.current.kind !== "none") return false;
-    if (canReview && !preferences.allowUnreviewed) { rememberFocus(); setConversionBlocked(true); return false; }
     return true;
   }
 

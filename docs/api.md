@@ -547,3 +547,17 @@ no paths, document/image/reference contents, RPC payloads, arbitrary native
 error text, credentials, keys or signing material. Native command errors still
 reach the UI unchanged. Headless callers leave the file sink uninitialized and
 retain the existing JSON stdout protocol.
+
+### Desktop reference targets
+
+`preview_changes({restoreOriginals:true})` prepares references back to the original image paths.
+`apply_replacements({selection, expected, restoreOriginals:true})` applies that exact plan.
+Omitting the flag preserves PDF-reference behavior. Both directions verify the complete target
+file fingerprints and freshly prepared plan before writing. Returning to originals keeps
+managed PDFs in place and records an independently undoable reference operation.
+
+The desktop shows affected files before applying the recommended update action. The normal
+flow is Convert, then Update references; the latter click is explicit write approval.
+Detailed per-reference selection remains available as an optional view. Background checks
+and Smart Convert never apply either reference direction. Changing conversion quality
+recommends explicit reconversion instead of treating completed outputs as unchangeable.

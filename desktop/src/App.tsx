@@ -1,3 +1,4 @@
+import PendingReferences from "./PendingReferences";
 import { checkApplicationUpdate, openReleasePage } from "./applicationUpdates";
 import { viewTransition } from "./motion";
 import { useWorkspaceGeometry } from "./hooks/useWorkspaceGeometry";
@@ -297,10 +298,15 @@ export default function App() {
 
   useAppShortcuts({ homePage: homeVisible, settingsPage, setSettingsPage, blocked: decisionOpen || drawerOpen || renameReviewOpen,
     busy, view, setView: showWorkspace, activeAsset, activeId, visibleImages, selection, desktopAction });
+  const lastConvertedBatch = history.find(entry => !entry.undone && entry.files.length > 0);
+  const reconvertIds = lastConvertedBatch && (lastConvertedBatch.dpi !== Number(settings.dpi) || lastConvertedBatch.jpegQuality !== Number(settings.jpegQuality))
+    ? (project?.status.convertibleImageIds ?? []).filter(id => !ignored.has(id)) : [];
+  const commandStatus = reviewFlow.pendingRestore && reviewFlow.pendingPreview ? {...project!.status, pendingReferences:reviewFlow.pendingPreview.referenceCount, nextAction:"reviewReferences" as const} : project?.status;
   function nextAction() {
     if (pendingRename) { setRenameReviewOpen(true); return; }
     if (!project || busy || project.status.blockingReason) return;
-    if (project.status.nextAction === "reviewReferences") reviewChanges();
+    if (reviewFlow.pendingRestore || project.status.nextAction === "reviewReferences") reviewFlow.updateReferences();
+    else if (reconvertIds.length) convert("reconvert", reconvertIds);
     else if (project.status.nextAction === "convertImages") convert();
     else if (project.status.nextAction === "resolveProblems") {
       setSettingsPage(false); setView("assets"); setFilter("problems");
@@ -349,14 +355,14 @@ export default function App() {
               onSelect={(id) => { if (!busy) selection.toggleSelected(id); }}
               onSelectAll={(ids, select) => { if (!busy) selection.selectMany(ids, select); }} /></div>
             <Splitter label={t("app.resizeImageList")} value={assetsWidth} min={340} max={900} onChange={setAssetsWidth} />
-            <div className="asset-inspector" key={contextKey ?? undefined}><AssetPreview root={project.root} busy={busy} canConvert={activeId ? convertibleIds.has(activeId) : false} onManualConvert={(id) => convert("reconvert", [id])} asset={activeAsset} result={activeAsset ? results[activeAsset.id] : undefined} revision={revision} ignored={activeAsset ? ignored.has(activeAsset.id) : false}
+            <div className="asset-inspector" key={contextKey ?? undefined}>{reviewFlow.pendingPreview && <PendingReferences originals={reviewFlow.pendingRestore} preview={reviewFlow.pendingPreview} root={project.root} onDetails={reviewChanges} />}<AssetPreview root={project.root} busy={busy} canConvert={activeId ? convertibleIds.has(activeId) : false} onManualConvert={(id) => convert("reconvert", [id])} asset={activeAsset} result={activeAsset ? results[activeAsset.id] : undefined} revision={revision} ignored={activeAsset ? ignored.has(activeAsset.id) : false}
               statusLabel={activeAsset ? ignored.has(activeAsset.id) ? t("app.ignored") : problemIds.has(activeAsset.id) ? t("app.needsAttention") : pendingIds.has(activeAsset.id) ? activeAsset.updateAvailable ? t("app.updatedSource") : t("app.pending") : t("app.completed") : undefined}
               onInspect={inspectProblem} onLocate={locateRepair} onRetry={project.status.blockingReason ? undefined : retryAsset} onIgnore={(id, value) => { void ignoreAsset(id, value); }} /></div>
           </div>
           <HistoryView active={view === "history"} onReturn={() => setView("assets")} highlightId={highlightBatch} entries={history} busy={busy} onUndo={(entry) => { rememberFocus(); setError(null); reviewFlow.requestUndo(entry); }} />
         </main>
-        <div ref={commandRef} className="workspace-command" hidden={settingsPage || homeVisible}><CommandBar pendingRename={pendingRename ? {referenceCount:pendingRename.preview.references.referenceCount} : undefined} status={project.status} settings={settings} selectionMode={selectionMode} selectedCount={selected.size} busy={busy} converting={operation === "converting"} progress={progress} completion={completion} cancelRequested={cancelRequested}
-          onAction={nextAction} onConvert={convert} onManualOpen={allowManualConversionPanel} currentImageId={activeId} convertibleIds={[...convertibleIds]} onSettings={updateSettings} onSelectionMode={(enabled) => { setView("assets"); selection.changeSelectionMode(enabled); }} onCancel={() => { void cancelConversion(); }} /></div>
+        <div ref={commandRef} className="workspace-command" hidden={settingsPage || homeVisible}><CommandBar pendingRename={pendingRename ? {referenceCount:pendingRename.preview.references.referenceCount} : undefined} status={commandStatus!} settings={settings} selectionMode={selectionMode} selectedCount={selected.size} busy={busy} converting={operation === "converting"} progress={progress} completion={completion} cancelRequested={cancelRequested}
+          onAction={nextAction} onUpdateReferences={() => reviewFlow.pendingRestore ? reviewFlow.prepareReferences(false) : reviewFlow.updateReferences()} onRestoreReferences={reviewFlow.restoreReferences} restoringReferences={reviewFlow.pendingRestore} reconvertIds={reconvertIds} canUndo={history.some(entry=>entry.canUndo)} onUndo={() => { const entry=history.find(entry=>entry.canUndo); if(entry) reviewFlow.requestUndo(entry); }} referencesReady={Boolean(reviewFlow.pendingPreview)} onConvert={convert} onManualOpen={allowManualConversionPanel} currentImageId={activeId} convertibleIds={[...convertibleIds]} onSettings={updateSettings} onSelectionMode={(enabled) => { setView("assets"); selection.changeSelectionMode(enabled); }} onCancel={() => { void cancelConversion(); }} /></div>
       </>}
       {operation && operation !== "converting" && !homeVisible && !settingsPage && <div className="activity-notice" role="status"><LoaderCircle className="spin" aria-hidden="true" />{operationLabels[operation]}</div>}
       {notice && !operation && !homeVisible && !settingsPage && <div className="transient-notice" role="status" aria-live="polite">{nativeText(notice)}</div>}
@@ -371,7 +377,7 @@ export default function App() {
     </Dialog>
     {problemId && project && <AssetProblems asset={project.images.find((image) => image.id === problemId) ?? null} projectRoot={project.root} busy={busy} candidates={repairCandidates} candidatesLoading={operation === "reviewing"} error={error} onClose={() => { setProblemId(null); setError(null); restoreFocus(); }} onLocate={locateRepair} onChoose={chooseRepair} onIgnore={(id) => { void ignoreAsset(id); }} />}
     {renameReviewOpen && pendingRename && project && <ReviewDialog key={JSON.stringify(pendingRename.preview)} preview={pendingRename.preview.references} root={project.root} busy={busy} title={t("app.reviewRename")} description={t("app.renameDescription")} applyLabel={t("app.applyRename")} lockSelection error={error} conflict={renameConflict} onRescan={() => { void rescanRename(); }} onClose={() => { if (!currentOperationKind()) { setRenameReviewOpen(false); setPendingRename(null); setRenameConflict(undefined); setError(null); } }} onApply={() => { void applyRename(); }} />}
-    {review && project && <ReviewDialog key={JSON.stringify(review)} preview={review} root={project.root} busy={busy} error={error} conflict={reviewFlow.decision.kind === "review" ? reviewFlow.decision.conflict : undefined} onRescan={reviewFlow.rescanReview} onClose={() => { if (!currentOperationKind()) { setReview(null); setError(null); restoreFocus(); } }} onApply={(selection) => replace(false, selection)} />}
+    {review && project && (!reviewFlow.directReview || (reviewFlow.decision.kind === "review" && reviewFlow.decision.conflict)) && <ReviewDialog key={JSON.stringify(review)} preview={review} root={project.root} busy={busy} error={error} conflict={reviewFlow.decision.kind === "review" ? reviewFlow.decision.conflict : undefined} onRescan={reviewFlow.rescanReview} onClose={() => { if (!currentOperationKind()) { setReview(null); setError(null); restoreFocus(); } }} onApply={(selection) => replace(false, selection)} />}
     <Dialog open={conversionBlocked} onOpenChange={setConversionBlocked}>
       <DialogContent onCloseAutoFocus={(event) => { event.preventDefault(); restoreFocus(); }}>
         <DialogHeader><DialogTitle>{t("app.reviewReferencesFirst")}</DialogTitle><DialogDescription>{t("app.pendingReviewDescription", {count:project?.status.pendingReferences ?? 0})}</DialogDescription></DialogHeader>

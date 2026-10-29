@@ -27,7 +27,7 @@ it("keeps previous settings and reports native registration or persistence failu
 
 it("organizes settings around projects without removed directory and completion options", () => {
   render(<SettingsPage value={defaultPreferences} onSaved={vi.fn()} onClose={vi.fn()} />);
-  for (const section of ["常规", "图片处理", "自动化", "通知", "快捷键", "高级"]) expect(screen.getByText(section, { selector: "legend" })).toBeInTheDocument();
+  for (const section of ["常规", "图片转换", "自动化", "通知", "快捷键", "高级"]) expect(screen.getByText(section, { selector: "legend" })).toBeInTheDocument();
   expect(screen.queryByText("图片目录默认递归扫描")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("转换完成后的默认行为")).not.toBeInTheDocument();
   expect(screen.queryByText("外观")).not.toBeInTheDocument();
@@ -37,7 +37,7 @@ it("organizes settings around projects without removed directory and completion 
 it("derives custom settings without offering a custom preset", async () => {
   const user = userEvent.setup();
   render(<SettingsPage value={{ ...defaultPreferences, dpi: 200 }} onSaved={vi.fn()} onClose={vi.fn()} />);
-  expect(screen.getByText("自定义 · 200 DPI · 90%")).toBeInTheDocument();
+  expect(screen.getByText("自定义 · 200 DPI · 100%")).toBeInTheDocument();
   expect(screen.queryByRole("radio", { name: "自定义" })).not.toBeInTheDocument();
   await user.click(screen.getByRole("radio", { name: "小体积" }));
   expect(screen.getByLabelText("默认 DPI")).toHaveValue(150);
@@ -91,7 +91,7 @@ it("places closing behavior in General and explains manual reference review", ()
   expect(screen.getByLabelText("关闭窗口时").closest("fieldset")).toHaveTextContent("常规");
   expect(screen.getByText(/Space 切换原图/)).toHaveTextContent("PDF / 对比");
   expect(screen.getByText(/检测仅刷新状态/)).toHaveTextContent("引用修改仍需确认");
-  expect(screen.getByText(/允许继续处理图片/)).toHaveTextContent("不会跳过引用审核");
+  expect(screen.getByText(/允许继续转换图片/)).toHaveTextContent("不会跳过引用审核");
 });
 
 it("persists a selected language only after saving and updates the interface", async () => {
@@ -103,5 +103,5 @@ it("persists a selected language only after saving and updates the interface", a
   await user.click(screen.getByRole("button", {name:"保存设置"}));
   expect(await screen.findByRole("heading", {name:"Settings"})).toBeVisible();
   expect(saved).toHaveBeenCalledWith({...defaultPreferences,language:"en-US"});
-  expect(screen.getByRole("radiogroup", {name:"Default processing preset"})).toHaveTextContent("Balanced");
+  expect(screen.getByRole("radiogroup", {name:"Default conversion preset"})).toHaveTextContent("Balanced");
 });

@@ -9,11 +9,11 @@ Available for Windows, macOS and Linux. Projects stay on your computer.
 [Download](https://github.com/yaho7/texgo/releases/latest) ·
 [User guide](desktop/README.md) · [Troubleshooting](docs/troubleshooting.md)
 
-## Open, process, review
+## Open, convert, update references
 
 1. Open or drop the main `.tex` file. Texgo scans its included files and images.
-2. Process pending images; compare the original with the resulting PDF.
-3. Review proposed LaTeX reference changes and explicitly apply your selection.
+2. Convert images; compare the original with the resulting PDF. Reconvert after changing quality.
+3. The workspace lists affected files. Click Update references to confirm, without a separate review step.
 
 Background monitoring refreshes status. Smart Convert can update Texgo-managed
 PDFs, but neither feature edits `.tex` files automatically. Before applying a

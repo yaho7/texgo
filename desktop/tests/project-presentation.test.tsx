@@ -119,7 +119,7 @@ it("projects backend problems for ready assets even without an error result", ()
   const row = screen.getByRole("button", { name: "预览 plot.png" }).closest("tr")!;
   const badge = within(row).getByText("需要处理");
   expect(badge).toHaveAttribute("data-variant", "destructive");
-  expect(within(row).queryByText("待处理")).not.toBeInTheDocument();
+  expect(within(row).queryByText("待转换")).not.toBeInTheDocument();
   expect(badge).toHaveAttribute("title", blocked.message);
   expect(within(row).getByRole("button", { name: "更多操作 plot.png" })).toBeInTheDocument();
 });
@@ -150,7 +150,7 @@ it("lets the workspace move search and filters out of the library while retainin
   render(<AssetList {...listProps()} showSearchAndFilters={false} />);
   expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
   expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
-  expect(screen.getByRole("table", { name: "项目图片及处理状态" })).toBeInTheDocument();
+  expect(screen.getByRole("table", { name: "项目图片及转换状态" })).toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: "格式" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "预览 plot.png" })).toBeInTheDocument();
 });
