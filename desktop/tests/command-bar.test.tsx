@@ -53,6 +53,7 @@ it("keeps manual conversion available without a redundant primary button when up
   expect(screen.getByRole("status")).toBeEmptyDOMElement();
   expect(document.querySelector(".command-action")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "处理图片…" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "处理图片…" })).toHaveAttribute("data-variant", "default");
 });
 
 
@@ -86,6 +87,7 @@ it("checks the manual conversion guard before opening its dropdown", async () =>
   await user.click(screen.getByRole("button", { name: "处理图片…" }));
   expect(guard).toHaveBeenCalledOnce(); expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "处理图片…" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "处理图片…" })).toHaveAttribute("data-variant", "default");
 });
 it("explains a safety block in the status and disables all conversion choices", async () => {
   const user = userEvent.setup(); const convert = vi.fn();

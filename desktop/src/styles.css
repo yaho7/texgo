@@ -98,7 +98,7 @@ h1, h2, h3, p { margin: 0; }
 .asset-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .asset-summary { display: flex; justify-content: flex-start; flex-wrap: wrap; gap: 2px; }
 .asset-summary [data-slot="toggle-group-item"] { flex: 0 0 auto; gap: 6px; padding-inline: 9px; min-height: 32px; font-size: 11px; border-radius: var(--radius-selection); }
-.asset-panel [data-slot="table-container"] { padding-inline: 6px; }
+.asset-panel [data-slot="table-container"] { padding-inline: var(--workspace-inset, 16px); }
 .asset-panel table { border-collapse: separate; border-spacing: 0 3px; }
 .asset-panel thead tr, .asset-panel tbody tr { border: 0; background: transparent; }
 .asset-panel th { color: var(--muted-foreground); font-size: 11px; font-weight: 450; }
@@ -107,14 +107,18 @@ h1, h2, h3, p { margin: 0; }
 .asset-panel tbody tr:not([data-disabled="true"]):not([data-state="selected"]):hover td { background: var(--hover-bg); }
 .asset-panel tbody tr[data-state="selected"] td,
 .asset-panel tbody tr[data-state="selected"]:hover td,
-.asset-panel tbody tr[data-state="selected"]:focus-within td { background: var(--selection-bg); transition: none; }
+.asset-panel tbody tr[data-state="selected"]:focus-within td { background: var(--library-selection-bg); transition: none; }
 .asset-preview-trigger { padding: 0; font-weight: 500; }
 /* Stretch the native preview button across its row, below the separate selection cell. */
 .asset-row { position: relative; isolation: isolate; }
 /* Flat underpaint joins fractional cell edges; rounded end cells keep their corners. */
-.asset-panel tbody tr[data-state="selected"] { background: linear-gradient(var(--selection-bg), var(--selection-bg)) center / calc(100% - var(--radius-selection) - var(--radius-selection)) 100% no-repeat; }
+.asset-panel tbody tr[data-state="selected"] { background: linear-gradient(var(--library-selection-bg), var(--library-selection-bg)) center / calc(100% - var(--radius-selection) - var(--radius-selection)) 100% no-repeat; }
 .asset-preview-trigger::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius-selection); cursor: pointer; }
 .asset-preview-trigger:focus-visible::after { outline: 2px solid var(--ring); outline-offset: -2px; }
+/* List selection is blue; badges retain their semantic foreground/background. */
+.asset-row[data-state="selected"] :is(.asset-preview-trigger, .asset-more) { color: var(--primary-foreground); }
+.asset-row[data-state="selected"] td > .text-muted-foreground:not([data-slot="badge"]) { color: rgb(255 255 255 / .85); }
+.asset-row[data-state="selected"] [data-slot="checkbox"] { border-color: rgb(255 255 255 / .7); }
 .asset-row[data-disabled="true"] { cursor: default; }
 .asset-row[data-disabled="true"]:hover { background: transparent; }
 .asset-row[data-disabled="true"][data-state="selected"] { background: var(--muted); }

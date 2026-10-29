@@ -3,7 +3,7 @@
 /* Clip outer frames: overflow:hidden still allows focus-driven programmatic scrolling. */
 html, body { height: 100%; overflow: clip; }
 #root { position: fixed; inset: 0; overflow: clip; }
-.mac-workspace { --workspace-inset: 16px; --toolbar-gap: 12px; --asset-thumbnail-inset: 14px; }
+.mac-workspace { --workspace-inset: 16px; --toolbar-gap: 12px; --asset-thumbnail-inset: calc(var(--workspace-inset) + 8px); }
 .mac-workspace .workbench { padding: 0; background: var(--sidebar-bg); }
 .mac-workspace .workspace-main { border: 0; border-left: 1px solid var(--border); border-radius: 0; box-shadow: none; }
 .mac-workspace .workspace-sidebar { width: 218px; background: var(--sidebar-bg); }
@@ -14,7 +14,7 @@ html, body { height: 100%; overflow: clip; }
 .mac-workspace .project-title p { margin-top: 2px; }
 .mac-workspace .project-file-count { display: none; }
 .mac-workspace .workspace-grid { border-top: 0; grid-template-columns: minmax(300px, min(var(--assets-width, 42%), 60%)) 6px minmax(0, 1fr); }
-.mac-workspace .asset-panel [data-slot="table-container"] { padding: 0 6px; }
+.mac-workspace .asset-panel [data-slot="table-container"] { padding: 0 var(--workspace-inset); }
 .mac-workspace .asset-panel table { border-collapse: separate; border-spacing: 0 3px; }
 .mac-workspace .asset-panel thead { position: sticky; top: 0; z-index: 3; background: white; }
 .mac-workspace .asset-panel th { height: 34px; border-bottom: 1px solid var(--border); }
@@ -42,8 +42,8 @@ html, body { height: 100%; overflow: clip; }
   .mac-workspace .preview-panel { min-height: 480px; }
 }
 
-/* Toolbar copy shares the thumbnail edge: 6px list inset + 8px cell padding. */
-.mac-workspace:has(.asset-selection-cell) { --asset-thumbnail-inset: 62px; }
+/* Toolbar copy shares the thumbnail edge: 16px list inset + 8px cell padding. */
+.mac-workspace:has(.asset-selection-cell) { --asset-thumbnail-inset: calc(var(--workspace-inset) + 56px); }
 .mac-workspace .app-toolbar { padding-left: var(--asset-thumbnail-inset); }
 .mac-workspace .asset-name-heading { padding-left: 75px; }
 

@@ -274,7 +274,7 @@ export default function AssetList(props: Props) {
               const missingPdf = asset.message === getLoadedCatalog("zh-CN")?.native.managedPdfMissing;
               const pendingRename = props.pendingRename?.id === asset.id;
               const rowSelected = props.selectionMode ? props.selected.has(asset.id) : props.activeId === asset.id;
-              const label = pendingRename ? t("assetList.pendingRename") : ignored ? t("assetList.ignored") : problem ? referenceProblem ? statusLabels[asset.status] : t("assetList.needsAttention") : result?.cancelled ? t("assetList.cancelled") : missingPdf ? t("assetList.missingPDF") : converted || asset.status === "pdf" ? "" : updatable ? t("assetList.updatedSource") : statusLabels[asset.status];
+              const label = pendingRename ? t("assetList.pendingRename") : ignored ? t("assetList.ignored") : problem ? referenceProblem ? statusLabels[asset.status] : t("assetList.needsAttention") : result?.cancelled ? t("assetList.cancelled") : missingPdf ? t("assetList.missingPDF") : converted ? t("assetList.completed") : updatable ? t("assetList.updatedSource") : statusLabels[asset.status];
               const normalizedPath = asset.relativePath.replaceAll("\\", "/");
               const slash = normalizedPath.lastIndexOf("/");
               const filename = normalizedPath.slice(slash + 1);

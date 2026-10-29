@@ -1,17 +1,17 @@
 @import "./view-motion.css";
 /* Two surfaces: sidebar and document workspace. */
 .mac-workspace .workbench, .mac-workspace .workspace-sidebar, .navigation-drawer[data-slot="dialog-content"] { background: var(--sidebar-bg); }
-.mac-workspace .workspace-main { border-left-color: rgba(0,0,0,.07); }
+.mac-workspace .workspace-main { border-left-color: var(--pane-separator); }
 .mac-workspace .app-toolbar, .mac-workspace .asset-inspector, .mac-workspace .preview-surface, .mac-workspace .command-bar, .mac-workspace .status-bar, .mac-workspace .native-preferences, .mac-workspace .native-preferences > header, .home-workspace, .history-panel { background: var(--content-bg); }
-.mac-workspace .app-toolbar { border-bottom: 1px solid rgba(0,0,0,.05); }
+.mac-workspace .app-toolbar { border-bottom: 1px solid var(--pane-separator); }
 .mac-workspace .asset-panel tbody td { border: 0; }
 .mac-workspace .preview-surface { border: 0; border-radius: 0; }
 .mac-workspace .workspace-grid { grid-template-columns: minmax(300px, min(var(--assets-width, 42%), 60%)) 0 minmax(0, 1fr); }
-.splitter::before { background: rgba(0,0,0,.04); }
+.splitter::before { background: var(--pane-separator); }
 .splitter:hover::before { background: rgba(0,0,0,.12); }
 .splitter:focus-visible::before, .splitter:active::before { background: var(--primary); }
 .mac-workspace .navigation-settings { border-top: 0; }
-.command-bar { border-top-color: rgba(0,0,0,.05); }
+.command-bar { border-top-color: var(--pane-separator); }
 .preview-details { flex: none; display: flex; flex-direction: column; gap: 20px; padding: 20px var(--workspace-inset) 24px; font-size: 12px; }
 .preview-details h3 { margin: 0 0 8px; font-size: 12px; font-weight: 500; color: var(--muted-foreground); }
 .preview-details ul { list-style: none; margin: 0; padding: 0; max-height: 144px; overflow: auto; }
@@ -74,3 +74,6 @@
 .preview-stage .image-stage img,
 .preview-stage .pdf-canvas-host canvas { border-radius: 0; }
 .preview-stage .comparison-frame { overflow: hidden; }
+
+.mac-workspace :is(.status-bar, .asset-inspector) { border-color: var(--pane-separator); }
+.mac-workspace .asset-panel [data-slot="separator"] { background: var(--pane-separator); }
