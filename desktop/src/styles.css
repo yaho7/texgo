@@ -118,6 +118,7 @@ h1, h2, h3, p { margin: 0; }
 /* List selection is blue; badges retain their semantic foreground/background. */
 .asset-row[data-state="selected"] :is(.asset-preview-trigger, .asset-more) { color: var(--primary-foreground); }
 .asset-row[data-state="selected"] td > .text-muted-foreground:not([data-slot="badge"]) { color: rgb(255 255 255 / .85); }
+.asset-row[data-state="selected"] [data-slot="badge"] { background-color: color-mix(in srgb, currentColor 10%, white); }
 .asset-row[data-state="selected"] [data-slot="checkbox"] { border-color: rgb(255 255 255 / .7); }
 .asset-row[data-disabled="true"] { cursor: default; }
 .asset-row[data-disabled="true"]:hover { background: transparent; }

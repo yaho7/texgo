@@ -11,7 +11,7 @@
 .splitter:hover::before { background: rgba(0,0,0,.12); }
 .splitter:focus-visible::before, .splitter:active::before { background: var(--primary); }
 .mac-workspace .navigation-settings { border-top: 0; }
-.command-bar { border-top-color: var(--pane-separator); }
+.mac-workspace .command-bar { border-top-color: var(--pane-separator); }
 .preview-details { flex: none; display: flex; flex-direction: column; gap: 20px; padding: 20px var(--workspace-inset) 24px; font-size: 12px; }
 .preview-details h3 { margin: 0 0 8px; font-size: 12px; font-weight: 500; color: var(--muted-foreground); }
 .preview-details ul { list-style: none; margin: 0; padding: 0; max-height: 144px; overflow: auto; }
