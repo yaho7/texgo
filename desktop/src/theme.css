@@ -36,7 +36,7 @@
   --content-bg: #FFFFFF;
   --selection-bg: #DCDCDC;
   --library-selection-bg: var(--primary);
-  --pane-separator: var(--border);
+  --pane-separator: rgba(0,0,0,.05);
   --preview-bg: #E6E6E6;
   --hover-bg: rgba(0,0,0,.035);
   --radius-selection: var(--radius-sm);

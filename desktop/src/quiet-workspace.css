@@ -7,9 +7,9 @@
 .mac-workspace .asset-panel tbody td { border: 0; }
 .mac-workspace .preview-surface { border: 0; border-radius: 0; }
 .mac-workspace .workspace-grid { grid-template-columns: minmax(300px, min(var(--assets-width, 42%), 60%)) 0 minmax(0, 1fr); }
-.splitter::before { background: var(--pane-separator); }
-.splitter:hover::before { background: rgba(0,0,0,.12); }
-.splitter:focus-visible::before, .splitter:active::before { background: var(--primary); }
+.mac-workspace .splitter::before { background: var(--pane-separator); }
+.mac-workspace .splitter:hover::before { background: rgba(0,0,0,.12); }
+.mac-workspace .splitter:focus-visible::before, .mac-workspace .splitter:active::before { background: var(--primary); }
 .mac-workspace .navigation-settings { border-top: 0; }
 .mac-workspace .command-bar { border-top-color: var(--pane-separator); }
 .preview-details { flex: none; display: flex; flex-direction: column; gap: 20px; padding: 20px var(--workspace-inset) 24px; font-size: 12px; }
