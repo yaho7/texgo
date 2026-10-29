@@ -1,3 +1,4 @@
+import { viewTransition } from "./motion";
 import { nativeText } from "./nativeText";
 import { t, loadLocale, setLocale, useLocale } from "./i18n";
 import { useEffect, useRef, useState } from "react";
@@ -51,7 +52,7 @@ export default function SettingsPage({ value, onSaved, onClose, active = true }:
     catch (reason) { setLogError(errorMessage(reason)); }
     finally { openingLogsRef.current = false; setOpeningLogs(false); }
   }
-  return <main id={active ? "main-content" : undefined} tabIndex={-1} className="settings-page native-preferences" aria-label={t("common.settings")} onKeyDown={(event) => { if (event.key === "Escape" && !saving) { event.stopPropagation(); onClose(); } }}>
+  return <main id={active ? "main-content" : undefined} tabIndex={-1} className={`settings-page native-preferences ${viewTransition(active)}`} aria-label={t("common.settings")} onKeyDown={(event) => { if (event.key === "Escape" && !saving) { event.stopPropagation(); onClose(); } }}>
     <header className="flex items-center gap-3"><Button variant="ghost" size="icon" aria-label={t("settings.back")} onClick={onClose}><ArrowLeft aria-hidden="true" /></Button><h1 className="flex-1 text-lg font-semibold">{t("common.settings")}</h1><div className="settings-save-feedback"><Button form="preferences-form" type="submit" disabled={saving} aria-busy={saving}>{saving ? <LoaderCircle className="spin" data-icon="inline-start" aria-hidden="true" /> : saved ? <Check data-icon="inline-start" aria-hidden="true" /> : null}{saving ? t("settings.saving") : saved ? t("settings.saved") : t("settings.saveSettings")}</Button><span className="sr-only" role="status">{saved ? t("settings.settingsSaved") : ""}</span></div></header>
     <form id="preferences-form" noValidate onSubmit={(event) => { event.preventDefault(); void save(); }} className="flex flex-col gap-6">
       <FieldSet disabled={saving}><FieldLegend>{t("settings.general")}</FieldLegend><FieldGroup>

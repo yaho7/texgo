@@ -1,9 +1,13 @@
-/* Hidden retained views cannot intercept input. */
-.view-enter { animation: view-enter 180ms cubic-bezier(.2,.8,.2,1) both; }
+/* Hidden retained views cannot intercept input. Animate content after lazy loading. */
+.view-enter { animation: view-enter var(--motion-page, 200ms) cubic-bezier(.2,.8,.2,1) both; }
 .view-exit { animation: none; pointer-events: none; }
+.home-workspace, .native-preferences { --view-offset-x: 0px; --view-offset-y: 6px; }
 .workspace-grid:not([hidden]), .history-view, .history-panel.page-transition { animation: none; }
-.workspace-grid.view-enter:not([hidden]), .history-view.view-enter { animation: view-enter 180ms cubic-bezier(.2,.8,.2,1) both; }
-@keyframes view-enter { from { opacity: 0; transform: translateX(6px); } to { opacity: 1; transform: translateX(0); } }
+.workspace-grid.view-enter:not([hidden]), .history-view.view-enter { animation: view-enter var(--motion-page, 200ms) cubic-bezier(.2,.8,.2,1) both; }
+@keyframes view-enter {
+  from { opacity: 0; transform: translate(var(--view-offset-x, 6px), var(--view-offset-y, 0px)); }
+  to { opacity: 1; transform: translate(0, 0); }
+}
 @media (prefers-reduced-motion: reduce) {
   .view-enter, .workspace-grid.view-enter:not([hidden]), .history-view.view-enter { animation: view-opacity 1ms linear both; transform: none; }
   @keyframes view-opacity { from { opacity: .95; } to { opacity: 1; } }

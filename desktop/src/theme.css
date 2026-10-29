@@ -64,6 +64,7 @@
   --radius: var(--radius-control);
   --motion-fast: 150ms;
   --motion-normal: 180ms;
+  --motion-page: 200ms;
   --motion-slow: 220ms;
   --motion-feedback: 600ms;
   --motion-spin: 1000ms;

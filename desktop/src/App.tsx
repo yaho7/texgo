@@ -334,7 +334,7 @@ export default function App() {
       </header>}
       {error && !review && !undoEntry && !problemId && <ErrorNotice message={error} className="workbench-alert" onClose={() => setError(null)} />}
       {project?.status.blockingReason && !homeVisible && !settingsPage && <Alert variant="destructive" role="alert" className="workbench-alert"><TriangleAlert aria-hidden="true" /><AlertTitle>{t("app.resolveTheSafetyIssueFirst")}</AlertTitle><AlertDescription>{nativeText(project.status.blockingReason)}</AlertDescription></Alert>}
-      <div className={`settings-view ${viewTransition(settingsPage)}`} hidden={!settingsPage} inert={!settingsPage}><SettingsView active={settingsPage} value={preferences} onSaved={(next) => { preferencesRef.current = next; setPreferences(next); }} onClose={() => setSettingsPage(false)} /></div>
+      <div className="settings-view" hidden={!settingsPage} inert={!settingsPage}><SettingsView active={settingsPage} value={preferences} onSaved={(next) => { preferencesRef.current = next; setPreferences(next); }} onClose={() => setSettingsPage(false)} /></div>
       {homeVisible && !settingsPage && <Home onSettings={() => setSettingsPage(true)} busy={busy} onOpenTex={openProject} recents={recents} failedRecent={failedRecent} onRecent={openRecentEntry} onRemove={workspace.forgetRecent} />}
       {project && <>
         <main id={settingsPage || homeVisible ? undefined : "main-content"} tabIndex={-1} className="workspace-content" hidden={settingsPage || homeVisible} inert={settingsPage || homeVisible} data-view={view} onKeyDownCapture={(event) => {
