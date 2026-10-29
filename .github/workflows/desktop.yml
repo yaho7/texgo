@@ -178,7 +178,7 @@ jobs:
           BUNDLES: ${{ matrix.bundles }}
         run: |
           rm -rf "src-tauri/target/$TARGET/release/bundle"
-          npm exec -- tauri build --config "{\"build\":{\"beforeBuildCommand\":null},\"bundle\":{\"createUpdaterArtifacts\":false}}" --target "$TARGET" --bundles "$BUNDLES" -- --locked --bin texgo-desktop
+          bash scripts/build-installer.sh
       - name: Verify and collect installers
         env:
           TARGET: ${{ matrix.target }}

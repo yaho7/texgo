@@ -142,3 +142,5 @@ Automatic checks read stable-release metadata from the GitHub API and only show 
 when a newer version is available. They never download or install a package.
 The application no longer uses a Tauri updater feed or updater signing keys.
 Apple code signing and notarization remain part of the macOS packaging process.
+If `hdiutil create` fails with `Resource busy`, packaging retries at most twice, reusing
+the release compilation cache. Other failures are reported immediately.
