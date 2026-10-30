@@ -1,11 +1,11 @@
 # README visuals
 
-The English README uses `*-en.svg`; the Chinese README uses `*-zh.svg`.
-Both sets embed the unmodified 1440 × 900 browser captures in self-contained SVGs.
-The outer area is transparent, with no colored backdrop. A 14 px clipping radius
-and a soft drop shadow decorate the screenshot itself. The two benchmark SVGs
-use the same transparent treatment. These presentation effects do not change the
-installed app's interface.
+The English README uses `*-en.png`; the Chinese README uses `*-zh.png`.
+Both sets preserve the original 1440 × 900 browser captures. They are exported as
+self-contained PNGs with an alpha channel, a 14 px clipping radius and a soft drop
+shadow. The outer area is transparent, with no colored backdrop. The benchmark
+SVGs use the same treatment. PNG exports avoid GitHub's restrictions on embedded
+raster data in SVGs. These presentation effects do not change the installed app.
 
 The project contains figures extracted from the **official PGF/TikZ manual**:
 

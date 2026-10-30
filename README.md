@@ -44,15 +44,15 @@ processing defaults, background behavior, notifications and global shortcuts.
 
 ### Home
 
-![Texgo Home](docs/images/home-en.svg)
+![Texgo Home](docs/images/home-en.png)
 
 ### Workspace
 
-![Texgo workspace](docs/images/workspace-en.svg)
+![Texgo workspace](docs/images/workspace-en.png)
 
 ### Compare
 
-![Original and PDF comparison](docs/images/compare-en.svg)
+![Original and PDF comparison](docs/images/compare-en.png)
 
 Screenshots use the production frontend with examples from the official PGF/TikZ
 manual and simulated native services. [Artwork sources](docs/images/README.md).

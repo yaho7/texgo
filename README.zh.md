@@ -30,15 +30,15 @@ Apple M6、TeX Live 2026、默认高质量参数，固定种子生成的合成�
 
 ### 首页
 
-![Texgo 首页](docs/images/home-zh.svg)
+![Texgo 首页](docs/images/home-zh.png)
 
 ### 工作区
 
-![Texgo 工作区](docs/images/workspace-zh.svg)
+![Texgo 工作区](docs/images/workspace-zh.png)
 
 ### 对比
 
-![原图与 PDF 对比](docs/images/compare-zh.svg)
+![原图与 PDF 对比](docs/images/compare-zh.png)
 
 截图使用正式前端、PGF/TikZ 官方手册示例和模拟原生接口。[图片来源](docs/images/README.md)。
 
