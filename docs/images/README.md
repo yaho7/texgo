@@ -1,9 +1,11 @@
 # README visuals
 
-The English README uses `*-en.png`; the Chinese README uses `*-zh.png`.
-Both sets show the production frontend at the desktop app's default 1440 × 900
-window size, inside a 32 px presentation margin. The 16 px rounded frame and soft
-shadow are applied in the capture page, not to the installed app's interface.
+The English README uses `*-en.svg`; the Chinese README uses `*-zh.svg`.
+Both sets embed the unmodified 1440 × 900 browser captures in self-contained SVGs.
+The outer area is transparent, with no colored backdrop. A 14 px clipping radius
+and a soft drop shadow decorate the screenshot itself. The two benchmark SVGs
+use the same transparent treatment. These presentation effects do not change the
+installed app's interface.
 
 The project contains figures extracted from the **official PGF/TikZ manual**:
 

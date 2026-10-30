@@ -88,8 +88,8 @@ release verifier, including tampering and forged-version failures; no fixture is
 
 Computer-use checks covered Home, workspace, comparison, standalone settings,
 English switching, history and sidebar layout with deterministic native mocks.
-The [Home](images/home-en.png), [workspace](images/workspace-en.png) and
-[comparison](images/compare-en.png) screenshots illustrate the production frontend.
+The [Home](images/home-en.svg), [workspace](images/workspace-en.svg) and
+[comparison](images/compare-en.svg) screenshots illustrate the production frontend.
 Their sample picker returns a fixture path. They do not establish native file-dialog,
 installed-app or real-project acceptance. The separate manual CI visual harness was
 syntax-checked locally; a new hosted run was not dispatched for this documentation task.
