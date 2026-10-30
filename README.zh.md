@@ -55,6 +55,5 @@ Apple M6、TeX Live 2026、默认高质量参数，固定种子生成的合成�
 ## 贡献者
 
 - [yaho7](https://github.com/yaho7)
-- [OpenAI](https://github.com/openai)
 
 [MIT 许可证](LICENSE)。
