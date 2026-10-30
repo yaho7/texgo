@@ -6,9 +6,6 @@
 .history-panel .history-day { margin: 28px 0 12px; font-size: 12px; line-height: 18px; font-weight: 500; color: var(--muted-foreground); }
 .history-panel .history-entry:first-child .history-day { margin-top: 0; }
 .history-record { padding: 16px 10px; border: 0; border-radius: var(--radius-selection); background: transparent; }
-.history-record:not([data-selected="true"]):hover { background: var(--hover-bg); }
-.history-record[data-selected="true"], .history-record[data-selected="true"]:hover, .history-record[data-selected="true"]:focus-within { background: var(--selection-bg); }
-.history-record:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .history-record-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
 .history-record-copy { flex: 1; min-width: 0; }
 .history-result { margin: 0; font-size: 14px; font-weight: 550; line-height: 22px; overflow-wrap: anywhere; }

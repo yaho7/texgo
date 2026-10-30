@@ -8,7 +8,8 @@ vi.mock("../src/ConversionHistory", () => ({ default: () => <button>History item
 it("retains hidden history without intercepting focus and uses shared navigation classes", async () => {
   const props = { entries: [], busy: false, onUndo: vi.fn(), onReturn: vi.fn() };
   const view = render(<><button>Navigation</button><HistoryView {...props} active /></>);
-  await screen.findByRole("button", { name: "History item" });
+  expect(screen.getByRole("button", { name: "History item" })).toBeVisible();
+  expect(screen.queryByText("正在加载操作记录…")).not.toBeInTheDocument();
   const navigation = screen.getByRole("button", {name:"Navigation"}); navigation.focus();
   view.rerender(<><button>Navigation</button><HistoryView {...props} active={false} /></>);
   expect(view.container.querySelector(".history-view")).toHaveAttribute("hidden");
