@@ -9,5 +9,6 @@
   "readTheSelectedProjectAndWriteProcessedImagesFileMonitoring": "读取所选项目并写入处理结果。自动检测只刷新状态，自动处理不修改 .tex 引用；引用修改须由你确认。",
   "systemNotificationsReportResultsAGlobalShortcutStartsQuickProcessing": "系统通知用于完成提醒，全局快捷键用于快速转换；均可在设置中关闭。",
   "recentProjects": "最近项目",
-  "removeRecentProjectValue": "移除最近记录 {arg0}"
+  "removeRecentProjectValue": "移除最近记录 {arg0}",
+  "gotIt": "知道了"
 }

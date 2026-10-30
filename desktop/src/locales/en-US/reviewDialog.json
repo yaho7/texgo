@@ -23,5 +23,12 @@
   "summary": "{files, plural, one {# file} other {# files}}, {references, plural, one {# reference} other {# references}}",
   "selectedSummary": "Selected {files, plural, one {# file} other {# files}}, {references, plural, one {# reference} other {# references}}",
   "applyChanges": "Apply {count, plural, one {# reference change} other {# reference changes}}",
-  "fileChangeCount": "{path} ({count, plural, one {# change} other {# changes}})"
+  "fileChangeCount": "{path} ({count, plural, one {# change} other {# changes}})",
+  "confirmUpdateTitle": "Update {count, plural, one {# reference} other {# references}}?",
+  "confirmOriginalsTitle": "Use original image references?",
+  "confirmUpdateDescription": "Image paths in these LaTeX files will be changed.",
+  "confirmOriginalsDescription": "References will point to the original images. Generated PDFs will be kept.",
+  "cancelConfirmation": "Cancel",
+  "confirmUpdate": "Confirm update",
+  "confirmOriginals": "Confirm restore"
 }

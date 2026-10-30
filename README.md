@@ -13,7 +13,7 @@ Available for Windows, macOS and Linux. Projects stay on your computer.
 
 1. Open or drop the main `.tex` file. Texgo scans its included files and images.
 2. Convert images; compare the original with the resulting PDF. Reconvert after changing quality.
-3. The workspace lists affected files. Click Update references to confirm, without a separate review step.
+3. The workspace lists affected files. Click Update references, then confirm or cancel in the dialog.
 
 Background monitoring refreshes status. Smart Convert can update Texgo-managed
 PDFs, but neither feature edits `.tex` files automatically. Before applying a

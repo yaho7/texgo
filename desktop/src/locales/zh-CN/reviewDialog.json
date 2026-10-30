@@ -23,5 +23,12 @@
   "summary": "{files} 个文件，{references} 处引用",
   "selectedSummary": "已选择 {files} 个文件，{references} 处引用",
   "applyChanges": "应用 {count} 处引用修改",
-  "fileChangeCount": "{path}（{count} 处）"
+  "fileChangeCount": "{path}（{count} 处）",
+  "confirmUpdateTitle": "更新 {count} 处引用？",
+  "confirmOriginalsTitle": "引用改回原图？",
+  "confirmUpdateDescription": "将修改以下 LaTeX 文件中的图片路径。",
+  "confirmOriginalsDescription": "将引用指向原图片，已生成的 PDF 会保留。",
+  "cancelConfirmation": "取消",
+  "confirmUpdate": "确认更新",
+  "confirmOriginals": "确认改回"
 }

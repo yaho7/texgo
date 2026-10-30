@@ -32,7 +32,7 @@ it("keeps recent names and times without visible paths while busy", () => {
   const time = view.container.querySelector("time")!;
   expect(time).toHaveAttribute("datetime", new Date(entry.openedAt).toISOString());
   expect(time).toHaveAttribute("title", new Date(entry.openedAt).toISOString());
-  expect(screen.getAllByRole("button").every((button) => button.hasAttribute("disabled"))).toBe(true);
+  expect(screen.getAllByRole("button").filter(button => button.textContent !== "工作原理与权限").every((button) => button.hasAttribute("disabled"))).toBe(true);
   view.rerender(<Home busy={false} onOpenTex={vi.fn()} recents={[{ ...entry, openedAt: NaN }]} onRecent={vi.fn()} />);
   expect(view.container.querySelector("time")).toBeNull();
   expect(screen.getByText("时间未知")).toBeInTheDocument();
@@ -153,4 +153,18 @@ it("lets the workspace move search and filters out of the library while retainin
   expect(screen.getByRole("table", { name: "项目图片及转换状态" })).toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: "格式" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "预览 plot.png" })).toBeInTheDocument();
+});
+
+it("shows how it works in a dismissible dialog without expanding Home", async () => {
+  const user = userEvent.setup();
+  render(<Home busy={false} onOpenTex={vi.fn()} recents={[]} onRecent={vi.fn()} />);
+  const trigger = screen.getByRole("button", {name:"工作原理与权限"});
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  await user.click(trigger);
+  const dialog = screen.getByRole("dialog", {name:"工作原理与权限"});
+  expect(dialog).toHaveTextContent("为什么更快");
+  expect(dialog).toHaveTextContent("文件与系统权限");
+  await user.click(within(dialog).getByRole("button", {name:"知道了"}));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(trigger).toHaveFocus();
 });

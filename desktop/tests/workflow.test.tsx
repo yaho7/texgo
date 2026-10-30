@@ -194,7 +194,7 @@ describe("LaTeX 项目唯一工作流", () => {
     expect(calls.some((call) => call.command === "preview_changes")).toBe(false);
     expect(screen.getByRole("radio", { name: "全部 5" })).toHaveAttribute("aria-checked", "true");
   });
-  it("applies the prepared reference plan directly from the recommended update action", async () => {
+  it("requires final confirmation for the recommended reference update", async () => {
     convertResponse(["a"]);
     const user = await openProject();
     const action = await screen.findByRole("button", {name:"更新 1 处引用"});
@@ -202,6 +202,9 @@ describe("LaTeX 项目唯一工作流", () => {
     expect(action).toHaveAttribute("data-step", "references");
     expect(screen.getByRole("region", {name:"待更新引用"})).toHaveTextContent("main.tex");
     await user.click(action);
+    const confirmation = await screen.findByRole("dialog", {name:"更新 1 处引用？"});
+    expect(calls.some(call=>call.command==="apply_replacements")).toBe(false);
+    await user.click(within(confirmation).getByRole("button", {name:"确认更新"}));
     await waitFor(() => expect(calls.some(call=>call.command==="apply_replacements")).toBe(true));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(calls.some(call=>call.command==="convert_images")).toBe(false);
@@ -791,12 +794,11 @@ it("keeps an old plan disabled when rescanning fails and preserves generic parti
   await user.click(within(dialog).getByRole("button", { name: "返回" }));
   handlers.preview_changes = () => structuredClone(changes);
   await user.click(await screen.findByRole("button", { name: "更新 2 处引用" }));
-  await user.click(await screen.findByRole("button", { name: "查看变更" }));
-  const retry = await screen.findByRole("dialog", { name: "检查引用变更" });
+  const retry = await screen.findByRole("dialog", { name: "更新 2 处引用？" });
   handlers.apply_replacements = () => { throw { kind: "operation", message: "替换未全部完成：保留恢复记录" }; };
-  await user.click(within(retry).getByRole("button", { name: "应用 2 处引用修改" }));
+  await user.click(within(retry).getByRole("button", { name: "确认更新" }));
   await screen.findByText("替换未全部完成：保留恢复记录");
-  expect(screen.queryByRole("dialog", { name: "检查引用变更" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog", { name: "更新 2 处引用？" })).not.toBeInTheDocument();
   expect(screen.queryByText(/Texgo 未修改/)).not.toBeInTheDocument();
 });
 
@@ -864,16 +866,26 @@ it("keeps the sidebar switch with navigation and preserves focus while collapsin
   expect(screen.getByRole("button", {name:"收起侧栏"}).closest(".navigation-brand")).not.toBeNull();
 });
 
-it("converts then updates references in two primary clicks without an automatic review modal", async () => {
+it("opens a focused confirmation after conversion and never writes on cancellation", async () => {
   const user = await openProject();
   await user.click(screen.getByRole("button", {name:"转换 2 张图片"}));
   const action = await screen.findByRole("button", {name:"更新 2 处引用"});
   await waitFor(() => expect(action).toBeEnabled());
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  expect(screen.getByRole("region", {name:"待更新引用"})).toHaveTextContent(/应用前请保存其他编辑器/);
+  expect(screen.getByRole("region", {name:"待更新引用"})).not.toHaveTextContent(/应用前请保存其他编辑器/);
   expect(calls.some(call=>call.command==="apply_replacements")).toBe(false);
   const expected = structuredClone(changes);
   await user.click(action);
+  let confirmation = await screen.findByRole("dialog", {name:"更新 2 处引用？"});
+  expect(within(confirmation).getByRole("button", {name:"取消"})).toHaveFocus();
+  expect(confirmation).toHaveTextContent(/应用前请保存其他编辑器/);
+  expect(calls.some(call=>call.command==="apply_replacements")).toBe(false);
+  await user.click(within(confirmation).getByRole("button", {name:"取消"}));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  await waitFor(() => expect(action).toHaveFocus());
+  await user.click(action);
+  confirmation = await screen.findByRole("dialog", {name:"更新 2 处引用？"});
+  await user.click(within(confirmation).getByRole("button", {name:"确认更新"}));
   await waitFor(() => expect(calls.find(call=>call.command==="apply_replacements")?.args).toEqual({selection:["change-a","change-b"],expected,repair:false}));
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
@@ -901,5 +913,26 @@ it("prepares original-reference changes separately and applies them only after a
   expect(calls.some(call=>call.command==="apply_replacements")).toBe(false);
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   await user.click(action);
+  const confirmation = await screen.findByRole("dialog", {name:"引用改回原图？"});
+  expect(confirmation).toHaveTextContent("已生成的 PDF 会保留");
+  expect(calls.some(call=>call.command==="apply_replacements")).toBe(false);
+  await user.click(within(confirmation).getByRole("button", {name:"确认改回"}));
   await waitFor(() => expect(calls.find(call=>call.command==="apply_replacements")?.args).toMatchObject({selection:["restore-a"],expected:reverse,restoreOriginals:true}));
+});
+
+
+it("keeps the compact confirmation blocked after a fingerprint conflict until explicit rescan", async () => {
+  const user = await openProject();
+  await user.click(screen.getByRole("button", {name:"转换 2 张图片"}));
+  await user.click(await screen.findByRole("button", {name:"更新 2 处引用"}));
+  const dialog = await screen.findByRole("dialog", {name:"更新 2 处引用？"});
+  handlers.apply_replacements = () => {throw {kind:"reviewConflict",path:"/paper/main.tex",message:"main.tex 在确认期间已被修改"};};
+  await user.click(within(dialog).getByRole("button", {name:"确认更新"}));
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent("在确认期间已被修改");
+  expect(within(dialog).getByRole("button", {name:"确认更新"})).toBeDisabled();
+  changes = {...changes,files:changes.files.map(file=>({...file,fingerprint:"new-full-hash"}))};
+  await user.click(within(dialog).getByRole("button", {name:"重新扫描"}));
+  const fresh = await screen.findByRole("dialog", {name:"更新 2 处引用？"});
+  await waitFor(()=>expect(within(fresh).getByRole("button",{name:"确认更新"})).toBeEnabled());
+  expect(calls.filter(call=>call.command==="apply_replacements")).toHaveLength(1);
 });

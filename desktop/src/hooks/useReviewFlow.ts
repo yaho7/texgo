@@ -55,19 +55,27 @@ export function useReviewFlow(ports: Ports) {
   }, [project?.stateFingerprint, project?.status.pendingReferences, pendingPreview, decision.kind, currentOperationKind()]);
   function updateReferences() {
     if (currentOperationKind() || decisionRef.current.kind !== "none") return;
-    if (!pendingPreview) { prepareReferences(false); return; }
+    if (!pendingPreview) { prepareReferences(false, true); return; }
     const ids = pendingPreview.files.flatMap(file => file.changes.map(change => change.id)).filter(Boolean);
     if (!ids.length) return;
     rememberFocus(); showReview(pendingPreview, "conversion", undefined, pendingRestore); setDirectReview(true);
-    replace(false, ids, pendingPreview);
   }
-  function prepareReferences(originals: boolean) {
+  function confirmReferences() {
+    if (currentOperationKind() || decisionRef.current.kind !== "review" || decisionRef.current.conflict) return;
+    const expected = decisionRef.current.preview;
+    const ids = expected.files.flatMap(file => file.changes.map(change => change.id)).filter(Boolean);
+    if (ids.length) replace(false, ids, expected);
+  }
+  function prepareReferences(originals: boolean, confirmAfter = false) {
     if (!project || currentOperationKind() || decisionRef.current.kind !== "none") return;
     const isCurrent = capture();
     void execute("reviewing", async () => {
       const preview = await invoke<ChangePreview>("preview_changes", originals ? {restoreOriginals:true} : undefined);
       if (!isCurrent()) return;
-      if (preview.referenceCount) queueReview(preview, originals, true);
+      if (preview.referenceCount) {
+        queueReview(preview, originals, true);
+        if (confirmAfter) { rememberFocus(); showReview(preview, "conversion", undefined, originals); setDirectReview(true); }
+      }
       else { setQueuedReview(null); setNotice(t("reviewDialog.noReferenceChangesAvailable")); }
     });
   }
@@ -148,6 +156,7 @@ export function useReviewFlow(ports: Ports) {
 
   function rescanReview() {
     const stale = decisionRef.current;
+    const compact = directReview;
     if (!project || currentOperationKind() || stale.kind !== "review" || !stale.conflict) return;
     const isCurrent = capture();
     void execute("reviewing", async () => {
@@ -170,12 +179,12 @@ export function useReviewFlow(ports: Ports) {
         }
       } else {
         const preview = await invoke<ChangePreview>("preview_changes", reviewOriginals.current ? {restoreOriginals:true} : undefined);
-        if (isCurrent()) showReview(preview, "conversion", undefined, reviewOriginals.current);
+        if (isCurrent()) { showReview(preview, "conversion", undefined, reviewOriginals.current); setDirectReview(compact); }
       }
     }, "rescan-review");
   }
 
-  return { prepareReferences, restoreReferences: () => prepareReferences(true), pendingRestore, directReview, pendingPreview, updateReferences, decision, decisionRef, review, reviewKind, problemId, undoEntry, conversionBlocked, repairCandidates,
+  return { confirmReferences, confirmingOriginals: reviewOriginals.current, prepareReferences, restoreReferences: () => prepareReferences(true), pendingRestore, directReview, pendingPreview, updateReferences, decision, decisionRef, review, reviewKind, problemId, undoEntry, conversionBlocked, repairCandidates,
     setReview, showReview, setProblemId, setConversionBlocked, requestUndo, dismissUndo, queueReview, reset,
     clearQueue: () => setQueuedReview(null), reviewChanges, inspectProblem, chooseRepair, locateRepair, replace, rescanReview };
 }
