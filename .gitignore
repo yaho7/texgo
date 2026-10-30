@@ -2,5 +2,8 @@
 build/
 dist/
 
+# Local performance fixtures, downloaded sources and results
+/benchmarks/
+
 # macOS
 .DS_Store
