@@ -1,0 +1,309 @@
+{
+  "date": "2026-10-30",
+  "machine": {
+    "model": "Mac mini",
+    "chip": "Apple M6",
+    "memoryGB": 16
+  },
+  "engineVersion": "0.3.3",
+  "engineSourceIdenticalTo": "v0.3.4",
+  "compilerVersions": {
+    "pdflatex": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+    "xelatex": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+    "lualatex": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)"
+  },
+  "method": {
+    "runs": 5,
+    "warmups": 1,
+    "passes_per_sample": 2,
+    "cache": "warm filesystem cache; no OS cache purge",
+    "quality": {
+      "quality": "custom",
+      "dpi": 300,
+      "jpegQuality": 100
+    }
+  },
+  "fixtures": {
+    "kind": "seeded synthetic images",
+    "seed": 20261030,
+    "width": 2400,
+    "height": 1600,
+    "dpi": 300,
+    "displayWidthMM": 160
+  },
+  "imageSuites": [
+    {
+      "name": "plots",
+      "scan_s": 0.006985625019297004,
+      "image_count": 12,
+      "reference_count": 12,
+      "reference_apply_s": 0.042622000037226826,
+      "engines": [
+        {
+          "engine": "pdflatex",
+          "original_s": [
+            0.4780328329652548,
+            0.3731998329749331,
+            0.4734913340071216,
+            0.37380850000772625,
+            0.42545637500006706
+          ],
+          "optimized_s": [
+            0.47543858201242983,
+            0.4788841669796966,
+            0.48085341695696115,
+            0.4842695419793017,
+            0.48196149995783344
+          ],
+          "original_median_s": 0.42545637500006706,
+          "optimized_median_s": 0.48085341695696115,
+          "saved_s": -0.0553970419568941,
+          "speedup": 0.884794326080764,
+          "reduction_percent": -13.020616263391368,
+          "break_even_builds": null,
+          "original_pdf": {
+            "bytes": 546679,
+            "pages": 13
+          },
+          "optimized_pdf": {
+            "bytes": 720090,
+            "pages": 13
+          }
+        },
+        {
+          "engine": "xelatex",
+          "original_s": [
+            2.6229537919862196,
+            2.7049853339558467,
+            2.6399778339546174,
+            2.6586369579890743,
+            2.7045282920007594
+          ],
+          "optimized_s": [
+            0.5907820410211571,
+            0.5893885419936851,
+            0.5878655840060674,
+            0.5958674160065129,
+            0.5832404990214854
+          ],
+          "original_median_s": 2.6586369579890743,
+          "optimized_median_s": 0.5893885419936851,
+          "saved_s": 2.0692484159953892,
+          "speedup": 4.51083923178398,
+          "reduction_percent": 77.83117622650204,
+          "break_even_builds": 1,
+          "original_pdf": {
+            "bytes": 535576,
+            "pages": 13
+          },
+          "optimized_pdf": {
+            "bytes": 699744,
+            "pages": 13
+          }
+        }
+      ],
+      "conversionSeconds": 0.883692333009094
+    },
+    {
+      "name": "raster",
+      "scan_s": 0.11779287498211488,
+      "image_count": 12,
+      "reference_count": 12,
+      "reference_apply_s": 2.493681500025559,
+      "engines": [
+        {
+          "engine": "pdflatex",
+          "original_s": [
+            0.9182123740320094,
+            0.8615457499981858,
+            0.9238782910397276,
+            0.8664584580692463,
+            0.9211830419953912
+          ],
+          "optimized_s": [
+            1.7777722500031814,
+            1.7765802079811692,
+            1.785460208018776,
+            1.8394830410252325,
+            1.7832383339991793
+          ],
+          "original_median_s": 0.9182123740320094,
+          "optimized_median_s": 1.7832383339991793,
+          "saved_s": -0.8650259599671699,
+          "speedup": 0.5149128731282826,
+          "reduction_percent": -94.20761301317582,
+          "break_even_builds": null,
+          "original_pdf": {
+            "bytes": 58219103,
+            "pages": 13
+          },
+          "optimized_pdf": {
+            "bytes": 136705372,
+            "pages": 13
+          }
+        },
+        {
+          "engine": "xelatex",
+          "original_s": [
+            2.7999614989967085,
+            2.7616960830055177,
+            2.7494982090429403,
+            2.7486725830240175,
+            2.7442721250117756
+          ],
+          "optimized_s": [
+            0.6998782920418307,
+            0.7545909999753349,
+            0.6999169579939917,
+            0.6941673749824986,
+            0.7002775000291876
+          ],
+          "original_median_s": 2.7494982090429403,
+          "optimized_median_s": 0.6999169579939917,
+          "saved_s": 2.0495812510489486,
+          "speedup": 3.928320606666231,
+          "reduction_percent": 74.54382928157563,
+          "break_even_builds": 4,
+          "original_pdf": {
+            "bytes": 57317428,
+            "pages": 13
+          },
+          "optimized_pdf": {
+            "bytes": 136685059,
+            "pages": 13
+          }
+        }
+      ],
+      "conversionSeconds": 5.376000875025056
+    },
+    {
+      "name": "mixed",
+      "scan_s": 0.11605862498981878,
+      "image_count": 24,
+      "reference_count": 24,
+      "reference_apply_s": 2.879902957996819,
+      "engines": [
+        {
+          "engine": "pdflatex",
+          "original_s": [
+            0.9256981670041569,
+            0.9219007919891737,
+            0.8704203329980373,
+            0.9255217499448918,
+            0.9232021659845486
+          ],
+          "optimized_s": [
+            1.7978831250220537,
+            1.7958193750237115,
+            1.7908380419830792,
+            1.8557448749779724,
+            1.7897972500068136
+          ],
+          "original_median_s": 0.9232021659845486,
+          "optimized_median_s": 1.7958193750237115,
+          "saved_s": -0.8726172090391628,
+          "speedup": 0.5140840882019991,
+          "reduction_percent": -94.52070642713024,
+          "break_even_builds": null,
+          "original_pdf": {
+            "bytes": 58737983,
+            "pages": 25
+          },
+          "optimized_pdf": {
+            "bytes": 137397734,
+            "pages": 25
+          }
+        },
+        {
+          "engine": "xelatex",
+          "original_s": [
+            4.816086874983739,
+            4.916492249991279,
+            5.022490791976452,
+            4.818192667036783,
+            4.8582360000000335
+          ],
+          "optimized_s": [
+            0.7589613340678625,
+            0.7008616250241175,
+            0.695617376070004,
+            0.7386799579835497,
+            0.699954541050829
+          ],
+          "original_median_s": 4.8582360000000335,
+          "optimized_median_s": 0.7008616250241175,
+          "saved_s": 4.157374374975916,
+          "speedup": 6.931804833561626,
+          "reduction_percent": 85.5737427118791,
+          "break_even_builds": 3,
+          "original_pdf": {
+            "bytes": 57844854,
+            "pages": 25
+          },
+          "optimized_pdf": {
+            "bytes": 137376684,
+            "pages": 25
+          }
+        }
+      ],
+      "conversionSeconds": 6.390337124990765
+    }
+  ],
+  "officialControls": [
+    {
+      "name": "source2e",
+      "engine": "lualatex",
+      "warmup_s": 61.34734637499787,
+      "samples_s": [
+        55.39368183305487,
+        52.83269399998244,
+        51.62944462499581,
+        52.29909749899525,
+        52.552068581979256
+      ],
+      "median_s": 52.552068581979256,
+      "output": {
+        "bytes": 5152545,
+        "pages": 1375
+      }
+    },
+    {
+      "name": "grfguide",
+      "engine": "pdflatex",
+      "warmup_s": 0.48240337503375486,
+      "samples_s": [
+        0.4811540420050733,
+        0.4792780000134371,
+        0.4762611250625923,
+        0.4830342919449322,
+        0.48019058303907514
+      ],
+      "median_s": 0.48019058303907514,
+      "output": {
+        "bytes": 326190,
+        "pages": 18
+      }
+    },
+    {
+      "name": "pgfmanual",
+      "engine": "lualatex",
+      "warmup_s": 204.64130449993536,
+      "samples_s": [
+        206.52699854201637,
+        206.3452368330327,
+        202.81846291699912,
+        204.46918154205196,
+        201.14786275097867
+      ],
+      "median_s": 204.46918154205196,
+      "output": {
+        "bytes": 9108476,
+        "pages": 1273
+      }
+    }
+  ],
+  "sourceCommits": {
+    "latex2e": "796a92eecd7bc4baaaf239d9dfa60cfe0ff4072f",
+    "pgf": "f8665b683f0a9448d7a1f1198d5caf56fa4707dc"
+  }
+}

@@ -2,12 +2,28 @@
 
 [中文](README.zh.md)
 
-**Speed up LaTeX compilation.** Texgo prepares project images as PDFs, keeps them
-up to date, and lets you review reference changes before touching your `.tex` files.
+**Write more. Wait less.**
+
+Don't let another compile break your train of thought. Texgo prepares project images
+as PDFs, keeps them up to date, and asks before changing your `.tex` references.
+**XeLaTeX builds were up to 6.9× faster in our benchmarks.**
+
 Available for Windows, macOS and Linux. Projects stay on your computer.
 
 [Download](https://github.com/yaho7/texgo/releases/latest) ·
 [User guide](desktop/README.md) · [Troubleshooting](docs/troubleshooting.md)
+
+## Get back to writing sooner
+
+The same 24-image project went from **4.86 seconds to 0.70 seconds** for two complete
+XeLaTeX passes. That's **85.6% less waiting**, after the one-time image conversion.
+
+![XeLaTeX compilation benchmarks: 3.9 to 6.9 times faster](docs/images/benchmark-en.svg)
+
+Measured on an Apple M6 with TeX Live 2026, default high quality, and fixed-seed
+synthetic projects. Median of five warm runs; each sample includes two full passes.
+[Full results and methodology](docs/benchmarks/README.md) include conversion cost,
+PDF sizes, pdfLaTeX comparisons and official-document controls.
 
 ## Open, convert, update references
 
@@ -17,9 +33,10 @@ Available for Windows, macOS and Linux. Projects stay on your computer.
 
 Background monitoring refreshes status. Smart Convert can update Texgo-managed
 PDFs, but neither feature edits `.tex` files automatically. Before applying a
-reference plan, Texgo rereads target files and checks their complete fingerprints.
-Changed files stop the write and require a new scan. Save unsaved changes in other
-editors before applying; Desktop cannot inspect their in-memory buffers.
+reference update, the final confirmation silently rescans saved files and rebuilds
+reference locations. Texgo verifies complete file fingerprints before writing; a
+further edit stops the write. Save unsaved changes in other editors before applying;
+Desktop cannot inspect their in-memory buffers.
 
 Operation history provides guarded Undo. Image menus offer rename, retry, temporary
 or permanent ignore, and explicit reconversion. Settings include Chinese/English,
@@ -27,19 +44,18 @@ processing defaults, background behavior, notifications and global shortcuts.
 
 ### Home
 
-![Texgo Home](docs/images/home.jpg)
+![Texgo Home](docs/images/home-en.png)
 
 ### Workspace
 
-![Texgo workspace](docs/images/workspace.jpg)
+![Texgo workspace](docs/images/workspace-en.png)
 
 ### Compare
 
-![Original and PDF comparison](docs/images/compare.jpg)
+![Original and PDF comparison](docs/images/compare-en.png)
 
-Screenshots show the production frontend with deterministic sample data and mocked
-native services. The preview opens a sample project; the installed desktop app opens
-a native file picker. These are UI illustrations, not installed-platform acceptance tests.
+Screenshots use the production frontend with examples from the official PGF/TikZ
+manual and simulated native services. [Artwork sources](docs/images/README.md).
 
 ## Desktop and automation
 
