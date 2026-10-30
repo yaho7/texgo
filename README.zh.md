@@ -52,8 +52,4 @@ Apple M6、TeX Live 2026、默认高质量参数，固定种子生成的合成�
 
 使用 Tauri 2、Rust、React 与 Tailwind CSS。普通推送只做轻量检查，手动构建生成产物；只有与项目版本完全一致的 `v版本号` 标签，在四个平台构建通过后才能发布。Windows 安装包未签名；macOS 签名与公证结果以实际发布工作流为准。
 
-## 贡献者
-
-- [yaho7](https://github.com/yaho7)
-
 [MIT 许可证](LICENSE)。

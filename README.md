@@ -74,8 +74,4 @@ Only an exact `v<manifest version>` tag can publish a release after all four pla
 builds pass. Windows installers are unsigned; macOS signing and notarization results
 must be checked in the release workflow.
 
-## Contributors
-
-- [yaho7](https://github.com/yaho7)
-
 [MIT license](LICENSE).
