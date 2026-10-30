@@ -64,7 +64,7 @@ export function useReviewFlow(ports: Ports) {
     if (currentOperationKind() || decisionRef.current.kind !== "review" || decisionRef.current.conflict) return;
     const expected = decisionRef.current.preview;
     const ids = expected.files.flatMap(file => file.changes.map(change => change.id)).filter(Boolean);
-    if (ids.length) replace(false, ids, expected);
+    if (ids.length) replace(false, ids, expected, true);
   }
   function prepareReferences(originals: boolean, confirmAfter = false) {
     if (!project || currentOperationKind() || decisionRef.current.kind !== "none") return;
@@ -119,13 +119,30 @@ export function useReviewFlow(ports: Ports) {
     }, "repair");
   }
 
-  function replace(undo: boolean, selection: string[] = [], approved?: ChangePreview) {
-    const expected = approved ?? review;
+  function replace(undo: boolean, selection: string[] = [], approved?: ChangePreview, refreshReferences = false) {
+    let expected = approved ?? review;
     if (!project || (!undo && (!expected || (decisionRef.current.kind === "review" && decisionRef.current.conflict)))) return;
     const isCurrent = capture();
+    const originals = reviewOriginals.current;
     void execute(undo ? "undoing" : "applying", async () => {
+      if (refreshReferences) {
+        // Confirmation approves the reference update intent. Saved edits can move
+        // references, so rebuild their locations before submitting the checked write.
+        await refresh();
+        if (!isCurrent()) return;
+        expected = await invoke<ChangePreview>("preview_changes", originals ? {restoreOriginals:true} : undefined);
+        if (!isCurrent()) return;
+        selection = expected.files.flatMap(file => file.changes.map(change => change.id)).filter(Boolean);
+        if (!selection.length) {
+          setReview(null); setQueuedReview(null);
+          setNotice(t("reviewDialog.noReferenceChangesAvailable"));
+          restoreFocus();
+          return;
+        }
+        showReview(expected, "conversion", undefined, originals); setDirectReview(true);
+      }
       let result: ReplacementResult;
-      try { result = await invoke<ReplacementResult>(undo ? "undo_replacements" : "apply_replacements", undo ? undefined : { selection, expected, repair: approved ? false : reviewKind === "repair", ...(reviewOriginals.current ? {restoreOriginals:true} : {}) }); }
+      try { result = await invoke<ReplacementResult>(undo ? "undo_replacements" : "apply_replacements", undo ? undefined : { selection, expected, repair: approved ? false : reviewKind === "repair", ...(originals ? {restoreOriginals:true} : {}) }); }
       catch (reason) {
         if (!isCurrent()) return;
         if (!undo && isReviewConflict(reason) && decisionRef.current.kind === "review") {

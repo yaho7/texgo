@@ -559,6 +559,9 @@ managed PDFs in place and records an independently undoable reference operation.
 The desktop shows affected files before applying the recommended update action. The normal
 flow is Convert, Update references, then Confirm update in the dialog. Opening the
 dialog does not write files. The save reminder appears with the final confirmation.
+Final confirmation silently rescans saved files and rebuilds reference locations before
+applying the fresh plan. The checked write still verifies its fingerprints; a further
+edit after that scan stops the write. Rescan failures never apply the cached plan.
 Detailed per-reference selection remains available as an optional view. Background checks
 and Smart Convert never apply either reference direction. Changing conversion quality
 recommends explicit reconversion instead of treating completed outputs as unchangeable.

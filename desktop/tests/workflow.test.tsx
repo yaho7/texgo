@@ -890,6 +890,55 @@ it("opens a focused confirmation after conversion and never writes on cancellati
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
+it("silently rescans saved edits at final confirmation and applies only fresh reference locations", async () => {
+  convertResponse(["a"]);
+  const user = await openProject();
+  await user.click(await screen.findByRole("button", {name:"更新 1 处引用"}));
+  const dialog = await screen.findByRole("dialog", {name:"更新 1 处引用？"});
+  const fresh: ChangePreview = {referenceCount:1,files:[{path:"/paper/main.tex",fingerprint:"saved-edit-hash",changes:[{...changes.files[0].changes[0],id:"moved-ref",line:38}]}]};
+  const scan = deferred<Project>();
+  handlers.refresh_workspace = () => scan.promise;
+  handlers.preview_changes = () => structuredClone(fresh);
+  const start = calls.length;
+  await user.click(within(dialog).getByRole("button", {name:"确认更新"}));
+  expect(within(dialog).getByRole("button", {name:"确认更新"})).toBeDisabled();
+  expect(calls.slice(start).some(call=>call.command==="apply_replacements")).toBe(false);
+  handlers.refresh_workspace = () => structuredClone(backend);
+  await act(async () => scan.resolve(structuredClone(backend)));
+  await waitFor(() => expect(calls.find(call=>call.command==="apply_replacements")?.args).toMatchObject({selection:["moved-ref"],expected:fresh}));
+  const commands = calls.slice(start).map(call=>call.command);
+  expect(commands.indexOf("refresh_workspace")).toBeLessThan(commands.indexOf("preview_changes"));
+  expect(commands.indexOf("preview_changes")).toBeLessThan(commands.indexOf("apply_replacements"));
+  await waitFor(()=>expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+});
+
+it.each(["refresh_workspace", "preview_changes"])("does not write when confirmation-time %s fails", async command => {
+  convertResponse(["a"]);
+  const user = await openProject();
+  await user.click(await screen.findByRole("button", {name:"更新 1 处引用"}));
+  const dialog = await screen.findByRole("dialog", {name:"更新 1 处引用？"});
+  handlers[command] = () => {throw new Error("重新定位引用失败");};
+  await user.click(within(dialog).getByRole("button", {name:"确认更新"}));
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent("重新定位引用失败");
+  expect(calls.some(call=>call.command==="apply_replacements")).toBe(false);
+  expect(within(dialog).getByRole("button", {name:"取消"})).toBeEnabled();
+});
+
+it("finishes without writing if saved edits have already removed all pending references", async () => {
+  convertResponse(["a"]);
+  const user = await openProject();
+  await user.click(await screen.findByRole("button", {name:"更新 1 处引用"}));
+  const dialog = await screen.findByRole("dialog", {name:"更新 1 处引用？"});
+  handlers.refresh_workspace = () => {
+    changes = {files:[],referenceCount:0};
+    setStatus({pendingReferences:0});
+    return structuredClone(backend);
+  };
+  await user.click(within(dialog).getByRole("button", {name:"确认更新"}));
+  await waitFor(()=>expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(calls.some(call=>call.command==="apply_replacements")).toBe(false);
+});
+
 it("recommends explicit reconversion after changing quality on completed images", async () => {
   convertResponse(["a","b"], false);
   handlers.convert_images = ({options}) => convertResponse((options as ConversionOptions).imageIds, false);
@@ -916,8 +965,10 @@ it("prepares original-reference changes separately and applies them only after a
   const confirmation = await screen.findByRole("dialog", {name:"引用改回原图？"});
   expect(confirmation).toHaveTextContent("已生成的 PDF 会保留");
   expect(calls.some(call=>call.command==="apply_replacements")).toBe(false);
+  reverse.files[0].fingerprint = "saved-original-plan";
+  reverse.files[0].changes[0] = {...reverse.files[0].changes[0],id:"moved-restore-a",line:28};
   await user.click(within(confirmation).getByRole("button", {name:"确认改回"}));
-  await waitFor(() => expect(calls.find(call=>call.command==="apply_replacements")?.args).toMatchObject({selection:["restore-a"],expected:reverse,restoreOriginals:true}));
+  await waitFor(() => expect(calls.find(call=>call.command==="apply_replacements")?.args).toMatchObject({selection:["moved-restore-a"],expected:reverse,restoreOriginals:true}));
 });
 
 
