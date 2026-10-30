@@ -77,6 +77,6 @@ must be checked in the release workflow.
 ## Contributors
 
 - [yaho7](https://github.com/yaho7)
-- Codex
+- [OpenAI](https://github.com/openai)
 
 [MIT license](LICENSE).
