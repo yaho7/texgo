@@ -317,6 +317,8 @@ try {
   await renamed.getByRole("radio", { name: "对比", exact: true }).click();
   const divider = renamed.getByRole("slider", { name: "原图与 PDF 分隔线" });
   await divider.focus(); await renamed.keyboard.press("Shift+ArrowRight");
+  const renameRow = renamed.getByRole("button", { name: "预览 figures/response-curve.png", exact: true }).locator("xpath=ancestor::tr");
+  const rowBeforeRename = await renameRow.boundingBox();
   const filename = renamed.getByText("response-curve", { exact: true });
   assert.equal(await filename.evaluate((element) => {
     const bounds = element.getBoundingClientRect();
@@ -327,6 +329,8 @@ try {
   assert.equal(renameDoubleClick?.tag, "SPAN", "Filename double-click must reach the text handler, not the stretched row button");
   const renameInput = renamed.getByRole("textbox", { name: "图片新名称" });
   assert.deepEqual(await renameInput.evaluate((input) => [input.selectionStart, input.selectionEnd]), [0, "response-curve".length]);
+  const rowWhileEditing = await renameInput.locator("xpath=ancestor::tr").boundingBox();
+  assert.ok(rowBeforeRename && rowWhileEditing && Math.abs(rowBeforeRename.height - rowWhileEditing.height) < 1, "Inline editing must preserve row height");
   await screenshot(renamed, "15-inline-rename-1440");
   await renameInput.fill("pressure-map"); await renameInput.press("Enter");
   await renamed.getByRole("button", { name: "应用重命名", exact: true }).click();

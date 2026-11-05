@@ -108,7 +108,7 @@ h1, h2, h3, p { margin: 0; }
 .asset-panel tbody tr[data-state="selected"] td,
 .asset-panel tbody tr[data-state="selected"]:hover td,
 .asset-panel tbody tr[data-state="selected"]:focus-within td { background: var(--library-selection-bg); transition: none; }
-.asset-preview-trigger { padding: 0; font-weight: 500; }
+.asset-preview-trigger { min-height: 24px; padding: 0; font-weight: 500; }
 /* Stretch the native preview button across its row, below the separate selection cell. */
 .asset-row { position: relative; isolation: isolate; }
 /* Flat underpaint joins fractional cell edges; rounded end cells keep their corners. */
@@ -343,7 +343,7 @@ h1, h2, h3, p { margin: 0; }
 
 .asset-rename { display: flex; min-width: 0; flex-direction: column; gap: 4px; animation: badge-enter var(--motion-fast) var(--ease-out); }
 .asset-rename-field { display: flex; min-width: 0; align-items: center; gap: 4px; }
-.asset-rename-field input { min-width: 0; height: 30px; }
+.asset-rename-field input { min-width: 0; height: 24px; padding-block: 1px; }
 .asset-rename-field > span { flex: none; color: var(--muted-foreground); font-size: 12px; }
 /* Keep filename hit-testing above the stretched single-click row target. */
 .asset-filename { position: relative; z-index: 1; animation: badge-enter var(--motion-normal) var(--ease-out); }
