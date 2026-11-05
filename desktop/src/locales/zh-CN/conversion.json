@@ -12,5 +12,6 @@
   "archiveRecoveryDescription": "这份旧记录对应的 TeX 文件已经变动，无法安全恢复。归档会在项目的 .texgo 目录保留原记录，以当前 TeX 和 PDF 为新的撤销起点。之前的批次仍可查看。",
   "archiveRecovery": "归档恢复记录",
   "archivingRecovery": "正在归档…",
-  "recoveryArchived": "旧版恢复记录已归档，可以重新点击转换。"
+  "recoveryArchived": "旧版恢复记录已归档，可以重新点击转换。",
+  "recoveryNeedsAttention": "继续前需要处理旧版引用恢复记录"
 }

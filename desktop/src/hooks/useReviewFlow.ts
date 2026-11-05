@@ -63,6 +63,10 @@ export function useReviewFlow(ports: Ports) {
   }, [project?.stateFingerprint, project?.status.pendingReferences, pendingPreview, decision.kind, currentOperationKind()]);
   function updateReferences() {
     if (currentOperationKind() || decisionRef.current.kind !== "none") return;
+    if (project?.staleRecoveryFingerprint) {
+      requestRecoveryArchive(project.mainFile, project.staleRecoveryFingerprint);
+      return;
+    }
     if (!pendingPreview) { prepareReferences(false, true); return; }
     const ids = pendingPreview.files.flatMap(file => file.changes.map(change => change.id)).filter(Boolean);
     if (!ids.length) return;

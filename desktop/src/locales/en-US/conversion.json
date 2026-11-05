@@ -12,5 +12,6 @@
   "archiveRecoveryDescription": "The TeX files have changed since this record was created. Archiving keeps a copy in the project's .texgo folder and makes the current TeX and PDFs the new undo baseline. Earlier batches remain visible in history.",
   "archiveRecovery": "Archive recovery record",
   "archivingRecovery": "Archiving…",
-  "recoveryArchived": "The legacy recovery record is archived. You can start conversion again."
+  "recoveryArchived": "The legacy recovery record is archived. You can start conversion again.",
+  "recoveryNeedsAttention": "The legacy reference recovery record needs attention before continuing"
 }

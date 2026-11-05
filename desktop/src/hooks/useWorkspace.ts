@@ -48,7 +48,7 @@ export function useWorkspace(ports: WorkspacePorts) {
     setFailedRecent(null);
     const saved = same || rememberWorkspace({ path: next.mainFile });
     setRecents(readRecents());
-    latest.current.onNotice(saved ? message ?? "" : t("workspace.projectOpenedButTheRecentEntryCouldNotBeSaved"));
+    if (!same || message !== undefined) latest.current.onNotice(saved ? message ?? "" : t("workspace.projectOpenedButTheRecentEntryCouldNotBeSaved"));
     await latest.current.loadHistory();
   }
   async function refresh(message?: string) {

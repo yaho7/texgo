@@ -41,7 +41,7 @@ it("accepts only observation events from the current native session", async () =
   });
   expect(p.workspace.acceptProject).not.toHaveBeenCalled();
   await act(async () => { result.current.onObserved({ project, session: 8 }); });
-  expect(p.workspace.acceptProject).toHaveBeenCalledWith(project, true, "项目状态已更新");
+  expect(p.workspace.acceptProject).toHaveBeenCalledWith(project, true);
 });
 it("defers native observations while a decision or foreground surface is held", async () => {
   const p = ports(); p.held = true;
@@ -50,7 +50,7 @@ it("defers native observations while a decision or foreground surface is held", 
   expect(p.workspace.acceptProject).not.toHaveBeenCalled(); p.held = false;
   await act(async () => { rerender(); });
   expect(invoke).toHaveBeenCalledWith("refresh_workspace");
-  expect(p.workspace.acceptProject).toHaveBeenCalledWith(project, true, "项目状态已更新");
+  expect(p.workspace.acceptProject).toHaveBeenCalledWith(project, true);
 });
 it("does not let a delayed identity request revive a closed and reopened path", async () => {
   let resolve!: (value: unknown) => void; const oldIdentity = new Promise((yes) => { resolve = yes; });
@@ -86,7 +86,7 @@ it("reconciles a native update that arrives before the current identity query re
   await act(async () => { result.current.onObserved({ project, session: 8 }); });
   expect(p.workspace.acceptProject).not.toHaveBeenCalled();
   await act(async () => { resolve({ root: project.root, mainFile: project.mainFile, session: 8 }); });
-  expect(p.workspace.acceptProject).toHaveBeenCalledWith(project, true, "项目状态已更新");
+  expect(p.workspace.acceptProject).toHaveBeenCalledWith(project, true);
 });
 
 it("keeps hidden native invalidation queued through unrelated rerenders", async () => {
@@ -97,7 +97,7 @@ it("keeps hidden native invalidation queued through unrelated rerenders", async 
   expect(p.workspace.acceptProject).not.toHaveBeenCalled();
   visibility.mockReturnValue(false);
   await act(async () => { window.dispatchEvent(new Event("focus")); rerender(); });
-  expect(p.workspace.acceptProject).toHaveBeenCalledWith(project, true, "项目状态已更新");
+  expect(p.workspace.acceptProject).toHaveBeenCalledWith(project, true);
 });
 it("defers a poll response when the window becomes hidden before it resolves", async () => {
   let resolve!: (value: Project) => void; const pending = new Promise<Project>((yes) => { resolve = yes; });
@@ -110,5 +110,5 @@ it("defers a poll response when the window becomes hidden before it resolves", a
   expect(invoke).not.toHaveBeenCalledWith("refresh_workspace");
   visibility.mockReturnValue(false);
   await act(async () => { window.dispatchEvent(new Event("focus")); rerender(); });
-  expect(p.workspace.acceptProject).toHaveBeenCalledWith(project, true, "项目状态已更新");
+  expect(p.workspace.acceptProject).toHaveBeenCalledWith(project, true);
 });

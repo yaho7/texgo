@@ -62,6 +62,7 @@ export default function App() {
   const preferencesRef = useRef(preferences);
   preferencesRef.current = preferences;
   const [settingsPage, setSettingsPage] = useState(false);
+  const [outputSettingsOpen, setOutputSettingsOpen] = useState(false);
   const [homePage, setHomePage] = useState(false);
   const [pendingRename, setPendingRename] = useState<{ id:string; name:string; fingerprint:string; mainFile:string; preview:RenamePreview } | null>(null);
   const [renameReviewOpen, setRenameReviewOpen] = useState(false);
@@ -88,9 +89,12 @@ export default function App() {
   const workspace = useWorkspace({
     preferences: () => preferencesRef.current, execute, isBusy: () => Boolean(currentOperationKind()),
     onAccept: (next, same) => {
-      if (!same) { clearAssetState(); setHomePage(false); setSettingsPage(false); setView("assets"); historyDomain.reset(); }
+      if (!same) { clearAssetState(); setHomePage(false); setSettingsPage(false); setOutputSettingsOpen(false); setView("assets"); historyDomain.reset(); }
       selection.acceptSnapshot(next, same);
-      setResults(Object.fromEntries(next.convertedImages.map((image) => [image.id, image])));
+      setResults((previous) => ({
+        ...Object.fromEntries(same ? Object.entries(previous).filter(([id, result]) => result.cancelled && next.status.pendingImageIds.includes(id)) : []),
+        ...Object.fromEntries(next.convertedImages.map((image) => [image.id, image])),
+      }));
       setRevision((value) => value + 1);
     },
     onReset: () => { setHomePage(true); clearAssetState(); historyDomain.reset(); setSettingsPage(false); setDrawerOpen(false); },
@@ -119,7 +123,7 @@ export default function App() {
   });
   const { history, load: loadHistory, undoConversion } = historyDomain;
   const canReview = (project?.status.pendingReferences ?? 0) > 0;
-  const conversion = useConversion({ workspace, selection, execute, currentOperationKind, setError, setNotice, rememberFocus, restoreFocus, preferences, reviewFlow, loadHistory, setHighlightBatch });
+  const conversion = useConversion({ workspace, selection, execute, currentOperationKind, setError, setNotice, rememberFocus, restoreFocus, preferences, reviewFlow, loadHistory, setHighlightBatch, showOutputSettings: () => setOutputSettingsOpen(true) });
   conversionRef.current = conversion;
   const { completion, results, progress, cancelRequested, setCompletion, setResults, convert, cancelConversion, allowManualConversionPanel } = conversion;
   const { review, problemId, undoEntry, conversionBlocked, repairCandidates, setReview, setProblemId, setConversionBlocked, reviewChanges, inspectProblem, chooseRepair, locateRepair, replace } = reviewFlow;
@@ -127,7 +131,7 @@ export default function App() {
 
   const decisionOpen = reviewFlow.decision.kind !== "none";
   const staleRecovery = reviewFlow.decision.kind === "stale-recovery";
-  const background = useBackgroundAutomation({ workspace, selection, execute, currentOperationKind, setError, setNotice,
+  const background = useBackgroundAutomation({ workspace, selection, execute: (kind, action) => execute(kind, action, undefined, kind === "updating"), currentOperationKind, setError, setNotice,
     conversion, reviewFlow, historyDomain, operationDomain: { current: currentOperation, acquire: acquireOperation, release: releaseOperation },
     autoWatch: preferences.autoWatch, held: decisionOpen || completion !== null || homeVisible || Boolean(pendingRename),
     onNavigate: (payload) => notificationNavigate.current(payload), setRevision });
@@ -190,11 +194,11 @@ export default function App() {
     return state.status === "running" ? state.kind : null;
   }
 
-  async function execute(kind: Operation, action: () => Promise<void>, decisionAction?: DecisionAction) {
+  async function execute(kind: Operation, action: () => Promise<void>, decisionAction?: DecisionAction, preserveError = false) {
     if (!mayStartOperation(reviewFlow.decisionRef.current, kind, decisionAction)) return;
     const isMounted = captureAppLifetime();
     const generation = workspace.generation.current;
-    try { await runOperation(kind, "foreground", async () => { setError(null); await action(); if (isMounted()) workspace.recordActivity(); }); }
+    try { await runOperation(kind, "foreground", async () => { if (!preserveError) setError(null); await action(); if (isMounted()) workspace.recordActivity(); }); }
     catch (reason) { if (isMounted() && (workspace.generation.current === generation || !projectRef.current)) setError(errorMessage(reason)); }
   }
 
@@ -317,9 +321,11 @@ export default function App() {
     ? (project?.status.convertibleImageIds ?? []).filter(id => !ignored.has(id)) : [];
   const commandStatus = reviewFlow.pendingRestore && reviewFlow.pendingPreview ? {...project!.status, pendingReferences:reviewFlow.pendingPreview.referenceCount, nextAction:"reviewReferences" as const} : project?.status;
   function nextAction() {
+    if (currentOperationKind() || completion !== null) return;
     if (pendingRename) { setRenameReviewOpen(true); return; }
-    if (!project || busy || project.status.blockingReason) return;
-    if (reviewFlow.pendingRestore || project.status.nextAction === "reviewReferences") reviewFlow.updateReferences();
+    if (!project || project.status.blockingReason) return;
+    if (selectionMode) convert("selected");
+    else if (reviewFlow.pendingRestore || project.status.nextAction === "reviewReferences") reviewFlow.updateReferences();
     else if (reconvertIds.length) convert("reconvert", reconvertIds);
     else if (project.status.nextAction === "convertImages") convert();
     else if (project.status.nextAction === "resolveProblems") {
@@ -375,7 +381,7 @@ export default function App() {
           </div>
           <HistoryView active={view === "history"} onReturn={() => setView("assets")} highlightId={highlightBatch} entries={history} busy={busy} onUndo={(entry) => { rememberFocus(); setError(null); reviewFlow.requestUndo(entry); }} />
         </main>
-        <div ref={commandRef} className="workspace-command" hidden={settingsPage || homeVisible}><CommandBar pendingRename={pendingRename ? {referenceCount:pendingRename.preview.references.referenceCount} : undefined} status={commandStatus!} settings={settings} selectionMode={selectionMode} selectedCount={selected.size} busy={busy} converting={operation === "converting"} progress={progress} completion={completion} cancelRequested={cancelRequested}
+        <div ref={commandRef} className="workspace-command" hidden={settingsPage || homeVisible}><CommandBar pendingRename={pendingRename ? {referenceCount:pendingRename.preview.references.referenceCount} : undefined} status={commandStatus!} settings={settings} settingsOpen={outputSettingsOpen} onSettingsOpenChange={setOutputSettingsOpen} staleRecovery={Boolean(project.staleRecoveryFingerprint)} selectionMode={selectionMode} selectedCount={selected.size} busy={busy} converting={operation === "converting"} progress={progress} completion={completion} cancelRequested={cancelRequested}
           onAction={nextAction} onUpdateReferences={() => reviewFlow.pendingRestore ? reviewFlow.prepareReferences(false) : reviewFlow.updateReferences()} onRestoreReferences={reviewFlow.restoreReferences} restoringReferences={reviewFlow.pendingRestore} reconvertIds={reconvertIds} canUndo={history.some(entry=>entry.canUndo)} onUndo={() => { const entry=history.find(entry=>entry.canUndo); if(entry) reviewFlow.requestUndo(entry); }} referencesReady={Boolean(reviewFlow.pendingPreview)} onConvert={convert} onManualOpen={allowManualConversionPanel} currentImageId={activeId} convertibleIds={[...convertibleIds]} onSettings={updateSettings} onSelectionMode={(enabled) => { setView("assets"); selection.changeSelectionMode(enabled); }} onCancel={() => { void cancelConversion(); }} /></div>
       </>}
       {operation && operation !== "converting" && !homeVisible && !settingsPage && <div className="activity-notice" role="status"><LoaderCircle className="spin" aria-hidden="true" />{operationLabels[operation]}</div>}

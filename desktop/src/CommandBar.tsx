@@ -39,6 +39,9 @@ interface Props {
   onConvert?: (intent: "pending" | "selected" | "reconvert", imageIds?: string[]) => void;
   currentImageId?: string | null;
   convertibleIds?: string[];
+  settingsOpen?: boolean;
+  onSettingsOpenChange?: (open: boolean) => void;
+  staleRecovery?: boolean;
   onSettings: (settings: ConversionSettings) => void;
   onSelectionMode: (enabled: boolean) => void;
   onCancel: () => void;
@@ -47,7 +50,9 @@ interface Props {
 
 export default function CommandBar(props: Props) {
   const { status, settings } = props;
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [localSettingsOpen, setLocalSettingsOpen] = useState(false);
+  const settingsOpen = props.settingsOpen ?? localSettingsOpen;
+  const setSettingsOpen = props.onSettingsOpenChange ?? setLocalSettingsOpen;
   const [manualOpen, setManualOpen] = useState(false);
   const convertibleIds = props.convertibleIds ?? status.pendingImageIds;
   const currentConvertible = Boolean(props.currentImageId && convertibleIds.includes(props.currentImageId));
@@ -60,9 +65,10 @@ export default function CommandBar(props: Props) {
   }, [manualUnavailable]);
   function convert(intent: "pending" | "selected" | "reconvert", ids?: string[]) {
     if (working || blocked) return;
-    if (Object.keys(issues).length) { setSettingsOpen(true); return; }
     setManualOpen(false);
-    if (props.onConvert) props.onConvert(intent, ids); else props.onAction();
+    if (props.onConvert) props.onConvert(intent, ids);
+    else if (Object.keys(issues).length) setSettingsOpen(true);
+    else props.onAction();
   }
   const preset = conversionPreset(Number(settings.dpi), Number(settings.jpegQuality));
   const presetLabel = preset?.label ?? t("commandBar.custom");
@@ -79,6 +85,7 @@ export default function CommandBar(props: Props) {
   const message = props.converting ? `${label} · ${props.progress?.name || t("commandBar.preparingImageUpdates")}`
     : props.completion !== null ? t("commandBar.processedValueImages2", { arg0: props.completion })
     : blocked ? t("commandBar.operationPaused")
+    : props.staleRecovery ? t("conversion.recoveryNeedsAttention")
     : props.selectionMode ? t("commandBar.selectImagesToProcess")
     : status.nextAction === "reviewReferences" ? ""
     : status.nextAction === "convertImages" ? ""
@@ -100,15 +107,10 @@ export default function CommandBar(props: Props) {
   }, [departing, departingLabel]);
   function submit() {
     if (working || blocked) return;
-    if (status.nextAction === "convertImages" && Object.keys(issues).length) {
-      setSettingsOpen(true);
-      requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[aria-invalid="true"]')?.focus());
-      return;
-    }
     if (recommendedConvert) convert(props.selectionMode ? "selected" : qualityReconvert ? "reconvert" : "pending", qualityReconvert && !props.selectionMode ? props.reconvertIds : undefined); else props.onAction();
   }
   const idle = status.nextAction === "upToDate" && !recommendedConvert && !props.selectionMode && !props.busy && props.completion === null && !blocked;
-  const progress = props.progress && props.progress.total > 0 ? props.progress.current / props.progress.total * 100 : 0;
+  const progress = props.progress && props.progress.status !== "preparing" && props.progress.total > 0 ? props.progress.current / props.progress.total * 100 : null;
   const primaryAction = <Button className="command-action" data-step={status.nextAction === "reviewReferences" ? "references" : "conversion"} disabled={props.busy || props.completion !== null || blocked || (recommendedConvert && count === 0)} onClick={submit}>
         {status.nextAction === "reviewReferences" ? <FileCheck2 data-icon="inline-start" aria-hidden="true" /> : null}<span className="command-action-label-stage">{departingLabel && <span className="command-action-label-exit" aria-hidden="true">{departingLabel}</span>}<span key={transitionKey} className="command-action-label-enter">{label}</span></span>
       </Button>;
@@ -130,7 +132,10 @@ export default function CommandBar(props: Props) {
     {!props.converting && props.completion === null && (
         <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
           <PopoverTrigger asChild><Button variant="ghost" size="sm" className="command-parameters" disabled={props.busy} aria-label={t("commandBar.outputSettingsValueValueDPI", { arg0: presetLabel, arg1: settings.dpi })}><SlidersHorizontal data-icon="inline-start" aria-hidden="true" />{presetLabel} · {settings.dpi} DPI<ChevronDown data-icon="inline-end" aria-hidden="true" /></Button></PopoverTrigger>
-          <PopoverContent side="top" align="end" className="command-settings" aria-label={t("commandBar.outputSettings")}>
+          <PopoverContent side="top" align="end" className="command-settings" aria-label={t("commandBar.outputSettings")} onOpenAutoFocus={(event) => {
+            const invalid = document.querySelector<HTMLInputElement>('.command-settings input[aria-invalid="true"]');
+            if (invalid) { event.preventDefault(); invalid.focus(); }
+          }}>
             <FieldSet disabled={props.busy}><FieldLegend>{t("commandBar.outputSettings")}</FieldLegend><FieldGroup>
               <Field><FieldLabel id="conversion-preset-label">{t("commandBar.preset")}{!preset && <span className="text-muted-foreground"> {t("commandBar.custom2")}</span>}</FieldLabel>
                 <ToggleGroup type="single" variant="outline" value={preset?.id ?? ""} aria-labelledby="conversion-preset-label" onValueChange={(value) => { const next = conversionPresets.find((item) => item.id === value); if (next) props.onSettings({ ...settings, dpi: String(next.dpi), jpegQuality: String(next.jpegQuality) }); }}>

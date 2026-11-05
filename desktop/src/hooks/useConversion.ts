@@ -14,9 +14,10 @@ interface Ports extends WorkflowPorts {
   reviewFlow: ReturnType<typeof useReviewFlow>;
   loadHistory: HistoryDomain["load"];
   setHighlightBatch: Setter<string | null>;
+  showOutputSettings: () => void;
 }
 export function useConversion(ports: Ports) {
-  const { workspace, selection, execute, currentOperationKind, setError, setNotice, rememberFocus, preferences, reviewFlow, loadHistory, setHighlightBatch } = ports;
+  const { workspace, selection, execute, currentOperationKind, setError, setNotice, rememberFocus, preferences, reviewFlow, loadHistory, setHighlightBatch, showOutputSettings } = ports;
   const { project, settings, acceptProject, refresh } = workspace;
   const { selectionMode, selected, convertibleIds } = selection;
   const { setReview, setConversionBlocked } = reviewFlow;
@@ -40,25 +41,22 @@ export function useConversion(ports: Ports) {
   }
 
   function convert(intent: ConversionIntent = selectionMode ? "selected" : "pending", explicitIds?: string[]) {
-    if (!project || currentOperationKind() || reviewFlow.decisionRef.current.kind !== "none" || project.status.blockingReason) return;
-    if (canReview && !preferences.allowUnreviewed) { rememberFocus(); setConversionBlocked(true); return; }
-    const issues = settingsIssues(settings);
-    const first = (["dpi", "jpegQuality", "outputDir"] as const).find((key) => issues[key]);
-    if (first) {
-      document.getElementById({ dpi: "conversion-dpi", jpegQuality: "conversion-quality", outputDir: "conversion-output" }[first])?.focus();
-      return;
-    }
+    if (!project || currentOperationKind() || completionVisible() || reviewFlow.decisionRef.current.kind !== "none") return;
+    if (project.status.blockingReason) { setError(project.status.blockingReason); return; }
     const imageIds = intent === "pending" ? project.status.pendingImageIds : (explicitIds ?? [...selected]).filter((id) => convertibleIds.has(id));
     if (!imageIds.length) return;
     if (project.staleRecoveryFingerprint) {
       reviewFlow.requestRecoveryArchive(project.mainFile, project.staleRecoveryFingerprint);
       return;
     }
+    if (canReview && !preferences.allowUnreviewed) { rememberFocus(); setConversionBlocked(true); return; }
+    if (Object.keys(settingsIssues(settings)).length) { showOutputSettings(); return; }
     const isCurrent = capture();
     void execute("converting", async () => {
       setReview(null);
       setHighlightBatch(null);
-      setProgress(null);
+      setNotice("");
+      setProgress({ current: 0, total: imageIds.length, name: "", status: "preparing" });
       cancelRef.current = false;
       setCancelRequested(false);
       setResults((previous) => Object.fromEntries(Object.entries(previous).filter(([id]) => !imageIds.includes(id))));
@@ -68,11 +66,14 @@ export function useConversion(ports: Ports) {
       subscriptions.current.add(dispose);
       function keep(stop: () => void) { if (!isCurrent()) { stop(); return; } stops.push(stop); }
       try {
-        keep(await listen<ConversionProgress>("conversion-progress", ({ payload }) => { if (acceptingEvents && isCurrent()) setProgress(payload); }));
-        if (!isCurrent()) return;
-        keep(await listen<ImageResult>("conversion-result", ({ payload }) => {
-          if (acceptingEvents && isCurrent() && imageIds.includes(payload.id)) setResults((previous) => ({ ...previous, [payload.id]: payload }));
-        }));
+        // Live events enhance progress and previews. The command response is the
+        // source of truth and can still complete if either subscription fails.
+        await Promise.allSettled([
+          listen<ConversionProgress>("conversion-progress", ({ payload }) => { if (acceptingEvents && isCurrent()) setProgress(payload); }).then(keep),
+          listen<ImageResult>("conversion-result", ({ payload }) => {
+            if (acceptingEvents && isCurrent() && imageIds.includes(payload.id)) setResults((previous) => ({ ...previous, [payload.id]: payload }));
+          }).then(keep),
+        ]);
         if (!isCurrent()) return;
         if (cancelRef.current) { setNotice(t("conversion.cancelledNoImagesCompleted")); return; }
         const result = await invoke<ConversionResult>("convert_images", { options: conversionOptions(settings, imageIds), intent });
@@ -83,15 +84,16 @@ export function useConversion(ports: Ports) {
           if (!next[id]) next[id] = { id, pdfPath: null, bytes: null, cached: false, error: result.cancelled ? null : t("conversion.noProcessingResultReturned"), cancelled: result.cancelled };
         }
         setResults((previous) => ({ ...previous, ...next }));
-        selection.clearSelection();
         const succeeded = result.images.filter((image) => image.pdfPath && !image.error).length;
         const failed = Object.values(next).filter((image) => image.error).length;
-        setNotice(result.cancelled ? t("conversion.cancelledValueImagesCompleted", { arg0: succeeded }) : t("conversion.updatedValueImagesValue", { arg0: succeeded, arg1: failed ? t("conversion.valueImagesNeedAttention", { arg0: failed }) : "" }));
+        if (!result.cancelled && !failed) selection.clearSelection();
+        else selection.removeSelected(result.images.filter((image) => image.pdfPath && !image.error).map((image) => image.id));
+        const notice = result.cancelled ? t("conversion.cancelledValueImagesCompleted", { arg0: succeeded }) : t("conversion.updatedValueImagesValue", { arg0: succeeded, arg1: failed ? t("conversion.valueImagesNeedAttention", { arg0: failed }) : "" });
         const fresh = await invoke<Project>("refresh_workspace");
         if (!isCurrent() || fresh.mainFile !== project.mainFile) return;
-        await acceptProject(fresh, true, result.cancelled ? t("conversion.cancelledValueImagesCompleted", { arg0: succeeded }) : t("conversion.updatedValueImagesValue", { arg0: succeeded, arg1: failed ? t("conversion.valueImagesNeedAttention", { arg0: failed }) : "" }));
+        await acceptProject(fresh, true, notice);
         if (!isCurrent()) return;
-        if (succeeded > 0) setCompletion(succeeded);
+        if (succeeded > 0 && !result.cancelled && !failed) setCompletion(succeeded);
         if (fresh.status.pendingReferences > 0) {
           const preview = await invoke<ChangePreview>("preview_changes");
           if (!isCurrent()) return;

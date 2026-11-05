@@ -39,8 +39,9 @@ function setStatus(update: Partial<WorkspaceStatus>) {
 }
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((yes) => { resolve = yes; });
-  return { promise, resolve };
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
 }
 function convertResponse(ids: string[], references = true): ConversionResult {
   const images = ids.map((id) => ({ id, pdfPath: `/paper/texgo-pdf/${id}.pdf`, bytes: 5000, cached: false, error: null }));
@@ -117,6 +118,32 @@ it("asks before archiving an unusable legacy recovery record and leaves conversi
   await user.click(convert);
   await waitFor(() => expect(calls.some(({ command }) => command === "convert_images")).toBe(true));
 });
+
+it("opens invalid output settings from the keyboard conversion action and focuses the field", async () => {
+  const user = await openProject();
+  await user.click(screen.getByRole("button", { name: /输出参数/ }));
+  const directory = screen.getByLabelText("输出目录");
+  await user.clear(directory);
+  await user.type(directory, "../unsafe");
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByLabelText("输出目录")).not.toBeInTheDocument());
+  fireEvent.keyDown(window, { key: "Enter", metaKey: true });
+  await waitFor(() => expect(screen.getByLabelText("输出目录")).toHaveFocus());
+  expect(calls.some(({ command }) => command === "convert_images")).toBe(false);
+});
+
+it("keeps a native conversion error visible after a deferred workspace refresh", async () => {
+  const pending = deferred<ConversionResult>();
+  handlers.convert_images = () => pending.promise;
+  const user = await openProject();
+  await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
+  await waitFor(() => expect(calls.some(({ command }) => command === "convert_images")).toBe(true));
+  await act(async () => { await emit("workspace-updated", structuredClone(backend)); });
+  await act(async () => pending.reject("输出目录包含原图片，请使用独立的新目录"));
+  await waitFor(() => expect(calls.filter(({ command }) => command === "refresh_workspace")).toHaveLength(2));
+  await waitFor(() => expect(screen.getByRole("button", { name: "转换 2 张图片" })).toBeEnabled());
+  expect(screen.getByRole("alert")).toHaveTextContent("输出目录包含原图片，请使用独立的新目录");
+});
 async function menu(user: ReturnType<typeof userEvent.setup>, name: string) {
   await user.click(screen.getByRole("button", { name: "更多操作" }));
   await user.click(await screen.findByRole("menuitem", { name: new RegExp(`^${name}`) }));
@@ -125,6 +152,14 @@ async function selectPartial(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "更多转换操作" }));
   await user.click(await screen.findByRole("menuitem", { name: "选择图片…" }));
 }
+it("uses the selected images for the keyboard action when the project has no pending images", async () => {
+  setStatus({ pendingImageIds: [], nextAction: "resolveProblems" });
+  const user = await openProject();
+  await selectPartial(user);
+  await user.click(screen.getByRole("checkbox", { name: "选择 figures/beta.jpg" }));
+  fireEvent.keyDown(window, { key: "Enter", metaKey: true });
+  await waitFor(() => expect(calls.find(({ command }) => command === "convert_images")?.args).toMatchObject({ intent: "selected", options: { imageIds: ["b"] } }));
+});
 async function convertAndReview(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
   await user.click(await screen.findByRole("button", { name: "查看变更" }));
@@ -327,6 +362,7 @@ describe("LaTeX 项目唯一工作流", () => {
     const pending = deferred<ConversionResult>(); handlers.convert_images = () => pending.promise;
     const user = await openProject(); await user.click(screen.getByRole("button", { name: "转换 2 张图片" }));
     await waitFor(() => expect(calls.some((call) => call.command === "convert_images")).toBe(true));
+    expect(screen.getByRole("progressbar", { name: "图片更新进度" })).not.toHaveAttribute("aria-valuenow");
     await act(async () => { await emit("conversion-progress", { current: 1, total: 2, name: "alpha.png", status: "done" }); });
     expect(screen.getAllByRole("status").some((element) => element.textContent?.includes("正在转换 1 / 2"))).toBe(true);
     expect(screen.queryByRole("button", { name: /正在更新/ })).not.toBeInTheDocument();
@@ -337,6 +373,7 @@ describe("LaTeX 项目唯一工作流", () => {
     expect(calls.some((call) => call.command === "cancel_conversion")).toBe(true);
     await act(async () => pending.resolve({ images: [], cancelled: true }));
     await screen.findByRole("button", { name: "转换 2 张图片" });
+    expect(screen.getByText("已取消：0 张已完成")).toBeVisible();
   });
   it("the Command Bar follows background Smart Convert status and does not steal active selection", async () => {
     const user = await openProject();
