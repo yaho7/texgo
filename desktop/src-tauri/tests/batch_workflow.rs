@@ -1,5 +1,5 @@
 use std::{collections::HashSet, fs, path::Path, sync::atomic::AtomicBool};
-use texgo_desktop::{ConversionOptions, ReplacementPlan, Workspace};
+use texgo_desktop::{ConversionIntent, ConversionOptions, ReplacementPlan, Workspace};
 
 const ORIGINAL: &str = "\\includegraphics{plot.png}\n\\includegraphics{plot.png}\n";
 
@@ -136,6 +136,52 @@ fn legacy_cli_apply_keeps_its_standalone_recovery_contract() {
     assert_eq!(tex(directory.path()), ORIGINAL);
     assert!(directory.path().join("pdf-a/plot.pdf").exists());
     assert!(!directory.path().join(".texgo/undo.json").exists());
+}
+
+#[test]
+fn edited_legacy_project_can_archive_recovery_and_convert_new_images() {
+    let (directory, mut workspace) = fixture();
+    let root = directory.path();
+    convert(&mut workspace, "pdf-a");
+    workspace.apply().unwrap();
+    let active = root.join(".texgo/undo.json");
+    let old_record = fs::read(&active).unwrap();
+    let previous_batch = workspace.conversion_history().unwrap()[0].id.clone();
+    let edited = format!("{}\n\\includegraphics{{new.png}}\n", tex(root));
+    fs::write(root.join("main.tex"), &edited).unwrap();
+    fs::copy(root.join("plot.png"), root.join("new.png")).unwrap();
+
+    let project = workspace.refresh().unwrap();
+    let fingerprint = project.stale_recovery_fingerprint.unwrap();
+    let options = ConversionOptions {
+        image_ids: project.status.pending_image_ids, quality: "custom".into(),
+        dpi: 150, jpeg_quality: 100, output_dir: "pdf-a".into(),
+    };
+    let cancel = AtomicBool::new(false);
+    assert!(workspace.convert_with_intent(&options, ConversionIntent::Pending, false, &cancel, |_| {}, |_| {}).is_err());
+    assert!(!root.join("pdf-a/new.pdf").exists());
+    assert!(workspace.archive_stale_recovery(&project.main_file, "changed").is_err());
+    assert_eq!(fs::read(&active).unwrap(), old_record);
+
+    let archived = workspace.archive_stale_recovery(&project.main_file, &fingerprint).unwrap();
+    assert!(!archived.undo_available);
+    assert!(archived.stale_recovery_fingerprint.is_none());
+    assert!(!active.exists());
+    assert_eq!(fs::read(root.join(format!(".texgo/undo-archived-{fingerprint}.json"))).unwrap(), old_record);
+    assert!(!workspace.conversion_history().unwrap()[0].can_undo);
+    assert!(workspace.undo_conversion(&previous_batch).is_err());
+    assert!(root.join("pdf-a/plot.pdf").is_file());
+    assert_eq!(tex(root), edited);
+    let result = workspace.convert_with_intent(&options, ConversionIntent::Pending, false, &cancel, |_| {}, |_| {}).unwrap();
+    assert_eq!(result.images.len(), 1);
+    assert!(result.images[0].error.is_none());
+    assert!(root.join("pdf-a/new.pdf").is_file());
+    assert_eq!(tex(root), edited);
+    apply_all(&mut workspace);
+    assert!(tex(root).contains("pdf-a/new.pdf"));
+    let new_batch = workspace.conversion_history().unwrap().into_iter().find(|entry| entry.can_undo).unwrap();
+    workspace.undo_conversion(&new_batch.id).unwrap();
+    assert_eq!(tex(root), edited);
 }
 
 #[test]

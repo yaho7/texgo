@@ -404,6 +404,11 @@ async fn undo_replacements(state: State<'_, AppState>) -> Result<MutationResult,
     work(state.inner().clone(), |workspace| current(workspace)?.undo()).await
 }
 
+#[tauri::command]
+async fn archive_stale_recovery(main_file: String, fingerprint: String, state: State<'_, AppState>) -> Result<Project, String> {
+    work(state.inner().clone(), move |workspace| current(workspace)?.archive_stale_recovery(&main_file, &fingerprint)).await
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -427,7 +432,7 @@ pub fn run() {
             install_background(app);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![observation_identity, desktop_status, set_shortcut_recording, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, asset_file_action, preview_rename, rename_asset, retry_asset, open_project, refresh_workspace, poll_workspace, open_log_directory, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, asset_thumbnail, preview_changes, apply_replacements, undo_replacements])
+        .invoke_handler(tauri::generate_handler![observation_identity, desktop_status, set_shortcut_recording, smart_convert, close_workspace, get_preferences, save_preferences, ignore_asset, asset_file_action, preview_rename, rename_asset, retry_asset, open_project, refresh_workspace, poll_workspace, open_log_directory, open_release_page, repair_candidates, preview_repair, conversion_history, undo_conversion, convert_images, cancel_conversion, asset_preview, asset_thumbnail, preview_changes, apply_replacements, undo_replacements, archive_stale_recovery])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let background = window.state::<AppState>().preferences.lock().is_ok_and(|p| p.close_action == "background");

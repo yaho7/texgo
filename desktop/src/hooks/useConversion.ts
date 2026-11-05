@@ -50,6 +50,10 @@ export function useConversion(ports: Ports) {
     }
     const imageIds = intent === "pending" ? project.status.pendingImageIds : (explicitIds ?? [...selected]).filter((id) => convertibleIds.has(id));
     if (!imageIds.length) return;
+    if (project.staleRecoveryFingerprint) {
+      reviewFlow.requestRecoveryArchive(project.mainFile, project.staleRecoveryFingerprint);
+      return;
+    }
     const isCurrent = capture();
     void execute("converting", async () => {
       setReview(null);

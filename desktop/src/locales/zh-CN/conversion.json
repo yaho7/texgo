@@ -7,5 +7,10 @@
   "updatedValueImagesValue": "已更新 {arg0} 张图片{arg1}",
   "updateInterruptedProjectStatusHasBeenReloaded": "更新中断，已重新读取项目状态",
   "valueRescanFailedValue": "{arg0}；重新扫描失败：{arg1}",
-  "couldNotCancelTryAgain": "取消失败，请重试"
+  "couldNotCancelTryAgain": "取消失败，请重试",
+  "archiveRecoveryTitle": "归档旧版引用恢复记录？",
+  "archiveRecoveryDescription": "这份旧记录对应的 TeX 文件已经变动，无法安全恢复。归档会在项目的 .texgo 目录保留原记录，以当前 TeX 和 PDF 为新的撤销起点。之前的批次仍可查看。",
+  "archiveRecovery": "归档恢复记录",
+  "archivingRecovery": "正在归档…",
+  "recoveryArchived": "旧版恢复记录已归档，可以重新点击转换。"
 }

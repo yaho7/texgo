@@ -57,7 +57,11 @@ pub(crate) struct Journal {
     #[serde(default)]
     pub directories: Vec<(String, bool)>,
     batches: Vec<Batch>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    undo_floor: usize,
 }
+
+fn is_zero(value: &usize) -> bool { *value == 0 }
 
 // Validate every existing component, including the leaf, without following links.
 pub(crate) fn safe_path(root: &Path, path: &Path) -> Result<(), String> {
@@ -124,9 +128,7 @@ impl Journal {
     pub fn load(root: &Path) -> Result<Self, String> {
         let path = root.join(".texgo/conversions.json");
         safe_path(root, &path)?;
-        let Some(bytes) = read_optional(&path)? else { return Ok(Self { version: 1, outputs: BTreeMap::new(), directories: Vec::new(), batches: Vec::new() }); };
-        let mut journal: Self = serde_json::from_slice(&bytes).map_err(|e| format!("Conversion journal is damaged: {e}"))?;
-        if journal.version != 1 { return Err("Unsupported conversion journal version".into()); }
+        let mut journal = Self::from_optional_bytes(read_optional(&path)?.as_deref())?;
         // Recover a rename that completed before its final journal update.
         for batch in &mut journal.batches {
             if batch.entry.undone || batch.undoing { continue; }
@@ -151,7 +153,7 @@ impl Journal {
 
     pub(crate) fn from_optional_bytes(bytes: Option<&[u8]>) -> Result<Self, String> {
         let value = if let Some(bytes)=bytes { serde_json::from_slice(bytes).map_err(|e|format!("Conversion journal is damaged: {e}"))? }
-            else { Self{version:1,outputs:BTreeMap::new(),directories:Vec::new(),batches:Vec::new()} };
+            else { Self{version:1,outputs:BTreeMap::new(),directories:Vec::new(),batches:Vec::new(),undo_floor:0} };
         if value.version!=1 { return Err("Unsupported conversion journal version".into()); }
         Ok(value)
     }
@@ -195,6 +197,11 @@ impl Journal {
             safe_path(root, &path)?;
             save_atomic(&path, &serde_json::to_vec_pretty(self).map_err(|e| e.to_string())?)
         })
+    }
+
+    pub(crate) fn preserve_pre_archive_history(&mut self, root: &Path) -> Result<(), String> {
+        self.undo_floor = self.batches.len();
+        self.save(root)
     }
 
     /// Expected bytes come from the transaction's in-memory journal, never from
@@ -399,6 +406,7 @@ impl Journal {
     }
 
     fn undo_preflight(&self, root: &Path, index: usize) -> Result<(), String> {
+        if index < self.undo_floor { return Err("此批次早于旧版恢复记录归档，无法安全撤销".into()); }
         if self.batches[index].entry.rename.is_some() { return crate::rename::preflight_undo(root, &self.batches[index].entry.id); }
         self.preflight_references(root, &self.batches[index].entry.id)?;
         for change in &self.batches[index].changes {
@@ -491,7 +499,7 @@ impl Journal {
     }
 
     pub fn latest_batch_id(&self) -> Option<&str> {
-        self.batches.last().filter(|batch| !batch.entry.undone).map(|batch| batch.entry.id.as_str())
+        self.batches.get(self.undo_floor..)?.last().filter(|batch| !batch.entry.undone).map(|batch| batch.entry.id.as_str())
     }
 
     pub fn undo_in_progress(&self, id: &str) -> bool {
@@ -527,6 +535,7 @@ impl Journal {
         self.batches.iter().enumerate().rev().map(|(index, batch)| {
             let mut entry = batch.entry.clone();
             let status = if entry.undone { Err("此批次已撤销".to_string()) }
+                else if index < self.undo_floor { Err("此批次早于旧版恢复记录归档，无法安全撤销".into()) }
                 else if batch.changes.is_empty() && entry.references_changed == 0 && entry.rename.is_none() { Err("此批次未写入新文件".to_string()) }
                 else if Some(index) != latest { Err("请先撤销更新的转换批次".to_string()) }
                 else { self.undo_preflight(root, index) };

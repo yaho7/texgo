@@ -205,10 +205,15 @@ fn read_undo(root: &Path) -> Result<Undo, String> { read_record(&undo_path(root)
 pub(crate) fn validate_standalone_refresh(project: &Project) -> Result<(), String> {
     let root = Path::new(&project.root);
     let record = read_undo(root)?;
+    validate_standalone_record(project, &record)
+}
+
+fn validate_standalone_record(project: &Project, record: &Undo) -> Result<(), String> {
+    let root = Path::new(&project.root);
     if record.batch_id.is_some() || record.main_file != project.main_file {
         return Err("独立引用恢复记录不属于当前项目".into());
     }
-    restore_files(root, &record)?;
+    restore_files(root, record)?;
     for entry in &record.files {
         let path = root.join(&entry.path);
         crate::journal::safe_path(root, &path)?;
@@ -227,6 +232,48 @@ pub(crate) fn legacy_undo_available(root: &Path) -> bool {
 pub(crate) fn standalone_undo_available(root: &Path) -> Result<bool, String> {
     if !legacy_undo_available(root) { return Ok(false); }
     read_undo(root).map(|record| record.batch_id.is_none())
+}
+
+pub(crate) fn stale_recovery_fingerprint(project: &Project) -> Option<String> {
+    let root = Path::new(&project.root);
+    let bytes = fs::read(undo_path(root).ok()?).ok()?;
+    fingerprint_if_stale(project, &bytes)
+}
+
+fn fingerprint_if_stale(project: &Project, bytes: &[u8]) -> Option<String> {
+    let record: Undo = serde_json::from_slice(bytes).ok()?;
+    if record.version != 1 || record.batch_id.is_some() || record.main_file != project.main_file {
+        return None;
+    }
+    validate_standalone_record(project, &record).err().map(|_| digest(bytes))
+}
+
+// Caller holds the project lock. Keep a durable copy before retiring the active
+// record. A retry after an interrupted archive reuses the identical copy.
+pub(crate) fn archive_stale_recovery(project: &Project, expected: &str) -> Result<(), String> {
+    let root = Path::new(&project.root);
+    let active = undo_path(root)?;
+    let bytes = fs::read(&active).map_err(|error| error.to_string())?;
+    let Some(fingerprint) = fingerprint_if_stale(project, &bytes).filter(|fingerprint| fingerprint == expected) else {
+        return Err("旧版引用恢复记录的状态已改变，请重新扫描项目".into());
+    };
+    let mut journal = crate::journal::Journal::load(root)?;
+    journal.ensure_settled()?;
+    let archive = active.with_file_name(format!("undo-archived-{fingerprint}.json"));
+    crate::journal::safe_path(root, &archive)?;
+    match fs::read(&archive) {
+        Ok(existing) if existing != bytes => return Err("归档文件与旧版引用恢复记录不一致".into()),
+        Ok(_) => crate::workspace::sync_directory(archive.parent().unwrap())?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => save_atomic(&archive, &bytes)?,
+        Err(error) => return Err(error.to_string()),
+    }
+    ensure_current(root, &active, &bytes)?;
+    // A standalone rewrite can refer to PDFs created by earlier batches. Once
+    // retired, those batches no longer have a safe TeX rollback to pair with them.
+    journal.preserve_pre_archive_history(root)?;
+    ensure_current(root, &active, &bytes)?;
+    fs::remove_file(&active).map_err(|error| error.to_string())?;
+    crate::workspace::sync_directory(active.parent().unwrap())
 }
 
 fn batch_undo_path(root: &Path, id: &str) -> Result<PathBuf, String> {
@@ -410,7 +457,7 @@ mod batch_workflow {
         let root = dir.path().canonicalize().unwrap();
         fs::write(root.join("main.tex"), b"old").unwrap();
         fs::write(root.join("a.png"), b"source").unwrap();
-        let project = Project { state_fingerprint: String::new(), status: Default::default(), converted_images: vec![], main_file: root.join("main.tex").to_string_lossy().into(), root: root.to_string_lossy().into(), tex_files: vec![], images: vec![], warnings: vec![], undo_available: false };
+        let project = Project { state_fingerprint: String::new(), status: Default::default(), converted_images: vec![], main_file: root.join("main.tex").to_string_lossy().into(), root: root.to_string_lossy().into(), tex_files: vec![], images: vec![], warnings: vec![], undo_available: false, stale_recovery_fingerprint: None };
         let _lock = lock_project(&root).unwrap();
         let mut journal = Journal::load(&root).unwrap();
         let batch = journal.begin(&root, &ConversionOptions { image_ids: vec![], quality: "custom".into(), dpi: 150, jpeg_quality: 100, output_dir: "out".into() }).unwrap();

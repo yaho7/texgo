@@ -57,7 +57,7 @@ fn scan_with_files(main: &Path, tex_overrides: BTreeMap<PathBuf, Vec<u8>>, renam
             status: Default::default(), converted_images: Vec::new(),
             main_file: main.to_string_lossy().into(),
             root: root.to_string_lossy().into(),
-            tex_files: Vec::new(), images: Vec::new(), warnings: Vec::new(), undo_available: false,
+            tex_files: Vec::new(), images: Vec::new(), warnings: Vec::new(), undo_available: false, stale_recovery_fingerprint: None,
         },
         root, sources: BTreeMap::new(), indices: HashMap::new(), active: HashSet::new(), graphics_dirs: Vec::new(),
         contexts: HashMap::new(), unsafe_context: false, renamed_files, tex_overrides,

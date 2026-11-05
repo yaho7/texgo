@@ -34,6 +34,14 @@ export function useReviewFlow(ports: Ports) {
   function showReview(preview: ChangePreview, kind: "conversion" | "repair" = "conversion", repairContext?: { imageId: string; target: string }, originals = false) { reviewOriginals.current = originals; setDirectReview(false); decide({ kind: "review", preview, repair: kind === "repair", repairContext }); }
   function setProblemId(imageId: string | null) { if (imageId) decide({ kind: "problem", imageId }); else if (decisionRef.current.kind === "problem") decide({ kind: "none" }); }
   function setConversionBlocked(blocked: boolean) { if (blocked) decide({ kind: "manual-block" }); else if (decisionRef.current.kind === "manual-block") decide({ kind: "none" }); }
+  function requestRecoveryArchive(mainFile: string, fingerprint: string) {
+    rememberFocus();
+    ports.setError(null);
+    decide({ kind: "stale-recovery", mainFile, fingerprint });
+  }
+  function dismissRecoveryArchive() {
+    if (decisionRef.current.kind === "stale-recovery") decide({ kind: "none" });
+  }
   function requestUndo(entry: ConversionHistoryEntry) { if (!currentOperationKind() && decisionRef.current.kind === "none") decide({ kind: "undo", entry }); }
   function dismissUndo() { if (decisionRef.current.kind === "undo") decide({ kind: "none" }); }
   function queueReview(preview: ChangePreview, originals = false, explicit = false) { setQueuedReview(previous => previous?.originals && !originals && !explicit && previous.generation === workspace.generation.current ? previous : { generation: workspace.generation.current, preview, originals }); }
@@ -202,7 +210,7 @@ export function useReviewFlow(ports: Ports) {
   }
 
   return { confirmReferences, confirmingOriginals: reviewOriginals.current, prepareReferences, restoreReferences: () => prepareReferences(true), pendingRestore, directReview, pendingPreview, updateReferences, decision, decisionRef, review, reviewKind, problemId, undoEntry, conversionBlocked, repairCandidates,
-    setReview, showReview, setProblemId, setConversionBlocked, requestUndo, dismissUndo, queueReview, reset,
+    setReview, showReview, setProblemId, setConversionBlocked, requestRecoveryArchive, dismissRecoveryArchive, requestUndo, dismissUndo, queueReview, reset,
     clearQueue: () => setQueuedReview(null), reviewChanges, inspectProblem, chooseRepair, locateRepair, replace, rescanReview };
 }
 

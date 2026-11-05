@@ -13,6 +13,8 @@ pub struct Project {
     pub images: Vec<ImageAsset>,
     pub warnings: Vec<String>,
     pub undo_available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stale_recovery_fingerprint: Option<String>,
 }
 
 /// The single project-level decision used by the window and background adapters.

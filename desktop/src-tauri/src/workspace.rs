@@ -81,6 +81,7 @@ impl Workspace {
         self.converted.clear();
         self.scan.project.converted_images.clear();
         self.scan.project.undo_available = transaction::standalone_undo_available(root).unwrap_or_else(|_| transaction::legacy_undo_available(root));
+        self.scan.project.stale_recovery_fingerprint = self.scan.project.undo_available.then(|| transaction::stale_recovery_fingerprint(&self.scan.project)).flatten();
         for asset in &mut self.scan.project.images {
             asset.update_available = false;
             if asset.message.as_deref() == Some(crate::manifest::MISSING_OUTPUT_NOTICE) { continue; }
@@ -719,6 +720,19 @@ impl Workspace {
         let result = transaction::undo(&self.scan.project)?;
         self.refresh()?;
         Ok(result)
+    }
+
+    pub fn archive_stale_recovery(&mut self, main_file: &str, fingerprint: &str) -> Result<Project, String> {
+        if self.project().main_file != main_file {
+            return Err("旧版引用恢复记录的状态已改变，请重新扫描项目".into());
+        }
+        let root = PathBuf::from(&self.project().root);
+        self.observation_root.validate_project(Path::new(main_file))?;
+        {
+            let _lock = transaction::lock_project(&root)?;
+            transaction::archive_stale_recovery(self.project(), fingerprint)?;
+        }
+        self.refresh()
     }
 
     pub fn thumbnail(&self, image_id: &str, expected_main_file: &str) -> Result<AssetPreview, String> {

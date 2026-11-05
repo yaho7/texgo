@@ -7,5 +7,10 @@
   "updatedValueImagesValue": "Updated {arg0, plural, one {# image} other {# images}}{arg1}",
   "updateInterruptedProjectStatusHasBeenReloaded": "Update interrupted. Project status has been reloaded.",
   "valueRescanFailedValue": "{arg0}; rescan failed: {arg1}",
-  "couldNotCancelTryAgain": "Could not cancel. Try again."
+  "couldNotCancelTryAgain": "Could not cancel. Try again.",
+  "archiveRecoveryTitle": "Archive the legacy reference recovery record?",
+  "archiveRecoveryDescription": "The TeX files have changed since this record was created. Archiving keeps a copy in the project's .texgo folder and makes the current TeX and PDFs the new undo baseline. Earlier batches remain visible in history.",
+  "archiveRecovery": "Archive recovery record",
+  "archivingRecovery": "Archiving…",
+  "recoveryArchived": "The legacy recovery record is archived. You can start conversion again."
 }

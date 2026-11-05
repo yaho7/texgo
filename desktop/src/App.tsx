@@ -126,6 +126,7 @@ export default function App() {
 
 
   const decisionOpen = reviewFlow.decision.kind !== "none";
+  const staleRecovery = reviewFlow.decision.kind === "stale-recovery";
   const background = useBackgroundAutomation({ workspace, selection, execute, currentOperationKind, setError, setNotice,
     conversion, reviewFlow, historyDomain, operationDomain: { current: currentOperation, acquire: acquireOperation, release: releaseOperation },
     autoWatch: preferences.autoWatch, held: decisionOpen || completion !== null || homeVisible || Boolean(pendingRename),
@@ -195,6 +196,18 @@ export default function App() {
     const generation = workspace.generation.current;
     try { await runOperation(kind, "foreground", async () => { setError(null); await action(); if (isMounted()) workspace.recordActivity(); }); }
     catch (reason) { if (isMounted() && (workspace.generation.current === generation || !projectRef.current)) setError(errorMessage(reason)); }
+  }
+
+  function archiveRecovery() {
+    const decision = reviewFlow.decisionRef.current;
+    if (decision.kind !== "stale-recovery") return;
+    const isCurrent = captureWorkspace();
+    void execute("updating", async () => {
+      const next = await invoke<Project>("archive_stale_recovery", { mainFile: decision.mainFile, fingerprint: decision.fingerprint });
+      if (!isCurrent()) return;
+      await acceptProject(next, true, t("conversion.recoveryArchived"));
+      if (isCurrent()) reviewFlow.dismissRecoveryArchive();
+    }, "archive-recovery");
   }
 
   const { revealAsset, revealPdf, copyAssetPath } = useAssetFileActions({ currentProject: () => projectRef.current, isBusy: () => Boolean(currentOperationKind()), captureWorkspace, execute, onNotice: setNotice });
@@ -339,7 +352,7 @@ export default function App() {
           const entry = history.find((item) => item.canUndo); if (entry) { rememberFocus(); reviewFlow.requestUndo(entry); } else if (project?.undoAvailable) replace(true);
         }} /></div>
       </header>}
-      {error && !review && !undoEntry && !problemId && <ErrorNotice message={error} className="workbench-alert" onClose={() => setError(null)} />}
+      {error && !review && !undoEntry && !problemId && !staleRecovery && <ErrorNotice message={error} className="workbench-alert" onClose={() => setError(null)} />}
       {project?.status.blockingReason && !homeVisible && !settingsPage && <Alert variant="destructive" role="alert" className="workbench-alert"><TriangleAlert aria-hidden="true" /><AlertTitle>{t("app.resolveTheSafetyIssueFirst")}</AlertTitle><AlertDescription>{nativeText(project.status.blockingReason)}</AlertDescription></Alert>}
       <div className="settings-view" hidden={!settingsPage} inert={!settingsPage}><SettingsView active={settingsPage} value={preferences} onSaved={(next) => { preferencesRef.current = next; setPreferences(next); }} onClose={() => setSettingsPage(false)} /></div>
       {homeVisible && !settingsPage && <Home onSettings={() => setSettingsPage(true)} busy={busy} onOpenTex={openProject} recents={recents} failedRecent={failedRecent} onRecent={openRecentEntry} onRemove={workspace.forgetRecent} />}
@@ -384,6 +397,19 @@ export default function App() {
       <DialogContent onCloseAutoFocus={(event) => { event.preventDefault(); restoreFocus(); }}>
         <DialogHeader><DialogTitle>{t("app.reviewReferencesFirst")}</DialogTitle><DialogDescription>{t("app.pendingReviewDescription", {count:project?.status.pendingReferences ?? 0})}</DialogDescription></DialogHeader>
         <DialogFooter><Button variant="outline" onClick={() => setConversionBlocked(false)}>{t("app.cancel")}</Button><Button onClick={() => { setConversionBlocked(false); reviewChanges(); }}>{t("app.reviewReferences")}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+    <Dialog open={staleRecovery} onOpenChange={(open) => { if (!open && !currentOperationKind()) { reviewFlow.dismissRecoveryArchive(); setError(null); } }}>
+      <DialogContent showCloseButton={false} onCloseAutoFocus={(event) => { event.preventDefault(); restoreFocus(); }} onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }} onInteractOutside={(event) => { if (busy) event.preventDefault(); }}>
+        <DialogHeader>
+          <DialogTitle>{t("conversion.archiveRecoveryTitle")}</DialogTitle>
+          <DialogDescription>{t("conversion.archiveRecoveryDescription")}</DialogDescription>
+        </DialogHeader>
+        {error && <ErrorNotice message={error} />}
+        <DialogFooter>
+          <Button variant="outline" disabled={busy} onClick={() => { reviewFlow.dismissRecoveryArchive(); setError(null); }}>{t("app.cancel")}</Button>
+          <Button disabled={busy} onClick={archiveRecovery}>{busy ? t("conversion.archivingRecovery") : t("conversion.archiveRecovery")}</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
     <Dialog open={undoEntry !== null} onOpenChange={(value) => { if (!value && !currentOperationKind()) { reviewFlow.dismissUndo(); setError(null); } }}>

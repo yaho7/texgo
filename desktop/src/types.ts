@@ -55,6 +55,7 @@ export interface Project {
   images: ImageAsset[];
   warnings: string[];
   undoAvailable: boolean;
+  staleRecoveryFingerprint?: string;
 }
 
 export interface ConversionOptions {

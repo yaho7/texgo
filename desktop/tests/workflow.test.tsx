@@ -93,6 +93,30 @@ async function openProject() {
   await user.click(screen.getByRole("button", { name: "打开或拖入 .tex 文件" }));
   await screen.findByRole("button", { name: "预览 figures/alpha.png" }); return user;
 }
+
+it("asks before archiving an unusable legacy recovery record and leaves conversion ready afterward", async () => {
+  backend.undoAvailable = true;
+  backend.staleRecoveryFingerprint = "legacy-recovery";
+  handlers.archive_stale_recovery = () => {
+    backend.undoAvailable = false;
+    delete backend.staleRecoveryFingerprint;
+    return structuredClone(backend);
+  };
+  const user = await openProject();
+  const convert = screen.getByRole("button", { name: "转换 2 张图片" });
+  await user.click(convert);
+  const dialog = await screen.findByRole("dialog", { name: "归档旧版引用恢复记录？" });
+  expect(calls.some(({ command }) => command === "convert_images")).toBe(false);
+  await user.click(within(dialog).getByRole("button", { name: "取消" }));
+  expect(calls.some(({ command }) => command === "archive_stale_recovery")).toBe(false);
+
+  await user.click(convert);
+  await user.click(within(await screen.findByRole("dialog", { name: "归档旧版引用恢复记录？" })).getByRole("button", { name: "归档恢复记录" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(calls.find(({ command }) => command === "archive_stale_recovery")?.args).toEqual({ mainFile: "/paper/main.tex", fingerprint: "legacy-recovery" });
+  await user.click(convert);
+  await waitFor(() => expect(calls.some(({ command }) => command === "convert_images")).toBe(true));
+});
 async function menu(user: ReturnType<typeof userEvent.setup>, name: string) {
   await user.click(screen.getByRole("button", { name: "更多操作" }));
   await user.click(await screen.findByRole("menuitem", { name: new RegExp(`^${name}`) }));
