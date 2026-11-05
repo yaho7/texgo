@@ -20,7 +20,7 @@ cd desktop
 cargo build --locked --manifest-path src-tauri/Cargo.toml --no-default-features --features automation --bin texgo-engine
 mkdir -p src-tauri/binaries
 cp src-tauri/target/debug/texgo-engine src-tauri/binaries/texgo-engine-aarch64-apple-darwin
-npm exec -- tauri icon app-icon.jpg
+npm exec -- tauri icon app-icon.png
 cargo test --locked --manifest-path src-tauri/Cargo.toml
 ```
 

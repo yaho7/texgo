@@ -162,7 +162,7 @@ jobs:
           if [ "$RUNNER_OS" = Windows ]; then extension='.exe'; fi
           mkdir -p src-tauri/binaries
           cp "src-tauri/target/$TARGET/release/texgo-engine$extension" "src-tauri/binaries/texgo-engine-$TARGET$extension"
-          npm exec -- tauri icon app-icon.jpg
+          npm exec -- tauri icon app-icon.png
       - name: Native regression (optional)
         if: inputs.full_tests == true
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked --target ${{ matrix.target }}
