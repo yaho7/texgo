@@ -73,7 +73,6 @@
 .preview-controls { display: flex; flex: none; justify-content: center; align-items: center; gap: 8px; padding: 8px; }
 .preview-controls [data-slot="toggle-group"] { background: transparent; }
 .preview-controls [data-slot="toggle-group-item"] { min-width: 32px; padding-inline: 6px; font-size: 11px; }
-.preview-control-divider { color: var(--muted-foreground); font-size: 13px; }
 .mac-workspace .preview-stage .preview-surface { margin: 0; background: var(--preview-bg); }
 .preview-stage .comparison-frame,
 .preview-stage .image-stage img,

@@ -175,12 +175,10 @@ h1, h2, h3, p { margin: 0; }
 .progress-name { max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .progress-controls { display: flex; align-items: center; gap: 12px; }
 .pdf-preview { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
-.pdf-toolbar { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 2px; min-height: 38px; background: var(--background); border-bottom: 1px solid var(--border); }
-.page-count, .zoom-value { min-width: 40px; text-align: center; font-size: 11px; font-variant-numeric: tabular-nums; }
-.pdf-viewport { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: auto; }
-.pdf-canvas-host { display: grid; justify-items: center; align-content: start; min-width: 100%; min-height: 100%; padding: 16px 24px; }
+.pdf-viewport { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: clip; }
+.pdf-canvas-host { display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; width: 100%; height: 100%; padding: 16px 24px; }
 .pdf-canvas-host canvas { background: white; box-shadow: 0 1px 4px #00000012; }
-.pdf-render-status { position: sticky; bottom: 12px; display: flex; align-items: center; gap: 8px; width: fit-content; margin: auto; padding: 6px 10px; background: var(--background); font-size: 11px; }
+.pdf-render-status { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; width: max-content; max-width: 100%; padding: 6px 10px; background: var(--background); font-size: 11px; }
 .pdf-error { position: absolute; inset: 0; display: grid; place-content: center; padding: 18px; background: var(--muted); }
 .success-ink { color: var(--success); }
 .warning-ink { color: var(--warning); }
@@ -240,7 +238,7 @@ h1, h2, h3, p { margin: 0; }
 .comparison-layer .image-stage { padding: 0; overflow: hidden; }
 .comparison-layer .image-stage img { width: 100%; height: 100%; object-fit: fill; }
 .comparison-clip { position: absolute; inset: 0; pointer-events: none; }
-.comparison-layer .pdf-overlay, .pdf-overlay .pdf-viewport, .pdf-overlay .pdf-canvas-host { width: 100%; height: 100%; min-height: 0; padding: 0; overflow: hidden; }
+.comparison-layer .pdf-overlay, .pdf-overlay .pdf-viewport, .pdf-overlay .pdf-canvas-host { width: 100%; height: 100%; min-height: 0; padding: 0; overflow: clip; }
 .pdf-overlay .pdf-canvas-host { display: block; }
 .pdf-overlay canvas { display: block; box-shadow: none; }
 .comparison-divider { position: absolute; top: 0; bottom: 0; width: 18px; transform: translateX(-50%); cursor: ew-resize; touch-action: none; outline-offset: -2px; }

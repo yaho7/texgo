@@ -3,11 +3,5 @@
   "valuePageValue": "{arg0}, page {arg1}",
   "couldNotCreateThePDFCanvas": "Could not create the PDF canvas",
   "pDFPreviewFailed": "PDF preview failed",
-  "pDFPreviewControls": "PDF preview controls",
-  "previousPage": "Previous page",
-  "nextPage": "Next page",
-  "zoomOut": "Zoom out",
-  "zoomIn": "Zoom in",
-  "fitPage": "Fit page",
   "rendering": "Rendering"
 }

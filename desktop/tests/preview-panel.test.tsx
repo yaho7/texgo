@@ -1,8 +1,8 @@
+import { readFileSync } from "node:fs";
 import { act, fireEvent, render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import AssetPreview from "../src/AssetPreview";
-import previewCss from "../src/preview.css?raw";
 import type { AssetPreviewData, ImageAsset, ImageResult } from "../src/types";
 
 const ipc = vi.hoisted(() => ({ invoke: vi.fn() }));
@@ -11,6 +11,7 @@ vi.mock("../src/PdfPreview", () => ({ default: ({ data }: { data: string }) => <
 
 const asset: ImageAsset = { id: "a", path: "/a.png", relativePath: "a.png", format: "png", width: 100, height: 80, bytes: 1000, status: "ready", message: null, references: [] };
 const result: ImageResult = { id: "a", pdfPath: "/a.pdf", bytes: 500, cached: false, error: null };
+const previewCss = readFileSync("src/preview.css", "utf8");
 
 beforeEach(() => {
   ipc.invoke.mockReset();
@@ -234,11 +235,9 @@ it("shows PDF alone and falls back safely when its matching result becomes inval
   expect(screen.getByLabelText("原图预览")).toBeVisible();
 });
 
-it("fits without enlarging a small source and uses native pixels at 100%", async () => {
+it("fits without enlarging a small source", async () => {
   const { container } = render(<AssetPreview asset={asset} revision={1} />);
   await loadOriginal("a.png");
-  expect(container.querySelector(".comparison-frame")).toHaveStyle({ width: "100px", height: "80px" });
-  await userEvent.click(screen.getByRole("radio", { name: "100%" }));
   expect(container.querySelector(".comparison-frame")).toHaveStyle({ width: "100px", height: "80px" });
 });
 
@@ -250,17 +249,18 @@ it("caps fit using natural image dimensions when metadata is unknown", async () 
   expect(container.querySelector(".comparison-frame")).toHaveStyle({ width: "24px", height: "16px" });
 });
 
-it("uses one scrollable geometry for oversized sources and PDF comparison", async () => {
-  const { container } = render(<AssetPreview asset={{ ...asset, width: 1200, height: 800 }} result={result} revision={1} />);
+it("fits oversized sources and PDF comparison in one fixed viewport", async () => {
+  const { container } = render(<><style>{previewCss}</style><AssetPreview asset={{ ...asset, width: 1200, height: 800 }} result={result} revision={1} /></>);
   await loadOriginal("a.png");
-  await userEvent.click(screen.getByRole("radio", { name: "100%" }));
   await userEvent.click(screen.getByRole("radio", { name: "对比" }));
   const frames = container.querySelectorAll(".comparison-frame");
   expect(frames).toHaveLength(2);
-  for (const frame of frames) expect(frame).toHaveStyle({ width: "1200px", height: "800px" });
+  for (const frame of frames) expect(frame).toHaveStyle({ width: "318px", height: "212px" });
   expect(frames[0].parentElement).toHaveClass("preview-artboard");
+  expect(frames[0].parentElement).toHaveStyle({ position: "absolute" });
+  expect(getComputedStyle(frames[0].parentElement!).inset).toBe("0");
   expect(container.querySelector(".comparison-clip")?.parentElement).toBe(frames[0].parentElement);
-  expect(container.querySelector(".preview-surface")).toHaveAttribute("data-scale", "actual");
+  expect(container.querySelector(".preview-surface")).toHaveStyle({ overflow: "clip" });
 });
 
 it.each([{ altKey: true }, { ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { isComposing: true }])("does not cycle with guarded key input %j", async (modifiers) => {
@@ -270,15 +270,6 @@ it.each([{ altKey: true }, { ctrlKey: true }, { metaKey: true }, { shiftKey: tru
   expect(screen.getByRole("radio", { name: "原图" })).toHaveAttribute("aria-checked", "true");
 });
 
-
-it("uses original metadata pixels for 100% even when the preview bitmap is a thumbnail", async () => {
-  const { container } = render(<AssetPreview asset={{ ...asset, width: 2400, height: 1600 }} revision={1} />);
-  const image = await screen.findByAltText("原始：a.png");
-  Object.defineProperties(image, { naturalWidth: { value: 1200 }, naturalHeight: { value: 800 } });
-  fireEvent.load(image);
-  await userEvent.click(screen.getByRole("radio", { name: "100%" }));
-  expect(container.querySelector(".comparison-frame")).toHaveStyle({ width: "2400px", height: "1600px" });
-});
 
 it("keeps PDF mode through refresh and rename, and Escape returns to original", async () => {
   const view = render(<AssetPreview asset={asset} result={result} revision={1} />);
@@ -291,12 +282,11 @@ it("keeps PDF mode through refresh and rename, and Escape returns to original", 
 });
 
 
-it("keeps native PDF sources in a useful standalone frame without competing raster zoom controls", async () => {
+it("fits native PDF sources in a standalone frame", async () => {
   ipc.invoke.mockResolvedValue({ kind: "pdf", data: "native-pdf" });
   const { container } = render(<AssetPreview asset={{ ...asset, format: "pdf", status: "pdf", width: null, height: null }} revision={1} />);
   expect(await screen.findByLabelText("真实 PDF")).toHaveTextContent("native-pdf");
   expect(container.querySelector(".comparison-frame")).toHaveStyle({ width: "480px", height: "240px" });
-  expect(screen.queryByRole("radiogroup", { name: "预览缩放" })).not.toBeInTheDocument();
 });
 
 it("keeps loading and failure messages readable before unknown image dimensions arrive", async () => {
@@ -322,20 +312,6 @@ it.each([false, true])("retains the previous bitmap and its size while an unknow
     expect(screen.getByRole("alert")).toHaveTextContent("new source unreadable");
     expect(previous).toBeVisible();
   }
-});
-
-it("centers an explicit switch to 100% and keeps the pan position on refresh", async () => {
-  const view = render(<AssetPreview asset={{ ...asset, width: 1200, height: 800 }} revision={1} />);
-  await loadOriginal("a.png");
-  const surface = view.container.querySelector<HTMLDivElement>(".preview-surface")!;
-  Object.defineProperties(surface, { scrollWidth: { value: 1228 }, scrollHeight: { value: 828 }, clientWidth: { value: 480 }, clientHeight: { value: 240 } });
-  await userEvent.click(screen.getByRole("radio", { name: "100%" }));
-  expect(surface.scrollLeft).toBe(374);
-  expect(surface.scrollTop).toBe(294);
-  surface.scrollLeft = 200; surface.scrollTop = 150;
-  view.rerender(<AssetPreview asset={{ ...asset, width: 1200, height: 800, relativePath: "renamed.png" }} revision={2} />);
-  expect(surface.scrollLeft).toBe(200);
-  expect(surface.scrollTop).toBe(150);
 });
 
 it("retains natural dimensions for the prior unknown-size source while hiding the incoming bitmap", async () => {
@@ -379,7 +355,7 @@ it("leads inspector details with the filename and compact metadata", () => {
   expect(screen.queryByText("PNG")).not.toBeInTheDocument();
 });
 
-it("keeps fractional fit viewports inside their content box without introducing scrollbars", async () => {
+it("fits large images inside fractional viewports", async () => {
   let resized: ResizeObserverCallback = () => {};
   const observer: ResizeObserver = { observe() {}, unobserve() {}, disconnect() {} };
   vi.stubGlobal("ResizeObserver", class {
@@ -389,21 +365,18 @@ it("keeps fractional fit viewports inside their content box without introducing 
     disconnect() {}
   });
   try {
-    const { container } = render(<AssetPreview asset={asset} result={result} revision={1} />);
+    const { container } = render(<AssetPreview asset={{ ...asset, width: 1200, height: 1200 }} revision={1} />);
     await loadOriginal("a.png");
     const surface = container.querySelector(".preview-surface")!;
     act(() => resized([{ target: surface, contentRect: new DOMRect(0, 0, 417.5, 389.5), borderBoxSize: [], contentBoxSize: [], devicePixelContentBoxSize: [] }], observer));
-    expect(container.querySelector(".preview-artboard")).toHaveStyle({ width: "417px", height: "389px" });
+    expect(container.querySelector(".comparison-frame")).toHaveStyle({ width: "361px", height: "361px" });
   } finally { vi.unstubAllGlobals(); }
 });
 
 
-it("keeps preview versions and zoom in the same viewer toolbar", () => {
+it("shows only the preview version controls in the viewer toolbar", () => {
   const {container} = render(<AssetPreview asset={asset} revision={1} result={result} />);
   const toolbar = container.querySelector(".preview-controls")!;
-  expect(within(toolbar as HTMLElement).getByRole("radio", {name:"原图"})).toBeInTheDocument();
-  expect(within(toolbar as HTMLElement).getByRole("radio", {name:"适应窗口"})).toBeInTheDocument();
-  expect(within(toolbar as HTMLElement).getByRole("radio", {name:"100%"})).toBeInTheDocument();
+  expect(within(toolbar as HTMLElement).getAllByRole("radio").map(control => control.textContent)).toEqual(["原图", "PDF", "对比"]);
   expect(toolbar.parentElement).toBe(container.querySelector(".preview-surface")?.parentElement);
-  expect(toolbar.querySelector('[aria-hidden="true"]')).toHaveTextContent("|");
 });

@@ -8,6 +8,8 @@ For any UI/UX design, redesign, implementation, visual review, or polish task, u
 
 Prefer calm, restrained, native-feeling productivity UI.
 
+Texgo is a conversion tool. Previews help users identify source assets and conversion outputs at a glance. Fit previews to the available viewport and omit scrolling, manual zoom, and pagination within the preview canvas.
+
 Default principles:
 
 - Keep the interface quiet at rest.

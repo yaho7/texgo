@@ -28,7 +28,6 @@ html, body { height: 100%; overflow: clip; }
 .mac-workspace .preview-filename { font-size: 11px; }
 .mac-workspace .preview-heading > [data-slot="toggle-group"] { flex: 0 0 100%; justify-content: center; }
 .mac-workspace .preview-surface { margin-inline: var(--workspace-inset); border: 0; border-radius: 0; background: var(--preview-bg); min-height: 180px; }
-.mac-workspace .preview-scale-controls { padding-inline: var(--workspace-inset); }
 .mac-workspace .preview-metadata { padding-inline: var(--workspace-inset); gap: 8px; }
 .mac-workspace .status-bar { min-height: 32px; flex-wrap: wrap; background: var(--content-bg); padding: 6px 16px; }
 .mac-workspace .status-text { margin-left: auto; }

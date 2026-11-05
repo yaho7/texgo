@@ -1,6 +1,6 @@
 import { nativeText } from "./nativeText";
 import { t } from "./i18n";
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { FileImage, TriangleAlert, MoreHorizontal } from "lucide-react";
 import type { AssetPreviewData, ImageAsset, ImageResult } from "./types";
@@ -102,7 +102,6 @@ export default function AssetPreview({ root = "", asset, result, revision, busy 
   const ignoreMode = asset?.ignoreMode ?? (ignored ? "session" : "none");
   ignored = ignoreMode !== "none";
   const [mode, setMode] = useState("original");
-  const [scale, setScale] = useState("fit");
   const unavailable = !asset?.path || ["missing", "ambiguous", "unsupported"].includes(asset.status);
   const hasConverted = Boolean(asset && !unavailable && result?.id === asset.id && result.pdfPath && !result.error && !result.cancelled);
   const visibleMode = hasConverted ? mode : "original";
@@ -125,21 +124,14 @@ export default function AssetPreview({ root = "", asset, result, revision, busy 
   const availableHeight = Math.max(1, size.height - 28);
   const nativeWidth = dimensions?.width ?? availableWidth;
   const aspect = dimensions ? dimensions.width / dimensions.height : availableWidth / availableHeight;
-  const width = sourcePdf ? size.width : scale === "actual" ? nativeWidth : Math.max(1, Math.min(nativeWidth, availableWidth, availableHeight * aspect));
+  const width = sourcePdf ? size.width : Math.min(nativeWidth, availableWidth, availableHeight * aspect);
   const height = sourcePdf ? size.height : dimensions ? width / aspect : availableHeight;
-  useLayoutEffect(() => {
-    const element = surface.current;
-    if (!element) return;
-    element.scrollLeft = scale === "actual" ? Math.max(0, element.scrollWidth - element.clientWidth) / 2 : 0;
-    element.scrollTop = scale === "actual" ? Math.max(0, element.scrollHeight - element.clientHeight) / 2 : 0;
-  }, [scale]);
   useEffect(() => () => { if (resetTimer.current) clearTimeout(resetTimer.current); }, []);
   useEffect(() => {
     const element = surface.current;
     if (!element) return;
     const update = (width: number, height: number) => {
-      // Integer client sizes round fractional pixels up, creating scrollbars that
-      // change the fit size again. Round the content box down instead.
+      // Keep fitted content within the fractional content box.
       const next = { width: Math.floor(width), height: Math.floor(height) };
       if (next.width > 0 && next.height > 0) setSize(previous => previous.width === next.width && previous.height === next.height ? previous : next);
     };
@@ -195,13 +187,10 @@ export default function AssetPreview({ root = "", asset, result, revision, busy 
       <ToggleGroup type="single" value={visibleMode} onValueChange={(value) => { if (value) setMode(value); }} variant="outline" size="sm" aria-label={t("assetPreview.previewVersion")}>
         <ToggleGroupItem value="original" disabled={!asset}>{t("assetPreview.original2")}</ToggleGroupItem><ToggleGroupItem value="pdf" disabled={!hasConverted}>PDF</ToggleGroupItem><ToggleGroupItem value="compare" disabled={!hasConverted}>{t("assetPreview.compare")}</ToggleGroupItem>
       </ToggleGroup>
-      {!sourcePdf && <><span className="preview-control-divider" aria-hidden="true">|</span><ToggleGroup type="single" value={scale} onValueChange={(value) => { if (value) setScale(value); }} variant="outline" size="sm" aria-label={t("assetPreview.previewZoom")}>
-      <ToggleGroupItem value="fit" disabled={unavailable}>{t("assetPreview.fitToWindow")}</ToggleGroupItem><ToggleGroupItem value="actual" disabled={unavailable}>100%</ToggleGroupItem>
-    </ToggleGroup></>}
     </div>
-    <div ref={surface} className="preview-surface" data-scale={scale} data-dragging={dragging} data-resetting={resetting} onPointerDown={(event) => { if (!(event.target as HTMLElement).closest('button, input, [role="slider"]')) event.currentTarget.closest<HTMLElement>(".preview-panel")?.focus(); }}>
+    <div ref={surface} className="preview-surface" data-dragging={dragging} data-resetting={resetting} onPointerDown={(event) => { if (!(event.target as HTMLElement).closest('button, input, [role="slider"]')) event.currentTarget.closest<HTMLElement>(".preview-panel")?.focus(); }}>
       {unavailable ? <Empty><EmptyHeader><EmptyMedia variant="icon"><FileImage aria-hidden="true" /></EmptyMedia><EmptyTitle>{asset ? asset.status === "missing" ? t("assetPreview.missingFile") : asset.status === "ambiguous" ? t("assetPreview.multipleCandidateFilesFound") : t("assetPreview.previewUnavailableForThisImage") : t("assetPreview.selectAnImageToPreview")}</EmptyTitle></EmptyHeader></Empty> : <>
-        <div ref={artboard} className="preview-artboard" style={{ width: sourcePdf ? size.width : Math.max(size.width, width + 28), height: sourcePdf ? size.height : Math.max(size.height, height + 28) }}>
+        <div ref={artboard} className="preview-artboard">
         <div className="comparison-frame" data-native-known={sourcePdf || Boolean(dimensions)} style={{ width, height, visibility: visibleMode === "pdf" ? "hidden" : undefined }}>
           <section className="comparison-layer" aria-label={t("assetPreview.originalPreview")}><PreviewContent asset={asset!} converted={false} revision={revision} onNaturalSize={(width, height) => setNatural({ key: sourceKey, width, height })} /></section>
         </div>
