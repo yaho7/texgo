@@ -48,18 +48,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.release_tag || github.ref }}
+          ref: ${{ inputs.release_tag != '' && format('refs/tags/{0}', inputs.release_tag) || github.sha }}
+      # Recovery tags can predate tag-based version preparation.
+      - uses: actions/checkout@v4
+        if: inputs.release_tag != ''
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .release-tools
+          sparse-checkout: desktop/scripts
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: desktop/package-lock.json
-      - name: Check version and source identity
+      - name: Prepare build version and record source identity
         id: version
+        env:
+          VERSION_SCRIPT: ${{ inputs.release_tag != '' && '../.release-tools/desktop/scripts/release-policy.mjs' || './scripts/release-policy.mjs' }}
         run: |
           node --input-type=module -e '
-            import { checkVersions, writeGithubOutputs } from "./scripts/release-policy.mjs";
-            const policy = await checkVersions(undefined, process.env.TEXGO_BUILD_REF);
+            const { prepareBuildVersion, writeGithubOutputs } = await import(process.env.VERSION_SCRIPT);
+            const policy = await prepareBuildVersion(process.cwd(), process.env.TEXGO_BUILD_REF);
             await writeGithubOutputs(policy, process.env.GITHUB_OUTPUT);
           '
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -88,6 +98,18 @@ jobs:
         with:
           name: frontend-dist
           path: desktop/dist
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        if: steps.version.outputs.publish == 'true'
+        with:
+          name: release-version-files
+          path: |
+            desktop/package.json
+            desktop/package-lock.json
+            desktop/src-tauri/Cargo.toml
+            desktop/src-tauri/Cargo.lock
+            desktop/src-tauri/tauri.conf.json
+          if-no-files-found: error
           retention-days: 3
 
   package:
@@ -129,6 +151,11 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ needs.verify.outputs.sha }}
+      - uses: actions/download-artifact@v4
+        if: needs.verify.outputs.publish == 'true'
+        with:
+          name: release-version-files
+          path: desktop
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -219,13 +246,11 @@ jobs:
           node-version: '22'
       - name: Verify the five platform installers
         env:
-          TEXGO_BUILD_REF: ${{ needs.verify.outputs.ref }}
+          VERSION: ${{ needs.verify.outputs.version }}
         run: |
           node --input-type=module -e '
             import { preparePublicAssets } from "./desktop/scripts/prepare-public-assets.mjs";
-            import { checkVersions } from "./desktop/scripts/release-policy.mjs";
-            const policy = await checkVersions("desktop", process.env.TEXGO_BUILD_REF);
-            await preparePublicAssets({directory:"release", version:policy.version});
+            await preparePublicAssets({directory:"release", version:process.env.VERSION});
           '
       - name: Publish five installers
         env:

@@ -4,14 +4,14 @@
 
 Code pushes run lightweight version, TypeScript, localization and release-policy checks.
 Documentation-only pushes are skipped. Ordinary branches do not build four installers.
-Exact `v<manifest version>` tags build and publish; manual dispatch can build artifacts
+Version tags such as `v0.3.8` build and publish; manual dispatch can build artifacts
 or rebuild an existing unpublished version tag without moving it.
 
 The default release path is:
 
-1. **Check / frontend** validates versions and release policy, then builds the frontend once.
+1. **Check / frontend** applies the version from the tag to the build checkout, then builds the frontend once.
 2. **Package** downloads that frontend on four runners, builds the engine and desktop in
-   release mode with the committed lockfile, and signs/collects installers. Workspaces
+   release mode with the prepared lockfiles, and signs/collects installers. Workspaces
    share a target-specific Rust cache. The CLI builds directly, avoiding an extra artifact
    transformation layer and stale bundle output.
 3. **Publish** checks the five installers and confirms the tag still points to the exact packaged source commit.
@@ -70,17 +70,18 @@ publish a release. Packaging/installation and native behavior need platform-spec
 
 ## Release policy
 
-The current desktop version is `0.3.3`. `version:check` compares `package.json`, both npm lock
-version fields, the Cargo manifest and desktop package in its lockfile, and `tauri.conf.json`.
-Supported release versions are `X.Y.Z` and `X.Y.Z-beta.N`, without numeric leading zeroes.
+Push a `vX.Y.Z` or `vX.Y.Z-beta.N` tag on the commit you want to publish, without numeric
+leading zeroes. The workflow sets the build version in `package.json`, both npm lock
+version fields, the Cargo manifest and desktop package in its lockfile, and
+`tauri.conf.json`. The version files in Git serve as the development baseline.
 
 | Git ref | Result |
 | --- | --- |
 | `main` or another branch, including manual branch runs | Tests and installer artifacts only |
 | Unrelated tag | Artifacts only |
-| Exact `v0.3.0` with all versions `0.3.0` | Stable release marked Latest |
-| Exact `v0.3.0-beta.1` with all versions `0.3.0-beta.1` | Prerelease; never Latest |
-| Desktop tag that differs from the manifests | Fails verification before packaging |
+| `v0.3.8` | Builds version `0.3.8` as the latest stable release |
+| `v0.3.8-beta.1` | Builds version `0.3.8-beta.1` as a prerelease |
+| Invalid `v*` tag | Fails before packaging |
 
 Creating/pushing a release tag is an explicit maintainer action; ordinary main pushes no
 longer create public releases. Do not move or reuse a published version tag. Before publication,

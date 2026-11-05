@@ -4,7 +4,7 @@ import { mkdtemp, readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { collectInstallers } from '../scripts/collect-installers.mjs';
-import { checkVersions, desktopBuildIdentity, releasePolicy, writeGithubOutputs } from '../scripts/release-policy.mjs';
+import { checkVersions, desktopBuildIdentity, prepareBuildVersion, releasePolicy, writeGithubOutputs } from '../scripts/release-policy.mjs';
 
 test('branches, manual branch runs and unrelated tags never publish', () => {
   for (const ref of ['', 'refs/heads/main', 'refs/heads/feature/test', 'refs/tags/engine-v1', 'refs/tags/desktop-v0.3.0']) {
@@ -43,6 +43,26 @@ test('checks beta versions across all manifests and both npm lock version fields
     lock.packages[''].version = '0.2.1';
     await writeFile(path.join(root, 'package-lock.json'), JSON.stringify(lock));
     await assert.rejects(checkVersions(root), /packages\[""\]/);
+  });
+});
+test('applies a release tag across build files without changing dependency versions', async () => {
+  await fixture(async root => {
+    const file = path.join(root, 'package-lock.json');
+    const lock = JSON.parse(await readFile(file, 'utf8'));
+    lock.packages[''].version = '0.2.1';
+    lock.packages['node_modules/thing'] = { version: '1.0.0' };
+    await writeFile(file, JSON.stringify(lock));
+
+    const stable = await prepareBuildVersion(root, 'refs/tags/v0.3.8');
+    assert.deepEqual(stable, { version: '0.3.8', tag: 'v0.3.8', publish: true, prerelease: false, latest: true });
+    assert.deepEqual(await checkVersions(root, 'refs/tags/v0.3.8'), stable);
+    assert.equal(JSON.parse(await readFile(file, 'utf8')).packages['node_modules/thing'].version, '1.0.0');
+    assert.match(await readFile(path.join(root, 'src-tauri/Cargo.lock'), 'utf8'), /name = "thing"\nversion = "1.0.0"/);
+
+    const beta = await prepareBuildVersion(root, 'refs/tags/v0.4.0-beta.1');
+    assert.equal(beta.prerelease, true);
+    assert.equal(beta.latest, false);
+    assert.equal((await checkVersions(root, 'refs/tags/v0.4.0-beta.1')).version, '0.4.0-beta.1');
   });
 });
 test('rejects a stale Cargo lock and missing/duplicate desktop package records', async () => {
